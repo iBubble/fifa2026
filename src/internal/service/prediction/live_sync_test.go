@@ -10,14 +10,23 @@ import (
 )
 
 func TestLiveSyncService(t *testing.T) {
-	// 初始化测试数据库
+	// 初始化测试数据库前，先尝试清理残留
 	_ = os.Remove("./test_sync.db")
+	_ = os.Remove("./fifa2026.db")
+	_ = os.Remove("./fifa2026.db-shm")
+	_ = os.Remove("./fifa2026.db-wal")
+
 	err := db.Init("./")
 	if err != nil {
 		t.Fatalf("初始化测试数据库失败: %v", err)
 	}
-	defer db.Close()
-	defer os.Remove("./fifa2026.db")
+	defer func() {
+		db.Close()
+		_ = os.Remove("./fifa2026.db")
+		_ = os.Remove("./fifa2026.db-shm")
+		_ = os.Remove("./fifa2026.db-wal")
+		_ = os.Remove("./test_sync.db")
+	}()
 
 	// 插入一个测试赛季和比赛
 	_ = db.SaveTournament(models.Tournament{ID: "fifa_2026", Name: "World Cup 2026", Year: 2026, Status: "PENDING"})
