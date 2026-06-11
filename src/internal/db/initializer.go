@@ -10,28 +10,6 @@ import (
 
 // ImportInitialData 从本地 JSON 静态文件将 2026 世界杯基础数据录入 SQLite 数据库
 func ImportInitialData(seasonsFilePath, featuresFilePath string) error {
-	// 0. 清空原有的赛程表，以防止残留垃圾错误赛程数据
-	if _, err := DB.Exec("DELETE FROM matches"); err != nil {
-		return fmt.Errorf("清空 matches 表失败: %w", err)
-	}
-	// 并且清空历史赔率表，防止错位对阵的赔率遗留
-	if _, err := DB.Exec("DELETE FROM odds_history"); err != nil {
-		return fmt.Errorf("清空 odds_history 表失败: %w", err)
-	}
-	// 物理清空历史投注流水与赛后复盘报告，彻底隔离并消除一切虚假历史记录
-	if _, err := DB.Exec("DELETE FROM bets"); err != nil {
-		return fmt.Errorf("清空 bets 表失败: %w", err)
-	}
-	if _, err := DB.Exec("DELETE FROM backtest_reports"); err != nil {
-		return fmt.Errorf("清空 backtest_reports 表失败: %w", err)
-	}
-	if _, err := DB.Exec("DELETE FROM news_articles"); err != nil {
-		return fmt.Errorf("清空 news_articles 表失败: %w", err)
-	}
-	if _, err := DB.Exec("DELETE FROM prediction_reports"); err != nil {
-		return fmt.Errorf("清空 prediction_reports 表失败: %w", err)
-	}
-
 	// 1. 初始化 2026 世界杯赛季元数据
 	t := models.Tournament{
 		ID:     "fifa_2026",
@@ -71,6 +49,13 @@ func ImportInitialData(seasonsFilePath, featuresFilePath string) error {
 
 	// 4. 将静态赛程表的比赛写入 SQLite
 	for _, m := range rawSeason.Matches {
+		// 检查数据库中是否已存在该比赛，避免覆盖已完赛 (FT) 或进行中 (Live) 的数据
+		var exists int
+		err := DB.QueryRow("SELECT 1 FROM matches WHERE id = ?", m.ID).Scan(&exists)
+		if err == nil && exists == 1 {
+			continue
+		}
+
 		// 真正的导入使用 types.go 中的 Match 结构
 		var match models.Match
 		match.ID = m.ID

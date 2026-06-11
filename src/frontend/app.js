@@ -17,15 +17,37 @@ async function loadMatches() {
       const item = document.createElement("div");
       item.className = "match-item";
       item.dataset.matchId = m.id;
-      item.style = "background: rgba(255,255,255,0.03); border: 1px solid var(--panel-border); border-radius: 8px; padding: 10px; cursor: pointer; transition: all 0.2s;";
+
+      // 动态设置状态色背景与 80% 透明度，未开赛不设置背景
+      let bgStyle = "";
+      let statusText = "未开赛";
+      let scoreColor = "var(--neon-green)";
+      let textColor = "";
+
+      if (m.status === "Live") {
+        bgStyle = "background: rgba(40, 167, 69, 0.8);";
+        statusText = "进行中";
+        scoreColor = "#00ff88";
+      } else if (m.status === "FT") {
+        bgStyle = "background: rgba(220, 53, 69, 0.8);";
+        statusText = "已完赛";
+        scoreColor = "#ffaaaa";
+        textColor = "color: rgba(255,255,255,0.8);";
+      } else if (m.status === "NS") {
+        statusText = "未开赛";
+      } else {
+        statusText = m.status;
+      }
+
+      item.style = `${bgStyle} border: 1px solid var(--panel-border); border-radius: 8px; padding: 10px; cursor: pointer; transition: all 0.2s; ${textColor}`;
       item.innerHTML = `
         <div style="display: flex; justify-content: space-between; font-weight: 600;">
           <span>${translateTeamName(m.homeTeam)} vs ${translateTeamName(m.awayTeam)}</span>
-          <span style="color: var(--neon-green);">${m.homeScore} - ${m.awayScore}</span>
+          <span style="color: ${scoreColor};">${m.homeScore} - ${m.awayScore}</span>
         </div>
         <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted); margin-top: 4px;">
           <span>${m.venue}</span>
-          <span>${matchTime} | ${m.status === 'NS' ? '未开赛' : m.status === 'Live' ? '进行中' : m.status}</span>
+          <span style="${textColor ? 'color: rgba(255,255,255,0.6);' : ''}">${matchTime} | ${statusText}</span>
         </div>
       `;
       item.onclick = () => selectMatch(m.id, item);
@@ -48,6 +70,15 @@ async function loadMatches() {
           selectMatch(defaultMatch.id, defaultItem);
         }
       }
+    }
+
+    // 根据是否有进行中的比赛，动态修改整站更新倒计时的频率 (如有Live比赛，设为60秒，否则600秒)
+    const hasLive = matches.some(m => m.status === "Live");
+    const newInterval = hasLive ? 60 : 600;
+    if (newInterval !== defaultIntervalSeconds) {
+      defaultIntervalSeconds = newInterval;
+      countdownSeconds = defaultIntervalSeconds;
+      updateCountdownDisplay();
     }
   } catch (err) {
     console.error("加载赛程失败:", err);
@@ -211,7 +242,8 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 // 全自动倒计时精算流
-let countdownSeconds = 600; // 10分钟
+let defaultIntervalSeconds = 600; // 默认10分钟 (600秒)
+let countdownSeconds = defaultIntervalSeconds;
 let countdownTimer = null;
 
 function startCountdownTimer() {
@@ -248,7 +280,7 @@ async function triggerAutoCalculation() {
   await loadBacktestHistory();
 
   // 恢复倒计时
-  countdownSeconds = 600;
+  countdownSeconds = defaultIntervalSeconds;
   badge.style.boxShadow = "none";
   badge.style.borderColor = "rgba(136,0,255,0.25)";
   updateCountdownDisplay();
