@@ -66,17 +66,10 @@ func (s *LiveSyncService) SyncMatches() {
 			if elapsed < 105*time.Minute {
 				// 比赛进行中 Live
 				m.Status = "Live"
-				timeline, ok := s.matchEvents[m.ID]
-				if !ok {
-					timeline = s.createTimeline(m)
-					s.matchEvents[m.ID] = timeline
-				}
-				minutes := int(elapsed.Minutes())
-				if minutes > 90 {
-					minutes = 90
-				}
-				m.HomeScore = countGoals(timeline.HomeGoals, minutes)
-				m.AwayScore = countGoals(timeline.AwayGoals, minutes)
+				// 严格遵守诚实与防幻觉设计：在未接入真实实时数据源前，
+				// 进行中 Live 状态比赛的即时比分应保持为初始 0:0，杜绝在运行中伪造假进球。
+				m.HomeScore = 0
+				m.AwayScore = 0
 				_ = db.SaveMatch(m)
 			} else {
 				// 比赛完赛 FT
