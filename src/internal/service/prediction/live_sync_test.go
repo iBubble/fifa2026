@@ -34,8 +34,8 @@ func TestLiveSyncService(t *testing.T) {
 	m := models.Match{
 		ID:           "test_m1",
 		TournamentID: "fifa_2026",
-		HomeTeam:     "Mexico",
-		AwayTeam:     "South Africa",
+		HomeTeam:     "TestHome",
+		AwayTeam:     "TestAway",
 		Group:        "A",
 		Status:       "NS",
 		ScheduledAt:  time.Now().Add(-10 * time.Minute),
