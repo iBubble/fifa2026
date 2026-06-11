@@ -31,9 +31,9 @@ async function loadMatches() {
         scoreColor = "#00ff88";
         subTextColorStyle = "color: rgba(255, 255, 255, 0.85);";
       } else if (m.status === "FT") {
-        bgStyle = "background: linear-gradient(to right, rgba(220, 53, 69, 0.9), rgba(220, 53, 69, 0));";
+        bgStyle = "background: linear-gradient(to right, rgba(136, 0, 255, 0.9), rgba(136, 0, 255, 0));";
         statusText = "已完赛";
-        scoreColor = "#ffaaaa";
+        scoreColor = "#ffffff";
         textColor = "color: rgba(255,255,255,0.8);";
         subTextColorStyle = "color: rgba(255, 255, 255, 0.85);";
       } else if (m.status === "NS") {

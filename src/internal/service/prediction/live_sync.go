@@ -2,10 +2,8 @@ package prediction
 
 import (
 	"fifa2026/src/internal/db"
-	"fifa2026/src/internal/models"
 	"fifa2026/src/internal/service/ai"
 	"log"
-	"math/rand"
 	"sync"
 	"time"
 )
@@ -14,15 +12,7 @@ type LiveSyncService struct {
 	dcService       *DixonColesService
 	backtestService *BacktestService
 	ollamaService   *ai.OllamaService
-	matchEvents     map[string]*MatchEventTimeline
 	mu              sync.Mutex
-}
-
-type MatchEventTimeline struct {
-	HomeGoals []int
-	AwayGoals []int
-	FinalHome int
-	FinalAway int
 }
 
 func NewLiveSyncService(dc *DixonColesService, backtest *BacktestService, ollama *ai.OllamaService) *LiveSyncService {
@@ -30,7 +20,6 @@ func NewLiveSyncService(dc *DixonColesService, backtest *BacktestService, ollama
 		dcService:       dc,
 		backtestService: backtest,
 		ollamaService:   ollama,
-		matchEvents:     make(map[string]*MatchEventTimeline),
 	}
 }
 
@@ -73,83 +62,13 @@ func (s *LiveSyncService) SyncMatches() {
 				_ = db.SaveMatch(m)
 			} else {
 				// 比赛完赛 FT
+				// 严格禁止任何基于 Dixon-Coles 或大模型的虚假/幻觉完赛比分模拟
+				// 完赛状态下比分应忠实保留为实际赛果（若未通过其他渠道录入则为 0:0）
+				// 并且坚决不产生或写入任何虚假的复盘精度报告
 				m.Status = "FT"
-				timeline, ok := s.matchEvents[m.ID]
-				if ok {
-					m.HomeScore = timeline.FinalHome
-					m.AwayScore = timeline.FinalAway
-					delete(s.matchEvents, m.ID)
-				} else {
-					t := s.createTimeline(m)
-					m.HomeScore = t.FinalHome
-					m.AwayScore = t.FinalAway
-				}
 				_ = db.SaveMatch(m)
-				log.Printf("[LiveSync] ⚽ 完赛状态变更: %s vs %s (%d:%d)，立即触发自动复盘与权重优化...", m.HomeTeam, m.AwayTeam, m.HomeScore, m.AwayScore)
-
-				go func(match models.Match) {
-					params := s.dcService.CalculateParams(match.HomeTeam, match.AwayTeam)
-					matrix, over25, under25 := s.dcService.GenerateProbabilityMatrix(params)
-					rep := models.PredictionReport{
-						MatchID:        match.ID,
-						OriginalParams: params,
-						RefinedParams:  params,
-						ScoreMatrix:    matrix,
-						Over2_5Prob:    over25,
-						Under2_5Prob:   under25,
-					}
-					_, errReview := s.backtestService.ReviewMatch(match, &rep)
-					if errReview != nil {
-						log.Printf("[LiveSync] ⚠️ 自动复盘权重更新失败: %v", errReview)
-					} else {
-						log.Printf("[LiveSync] ✅ 自动复盘成功，已在线纠偏两队 Elo 实力特征")
-					}
-				}(m)
+				log.Printf("[LiveSync] ⚽ 比赛 %s vs %s 已到完赛时间，已转为 FT 状态（不产生模拟比分及假复盘数据）", m.HomeTeam, m.AwayTeam)
 			}
 		}
-	}
-}
-
-func countGoals(goals []int, currentMinute int) int {
-	count := 0
-	for _, g := range goals {
-		if g <= currentMinute {
-			count++
-		}
-	}
-	return count
-}
-
-func (s *LiveSyncService) createTimeline(m models.Match) *MatchEventTimeline {
-	params := s.dcService.CalculateParams(m.HomeTeam, m.AwayTeam)
-	matrix, _, _ := s.dcService.GenerateProbabilityMatrix(params)
-
-	rVal := rand.New(rand.NewSource(time.Now().UnixNano())).Float64()
-	var cumulative float64
-	finalHome, finalAway := 1, 0
-	for _, cell := range matrix {
-		cumulative += cell.Prob
-		if rVal <= cumulative {
-			finalHome = cell.HomeScore
-			finalAway = cell.AwayScore
-			break
-		}
-	}
-
-	r := rand.New(rand.NewSource(time.Now().UnixNano()))
-	homeGoals := make([]int, finalHome)
-	for i := 0; i < finalHome; i++ {
-		homeGoals[i] = r.Intn(90) + 1
-	}
-	awayGoals := make([]int, finalAway)
-	for i := 0; i < finalAway; i++ {
-		awayGoals[i] = r.Intn(90) + 1
-	}
-
-	return &MatchEventTimeline{
-		HomeGoals: homeGoals,
-		AwayGoals: awayGoals,
-		FinalHome: finalHome,
-		FinalAway: finalAway,
 	}
 }
