@@ -43,9 +43,10 @@ func GetNewsArticles() ([]models.NewsArticle, error) {
 		if err != nil {
 			return nil, err
 		}
-		art.Time, _ = time.Parse("2006-01-02 15:04:05", timeStr)
+		loc := time.FixedZone("CST", 8*3600)
+		art.Time, _ = time.ParseInLocation("2006-01-02 15:04:05", timeStr, loc)
 		if art.Time.IsZero() {
-			art.Time, _ = time.Parse(time.RFC3339, timeStr)
+			art.Time, _ = time.ParseInLocation(time.RFC3339, timeStr, loc)
 		}
 		articles = append(articles, art)
 	}

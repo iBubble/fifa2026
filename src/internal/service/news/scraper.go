@@ -83,13 +83,7 @@ func (s *NewsService) FetchAndCacheRealNews() ([]models.NewsArticle, error) {
 					continue
 				}
 
-				parsedTime, err := time.Parse(time.RFC1123Z, item.PubDate)
-				if err != nil {
-					parsedTime, err = time.Parse(time.RFC1123, item.PubDate)
-				}
-				if err != nil {
-					parsedTime = time.Now()
-				}
+				parsedTime := parseRSSTime(item.PubDate)
 
 				artChan <- models.NewsArticle{
 					Title:      item.Title,
@@ -253,4 +247,36 @@ func translateTeam(enName string) string {
 		return cn
 	}
 	return enName
+}
+
+func parseRSSTime(pubDate string) time.Time {
+	pubDate = strings.TrimSpace(pubDate)
+	replacer := strings.NewReplacer(
+		" BST", " +0100",
+		" GMT", " +0000",
+		" UTC", " +0000",
+		" UT", " +0000",
+		" EST", " -0500",
+		" EDT", " -0400",
+		" PST", " -0800",
+		" PDT", " -0700",
+	)
+	formatted := replacer.Replace(pubDate)
+
+	t, err := time.Parse(time.RFC1123Z, formatted)
+	if err == nil {
+		return t.In(time.FixedZone("CST", 8*3600))
+	}
+
+	t, err = time.Parse(time.RFC1123, pubDate)
+	if err == nil {
+		return t.In(time.FixedZone("CST", 8*3600))
+	}
+
+	t, err = time.Parse(time.RFC3339, pubDate)
+	if err == nil {
+		return t.In(time.FixedZone("CST", 8*3600))
+	}
+
+	return time.Now().In(time.FixedZone("CST", 8*3600))
 }
