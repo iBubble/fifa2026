@@ -1,0 +1,30 @@
+# Compiles and Binaries
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Local Databases and dynamic data
+data/db/*.db
+data/db/*.db-journal
+*.db
+*.db-journal
+
+# Operating System Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE and Temp files
+.idea/
+.vscode/
+.gemini/
+.tempmediaStorage/
+*~
+*.swp

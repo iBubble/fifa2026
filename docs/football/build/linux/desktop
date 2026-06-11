@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Name=My Product
+Comment=A WC2026_Quant_Terminal application
+# The Exec line includes %u to pass the URL to the application
+Exec=/usr/local/bin/wc2026_quant_terminal %u
+Terminal=false
+Type=Application
+Icon=wc2026_quant_terminal
+Categories=Utility;
+StartupWMClass=wc2026_quant_terminal
+
+ 

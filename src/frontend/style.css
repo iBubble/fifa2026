@@ -1,0 +1,140 @@
+/* HSL 核心色彩与科技变量设定 */
+:root {
+  --bg-main: #0b0f17;
+  --panel-bg: rgba(20, 27, 45, 0.45);
+  --panel-border: rgba(255, 255, 255, 0.08);
+  --neon-green: #00ff88;
+  --neon-purple: #8800ff;
+  --text-main: #f0f3f8;
+  --text-muted: #8b9bb4;
+  --glass-blur: blur(12px);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--bg-main);
+  background-image: radial-gradient(circle at 10% 20%, rgba(136, 0, 255, 0.08) 0%, transparent 40%),
+                    radial-gradient(circle at 90% 80%, rgba(0, 255, 136, 0.08) 0%, transparent 40%);
+  color: var(--text-main);
+  font-family: 'Inter', 'Outfit', system-ui, sans-serif;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* 磨砂玻璃态容器 */
+.glass-panel {
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 16px;
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+  padding: 20px;
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.glass-panel:hover {
+  border-color: rgba(255, 255, 255, 0.15);
+  box-shadow: 0 8px 32px 0 rgba(136, 0, 255, 0.15);
+}
+
+/* 主网格大屏布局 (Grid Layout) */
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: 320px 1fr 380px;
+  grid-template-rows: 60px 1fr;
+  height: 100vh;
+  gap: 16px;
+  padding: 16px;
+}
+
+header {
+  grid-column: 1 / span 3;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 10px;
+}
+
+.left-col {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+}
+
+.center-col {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+}
+
+.right-col {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+}
+
+/* 霓虹闪烁套利警报 */
+.alert-glow {
+  animation: pulse-border 1.5s infinite alternate;
+  border-color: var(--neon-green) !important;
+}
+
+@keyframes pulse-border {
+  0% { box-shadow: 0 0 4px rgba(0, 255, 136, 0.2); }
+  100% { box-shadow: 0 0 16px rgba(0, 255, 136, 0.8); }
+}
+
+/* 基础滑动条样式优化 */
+input[type="range"] {
+  -webkit-appearance: none;
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.1);
+  outline: none;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--neon-green);
+  cursor: pointer;
+  box-shadow: 0 0 8px var(--neon-green);
+}
+
+/* 自定义滚动条 */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+h3 {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--text-main);
+  border-left: 3px solid var(--neon-purple);
+  padding-left: 8px;
+}

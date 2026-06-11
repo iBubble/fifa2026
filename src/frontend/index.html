@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FIFA 2026 足球量化分析</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+  <!-- 引入 ECharts CDN 用于渲染复杂的蒙特卡洛与雷达图 -->
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+</head>
+<body>
+  <div class="dashboard-grid">
+    <header class="glass-panel" style="height: 55px; display: flex; align-items: center; justify-content: space-between;">
+      <h1 style="font-size: 18px; font-weight: 800; background: linear-gradient(to right, #00ff88, #8800ff); -webkit-background-clip: text; color: transparent;">
+        FIFA 2026 QUANTITATIVE ANALYTICS
+      </h1>
+      <div style="display: flex; align-items: center; gap: 15px; font-size: 13px;">
+        <div id="quant-pipeline-countdown" style="background: rgba(136,0,255,0.12); border: 1px solid rgba(136,0,255,0.25); padding: 4px 10px; border-radius: 6px; color: var(--text-main); font-weight: 800; display: flex; align-items: center; gap: 6px; transition: all 0.5s;">
+          ⏳ 自动量化精算: <span id="countdown-clock" style="color: var(--neon-green);">10:00</span>
+        </div>
+        <div style="color: var(--text-muted);" id="connection-status">
+          ● QUANT-AI 自动化流水线就绪
+        </div>
+      </div>
+    </header>
+
+    <!-- 左列: 赛程选择与套利警报 -->
+    <div class="left-col">
+      <div class="glass-panel" style="flex: 1; min-height: 380px;">
+        <h3>世界杯赛程选择器</h3>
+        <div id="match-list" style="display: flex; flex-direction: column; gap: 8px; max-height: 320px; overflow-y: auto; font-size: 13px;">
+          <!-- JS 动态填充比赛 -->
+        </div>
+      </div>
+      
+      <div class="glass-panel" id="arbitrage-panel" style="height: 240px;">
+        <h3>实时无风险套利警报</h3>
+        <div id="arbitrage-alerts" style="font-size: 12px; color: var(--text-muted); line-height: 1.6;">
+          ● 暂无套利机会，系统监控中...
+        </div>
+      </div>
+
+      <div class="glass-panel" style="flex: 1.2; min-height: 280px; display: flex; flex-direction: column; gap: 8px; margin-top: 10px;">
+        <h3 style="border-left-color: var(--neon-purple);">外围情报实时采集</h3>
+        <div style="font-size: 10px; color: var(--text-muted); line-height: 1.4; margin-bottom: 4px;">
+          自动从全球权威体育RSS订阅源（BBC, ESPN, Sky Sports等）实时拉取世界杯真实外围资讯。点击“一键导入”做大模型偏置修正输入，点击标题直接访问真实出处。
+        </div>
+        <div id="news-list" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; font-size: 11px;">
+          <div style="color: var(--text-muted);">情报流拉取中...</div>
+        </div>
+      </div>
+
+      <div class="glass-panel" style="flex: 1; min-height: 200px; display: flex; flex-direction: column; gap: 6px; margin-top: 10px;">
+        <h3 style="border-left-color: var(--neon-purple);">全球巨头赔率偏移监测</h3>
+        <div style="font-size: 10px; color: var(--text-muted); line-height: 1.4; margin-bottom: 4px;">
+          实时追踪各大博彩公司赔率偏移走向。点击来源超链接直接跳转真实验证。
+        </div>
+        <div id="odds-shifts-list" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; font-size: 11px;">
+          <div style="color: var(--text-muted);">赔率数据追踪中...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 中列: 预测面板与蒙特卡洛推演 -->
+    <div class="center-col">
+      <div class="glass-panel" style="flex: 2; min-height: 400px; display: flex; flex-direction: column; gap: 10px;">
+        <h2 id="current-match-title" style="font-size: 26px; font-weight: 800; text-align: center; color: white; margin-bottom: 5px; text-shadow: 0 0 12px rgba(0, 255, 136, 0.4); letter-spacing: 1px;">请在左侧选择一场比赛</h2>
+        <h3>单场深度预测 & 大模型偏置修正</h3>
+        <div style="display: flex; gap: 10px; font-size: 13px; align-items: center;">
+          <input type="checkbox" id="use-llm-chk" checked>
+          <label for="use-llm-chk" style="color: var(--neon-green); font-weight: 600;">启动本地 Ollama 定性偏置修正 (Qwen/Llama)</label>
+        </div>
+        <textarea id="qualitative-input" placeholder="输入突发战术变数（如：墨西哥队前锋骨折缺阵，南非队高空球及防守反击优势擅长逼平）" style="width: 100%; height: 50px; background: rgba(0,0,0,0.2); border: 1px solid var(--panel-border); border-radius: 8px; color: white; padding: 8px; font-size: 12px; resize: none; outline: none;"></textarea>
+        <button id="predict-btn" style="width: 100%; height: 32px; background: linear-gradient(135deg, var(--neon-purple), var(--neon-green)); border: none; border-radius: 8px; color: white; font-weight: 800; cursor: pointer; font-size: 13px;">触发双变量泊松估值预测</button>
+        
+        <div id="prediction-result" style="display: none; font-size: 12px; color: var(--text-muted); flex: 1; overflow-y: auto;">
+          <!-- 动态渲染比分概率和大模型报告 -->
+        </div>
+      </div>
+
+      <div class="glass-panel" style="flex: 1.4; min-height: 280px; display: flex; flex-direction: column; margin-top: 10px;">
+        <h3 style="border-left-color: var(--neon-purple);">赛后量化复盘与预测精度进化</h3>
+        <div style="font-size: 10px; color: var(--text-muted); line-height: 1.4; margin-bottom: 6px;">
+          自动跟踪已结算赛事的布莱尔精度得分 (Brier Score，越低越精准) 及 Elo 在线纠偏反馈。
+        </div>
+        <div style="display: flex; gap: 15px; flex: 1; min-height: 140px;">
+          <div id="backtest-chart" style="width: 50%; min-height: 140px;"></div>
+          <div style="width: 50%; display: flex; flex-direction: column; gap: 6px; justify-content: center; font-size: 11px;">
+            <div style="background: rgba(136,0,255,0.08); border: 1px solid rgba(136,0,255,0.25); padding: 8px; border-radius: 6px; flex: 1; display: flex; flex-direction: column; gap: 4px;">
+              <strong style="color: var(--neon-purple);">最新大模型量化反馈反思:</strong>
+              <p id="backtest-review-text" style="font-style: italic; line-height: 1.4; margin-top: 4px; color: var(--text-main); flex: 1; overflow-y: auto; max-height: 90px;">
+                ● 暂无已结算赛后反思，模型进化演化中...
+              </p>
+            </div>
+          </div>
+        </div>
+        <!-- 已完赛历史记录详情模块，可上下滑动查看 -->
+        <div style="border-top: 1px solid var(--panel-border); padding-top: 8px; margin-top: 8px; flex: 1; display: flex; flex-direction: column; gap: 4px;">
+          <strong style="color: var(--text-main); font-size: 12px; display: flex; justify-content: space-between;">
+            <span>📖 已完赛复盘历史记录</span>
+            <span style="font-size: 10px; color: var(--text-muted); font-weight: normal;">(上下滚动查看)</span>
+          </strong>
+          <div id="backtest-history-list" style="max-height: 110px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; font-size: 11px; margin-top: 4px; padding-right: 4px;">
+            <div style="color: var(--text-muted); text-align: center; padding: 10px;">暂无已结算完赛历史</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="glass-panel" style="flex: 1; min-height: 220px; display: flex; flex-direction: column; margin-top: 10px;">
+        <h3>蒙特卡洛全赛事模拟仿真 (10,000次推演)</h3>
+        <button id="simulate-btn" style="width: 100%; height: 28px; background: rgba(255,255,255,0.08); border: 1px solid var(--neon-green); border-radius: 6px; color: var(--neon-green); font-size: 12px; cursor: pointer; font-weight: 600; margin-bottom: 10px;">运行全世界杯蒙特卡洛仿真</button>
+        <div id="simulation-chart" style="flex: 1; width: 100%; min-height: 140px;"></div>
+      </div>
+    </div>
+
+    <!-- 右列: 中国体彩量化投注建议 -->
+    <div class="right-col">
+      <div class="glass-panel" style="flex: 1; display: flex; flex-direction: column; gap: 8px; height: 100%;">
+        <h3 style="border-left-color: var(--neon-green);">中国体彩量化投注建议</h3>
+        <div style="font-size: 11px; display: flex; gap: 8px; flex-direction: column; margin-bottom: 6px;">
+          <div style="color: var(--text-muted); font-size: 11px; line-height: 1.4;">
+            输入竞彩参考赔率，测算比分/半全场对冲套利占比与多场串关排除机制。
+          </div>
+          <div style="display: flex; gap: 6px; width: 100%;">
+            <input type="number" id="lottery-odds-h" placeholder="胜(如1.8)" step="0.01" style="flex: 1; min-width: 0; background: rgba(0,0,0,0.2); border: 1px solid var(--panel-border); border-radius: 4px; color: white; padding: 6px; font-size: 12px; outline: none;">
+            <input type="number" id="lottery-odds-d" placeholder="平(如3.2)" step="0.01" style="flex: 1; min-width: 0; background: rgba(0,0,0,0.2); border: 1px solid var(--panel-border); border-radius: 4px; color: white; padding: 6px; font-size: 12px; outline: none;">
+            <input type="number" id="lottery-odds-a" placeholder="负(如3.6)" step="0.01" style="flex: 1; min-width: 0; background: rgba(0,0,0,0.2); border: 1px solid var(--panel-border); border-radius: 4px; color: white; padding: 6px; font-size: 12px; outline: none;">
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px; margin-top: 4px; margin-bottom: 2px; width: 100%;">
+            <label for="lottery-risk-level" style="color: var(--text-muted); font-size: 11px; white-space: nowrap;">方案倾向:</label>
+            <select id="lottery-risk-level" style="flex: 1; min-width: 0; background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); border-radius: 4px; color: white; padding: 5px; font-size: 11px; outline: none; cursor: pointer;">
+              <option value="稳妥">稳妥型 (主推 80元 + 比分对冲 20元)</option>
+              <option value="激进">激进型 (全仓主推 100元，放弃防守)</option>
+            </select>
+          </div>
+          <button id="lottery-btn" style="width: 100%; height: 32px; background: rgba(0,255,136,0.15); border: 1px solid var(--neon-green); border-radius: 8px; color: var(--neon-green); font-size: 12px; cursor: pointer; font-weight: 600; outline: none; transition: all 0.2s;">生成体彩量化套利优化单</button>
+        </div>
+        <div id="lottery-result" style="flex: 1; overflow-y: auto; font-size: 12px; line-height: 1.6; color: var(--text-muted); background: rgba(0,0,0,0.15); padding: 12px; border-radius: 8px;">
+          ● 请在左侧选择比赛，设置参考赔率后生成策略...
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 引入 logic 交互脚本 -->
+  <script src="/static/charts.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>

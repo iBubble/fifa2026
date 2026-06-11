@@ -1,0 +1,89 @@
+{
+  "tournamentId": "fifa_2026",
+  "name": "2026 FIFA World Cup",
+  "groups": {
+    "A": ["Mexico", "South Africa", "Venezuela", "Jamaica"],
+    "B": ["England", "USA", "Iran", "Wales"],
+    "C": ["Argentina", "Saudi Arabia", "Poland"],
+    "D": ["France", "Australia", "Denmark", "Tunisia", "Turkey"],
+    "E": ["Spain", "Costa Rica", "Germany", "Japan"],
+    "F": ["Belgium", "Canada", "Morocco", "Croatia", "Bosnia and Herzegovina"],
+    "G": ["Brazil", "Serbia", "Switzerland", "Cameroon", "Qatar"],
+    "H": ["Portugal", "Ghana", "Uruguay", "South Korea", "Czech Republic"],
+    "K": ["Haiti", "Scotland", "Hungary"]
+  },
+  "matches": [
+    {
+      "id": "wc2026_m1",
+      "homeTeam": "Mexico",
+      "awayTeam": "South Africa",
+      "group": "A",
+      "scheduledAt": "2026-06-11T19:00:00Z",
+      "status": "NS",
+      "venue": "Estadio Azteca"
+    },
+    {
+      "id": "wc2026_m2",
+      "homeTeam": "South Korea",
+      "awayTeam": "Czech Republic",
+      "group": "H",
+      "scheduledAt": "2026-06-12T02:00:00Z",
+      "status": "NS",
+      "venue": "Seoul World Cup Stadium"
+    },
+    {
+      "id": "wc2026_m3",
+      "homeTeam": "Canada",
+      "awayTeam": "Bosnia and Herzegovina",
+      "group": "F",
+      "scheduledAt": "2026-06-12T19:00:00Z",
+      "status": "NS",
+      "venue": "BC Place"
+    },
+    {
+      "id": "wc2026_m4",
+      "homeTeam": "USA",
+      "awayTeam": "Paraguay",
+      "group": "L",
+      "scheduledAt": "2026-06-13T01:00:00Z",
+      "status": "NS",
+      "venue": "SoFi Stadium"
+    },
+    {
+      "id": "wc2026_m5",
+      "homeTeam": "Qatar",
+      "awayTeam": "Switzerland",
+      "group": "G",
+      "scheduledAt": "2026-06-13T19:00:00Z",
+      "status": "NS",
+      "venue": "Lusail Stadium"
+    },
+    {
+      "id": "wc2026_m6",
+      "homeTeam": "Brazil",
+      "awayTeam": "Morocco",
+      "group": "F",
+      "scheduledAt": "2026-06-13T22:00:00Z",
+      "status": "NS",
+      "venue": "Maracana"
+    },
+    {
+      "id": "wc2026_m7",
+      "homeTeam": "Haiti",
+      "awayTeam": "Scotland",
+      "group": "K",
+      "scheduledAt": "2026-06-14T01:00:00Z",
+      "status": "NS",
+      "venue": "MetLife Stadium"
+    },
+    {
+      "id": "wc2026_m8",
+      "homeTeam": "Australia",
+      "awayTeam": "Turkey",
+      "group": "D",
+      "scheduledAt": "2026-06-14T04:00:00Z",
+      "status": "NS",
+      "venue": "Mercedes-Benz Stadium"
+    }
+  ]
+}

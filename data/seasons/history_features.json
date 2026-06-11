@@ -1,0 +1,220 @@
+{
+  "teams": {
+    "Brazil": {
+      "initialElo": 1880,
+      "titles": 5,
+      "avgGoalsScored": 2.25,
+      "avgGoalsConceded": 0.95,
+      "cleanSheetRate": 0.42,
+      "description": "五星桑巴军团，世界杯夺冠次数最多，传控技术流与攻防均衡的代表队。"
+    },
+    "Argentina": {
+      "initialElo": 1865,
+      "titles": 3,
+      "avgGoalsScored": 2.05,
+      "avgGoalsConceded": 1.05,
+      "cleanSheetRate": 0.38,
+      "description": "卫冕冠军，中场控球与边路突破极强，淘汰赛坚韧度与大赛底蕴深厚。"
+    },
+    "France": {
+      "initialElo": 1850,
+      "titles": 2,
+      "avgGoalsScored": 1.95,
+      "avgGoalsConceded": 0.90,
+      "cleanSheetRate": 0.40,
+      "description": "双星高卢雄鸡，阵容深度豪华，反击速度极快，过去两届世界杯一冠一亚。"
+    },
+    "Germany": {
+      "initialElo": 1810,
+      "titles": 4,
+      "avgGoalsScored": 2.10,
+      "avgGoalsConceded": 1.15,
+      "cleanSheetRate": 0.35,
+      "description": "德意志战车，意志坚定，传统压迫式打法，正值新老交替，底蕴强大。"
+    },
+    "Spain": {
+      "initialElo": 1830,
+      "titles": 1,
+      "avgGoalsScored": 1.80,
+      "avgGoalsConceded": 0.85,
+      "cleanSheetRate": 0.45,
+      "description": "斗牛士军团，极致的传控体系，高控球率低丢球，但终结能力常有起伏。"
+    },
+    "England": {
+      "initialElo": 1825,
+      "titles": 1,
+      "avgGoalsScored": 1.85,
+      "avgGoalsConceded": 0.95,
+      "cleanSheetRate": 0.39,
+      "description": "三狮军团，英超黄金一代，身体对抗与定位球极强，近期杯赛表现稳定。"
+    },
+    "Italy": {
+      "initialElo": 1800,
+      "titles": 4,
+      "avgGoalsScored": 1.70,
+      "avgGoalsConceded": 0.80,
+      "cleanSheetRate": 0.48,
+      "description": "蓝衣军团，混凝土防守的鼻祖，擅长在低λ进球下通过严密防守夺取胜利。"
+    },
+    "Netherlands": {
+      "initialElo": 1815,
+      "titles": 0,
+      "avgGoalsScored": 1.90,
+      "avgGoalsConceded": 1.00,
+      "cleanSheetRate": 0.36,
+      "description": "无冕之王橙衣军团，全攻全守战术传承者，屡次打入决赛，打法极具侵略性。"
+    },
+    "Portugal": {
+      "initialElo": 1820,
+      "titles": 0,
+      "avgGoalsScored": 1.80,
+      "avgGoalsConceded": 1.05,
+      "cleanSheetRate": 0.34,
+      "description": "五盾军团，边路突破与中场创造力出众，杯赛上限极高。"
+    },
+    "Croatia": {
+      "initialElo": 1790,
+      "titles": 0,
+      "avgGoalsScored": 1.55,
+      "avgGoalsConceded": 1.00,
+      "cleanSheetRate": 0.33,
+      "description": "格子军团，中场控制力极强，擅长打加时与点球大战，杯赛韧性拉满。"
+    },
+    "Japan": {
+      "initialElo": 1720,
+      "titles": 0,
+      "avgGoalsScored": 1.40,
+      "avgGoalsConceded": 1.20,
+      "cleanSheetRate": 0.28,
+      "description": "蓝武士，战术纪律严明，整体协作极强，具有强大的冷门爆破属性。"
+    },
+    "USA": {
+      "initialElo": 1700,
+      "titles": 0,
+      "avgGoalsScored": 1.30,
+      "avgGoalsConceded": 1.30,
+      "cleanSheetRate": 0.25,
+      "description": "美利坚军团，本届东道主，青春风暴，冲击力与折返跑体能储备雄厚。"
+    },
+    "Mexico": {
+      "initialElo": 1710,
+      "titles": 0,
+      "avgGoalsScored": 1.35,
+      "avgGoalsConceded": 1.25,
+      "cleanSheetRate": 0.27,
+      "description": "仙人掌军团，本届东道主之一，高原主场极其强悍，杯赛常青树小组出线常客。"
+    },
+    "Ecuador": {
+      "initialElo": 1690,
+      "titles": 0,
+      "avgGoalsScored": 1.25,
+      "avgGoalsConceded": 1.15,
+      "cleanSheetRate": 0.29,
+      "description": "高原之魔，身体素质极佳，反击侵略性极强，防守硬朗。"
+    },
+    "South Africa": {
+      "initialElo": 1610,
+      "titles": 0,
+      "avgGoalsScored": 1.10,
+      "avgGoalsConceded": 1.25,
+      "cleanSheetRate": 0.22,
+      "description": "南非国家队，重返世界杯，以顽强的作风和边路速度见长。"
+    },
+    "South Korea": {
+      "initialElo": 1690,
+      "titles": 0,
+      "avgGoalsScored": 1.35,
+      "avgGoalsConceded": 1.20,
+      "cleanSheetRate": 0.28,
+      "description": "太极虎，亚洲劲旅，跑动积极、意志力极强，杯赛反击犀利。"
+    },
+    "Czech Republic": {
+      "initialElo": 1680,
+      "titles": 0,
+      "avgGoalsScored": 1.30,
+      "avgGoalsConceded": 1.15,
+      "cleanSheetRate": 0.30,
+      "description": "东欧铁骑，身体对抗能力出众，战术执行力高，空中优势明显。"
+    },
+    "Canada": {
+      "initialElo": 1640,
+      "titles": 0,
+      "avgGoalsScored": 1.20,
+      "avgGoalsConceded": 1.30,
+      "cleanSheetRate": 0.24,
+      "description": "枫叶军团，北美新贵，反击速度极快，年轻力量充沛。"
+    },
+    "Bosnia and Herzegovina": {
+      "initialElo": 1620,
+      "titles": 0,
+      "avgGoalsScored": 1.15,
+      "avgGoalsConceded": 1.25,
+      "cleanSheetRate": 0.25,
+      "description": "波黑，球风硬朗，中场拼抢积极，具备一定的定位球得分能力。"
+    },
+    "Paraguay": {
+      "initialElo": 1650,
+      "titles": 0,
+      "avgGoalsScored": 1.10,
+      "avgGoalsConceded": 1.05,
+      "cleanSheetRate": 0.35,
+      "description": "巴拉圭，典型南美防守流派，防守强硬，擅长低比分肉搏战。"
+    },
+    "Qatar": {
+      "initialElo": 1600,
+      "titles": 0,
+      "avgGoalsScored": 1.10,
+      "avgGoalsConceded": 1.35,
+      "cleanSheetRate": 0.20,
+      "description": "卡塔尔，亚洲强队，传控打法，整体性较好，力求在世界杯突破。"
+    },
+    "Switzerland": {
+      "initialElo": 1730,
+      "titles": 0,
+      "avgGoalsScored": 1.45,
+      "avgGoalsConceded": 1.10,
+      "cleanSheetRate": 0.35,
+      "description": "瑞士军刀，防守组织极其严密，大赛经验丰富，韧性强劲的强队杀手。"
+    },
+    "Morocco": {
+      "initialElo": 1760,
+      "titles": 0,
+      "avgGoalsScored": 1.50,
+      "avgGoalsConceded": 0.90,
+      "cleanSheetRate": 0.40,
+      "description": "阿特拉斯雄狮，防守反击效率极高，战术纪律严明，黑马本色足。"
+    },
+    "Haiti": {
+      "initialElo": 1510,
+      "titles": 0,
+      "avgGoalsScored": 0.90,
+      "avgGoalsConceded": 1.70,
+      "cleanSheetRate": 0.15,
+      "description": "海地，中北美球队，速度与爆发力好，但整体防守和战术体系较弱。"
+    },
+    "Scotland": {
+      "initialElo": 1660,
+      "titles": 0,
+      "avgGoalsScored": 1.20,
+      "avgGoalsConceded": 1.15,
+      "cleanSheetRate": 0.30,
+      "description": "苏格兰，英伦硬派球风，拼抢激烈，战术纪律性好，定位球有威胁。"
+    },
+    "Australia": {
+      "initialElo": 1650,
+      "titles": 0,
+      "avgGoalsScored": 1.25,
+      "avgGoalsConceded": 1.20,
+      "cleanSheetRate": 0.27,
+      "description": "袋鼠军团，身体强壮，高空争顶与边路传中极其硬朗。"
+    },
+    "Turkey": {
+      "initialElo": 1710,
+      "titles": 0,
+      "avgGoalsScored": 1.40,
+      "avgGoalsConceded": 1.25,
+      "cleanSheetRate": 0.28,
+      "description": "星月军团，打法热情奔放，具备极强的爆发力和技术流组织。"
+    }
+  }
+}
