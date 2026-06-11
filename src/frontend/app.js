@@ -18,18 +18,18 @@ async function loadMatches() {
       item.className = "match-item";
       item.dataset.matchId = m.id;
 
-      // 动态设置状态色背景与 90% 透明度，未开赛不设置背景
+      // 动态设置状态色背景与 90% 透明度渐变，未开赛不设置背景
       let bgStyle = "";
       let statusText = "未开赛";
       let scoreColor = "var(--neon-green)";
       let textColor = "";
 
       if (m.status === "Live") {
-        bgStyle = "background: rgba(40, 167, 69, 0.9);";
+        bgStyle = "background: linear-gradient(to right, rgba(40, 167, 69, 0.9), rgba(40, 167, 69, 0));";
         statusText = "进行中";
         scoreColor = "#00ff88";
       } else if (m.status === "FT") {
-        bgStyle = "background: rgba(220, 53, 69, 0.9);";
+        bgStyle = "background: linear-gradient(to right, rgba(220, 53, 69, 0.9), rgba(220, 53, 69, 0));";
         statusText = "已完赛";
         scoreColor = "#ffaaaa";
         textColor = "color: rgba(255,255,255,0.8);";
