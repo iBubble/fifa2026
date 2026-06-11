@@ -23,16 +23,19 @@ async function loadMatches() {
       let statusText = "未开赛";
       let scoreColor = "var(--neon-green)";
       let textColor = "";
+      let subTextColorStyle = "color: var(--text-muted);";
 
       if (m.status === "Live") {
         bgStyle = "background: linear-gradient(to right, rgba(40, 167, 69, 0.9), rgba(40, 167, 69, 0));";
         statusText = "进行中";
         scoreColor = "#00ff88";
+        subTextColorStyle = "color: rgba(255, 255, 255, 0.85);";
       } else if (m.status === "FT") {
         bgStyle = "background: linear-gradient(to right, rgba(220, 53, 69, 0.9), rgba(220, 53, 69, 0));";
         statusText = "已完赛";
         scoreColor = "#ffaaaa";
         textColor = "color: rgba(255,255,255,0.8);";
+        subTextColorStyle = "color: rgba(255, 255, 255, 0.85);";
       } else if (m.status === "NS") {
         statusText = "未开赛";
       } else {
@@ -45,9 +48,9 @@ async function loadMatches() {
           <span>${translateTeamName(m.homeTeam)} vs ${translateTeamName(m.awayTeam)}</span>
           <span style="color: ${scoreColor};">${m.homeScore} - ${m.awayScore}</span>
         </div>
-        <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted); margin-top: 4px;">
+        <div style="display: flex; justify-content: space-between; font-size: 11px; ${subTextColorStyle} margin-top: 4px;">
           <span>${m.venue}</span>
-          <span style="${textColor ? 'color: rgba(255,255,255,0.6);' : ''}">${matchTime} | ${statusText}</span>
+          <span>${matchTime} | ${statusText}</span>
         </div>
       `;
       item.onclick = () => selectMatch(m.id, item);
