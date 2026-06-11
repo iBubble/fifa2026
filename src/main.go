@@ -7,6 +7,7 @@ import (
 	"fifa2026/src/internal/service/ai"
 	"fifa2026/src/internal/service/news"
 	"fifa2026/src/internal/service/prediction"
+	"io"
 	"log"
 	"math"
 	"net/http"
@@ -99,6 +100,36 @@ func main() {
 				}
 			}
 			c.JSON(http.StatusOK, matches)
+		})
+
+		// 实时赛程比分 SSE 推送通道
+		api.GET("/matches/stream", func(c *gin.Context) {
+			c.Header("Content-Type", "text/event-stream")
+			c.Header("Cache-Control", "no-cache")
+			c.Header("Connection", "keep-alive")
+			c.Header("Transfer-Encoding", "chunked")
+
+			// 发送初始握手消息，强行冲刷响应头，建立长连接
+			c.SSEvent("open", "connected")
+			c.Writer.Flush()
+
+			ch := liveSyncService.RegisterListener()
+			defer liveSyncService.RemoveListener(ch)
+
+			clientGone := c.Request.Context().Done()
+
+			c.Stream(func(w io.Writer) bool {
+				select {
+				case <-clientGone:
+					return false
+				case msg, ok := <-ch:
+					if !ok {
+						return false
+					}
+					c.SSEvent("message", msg)
+					return true
+				}
+			})
 		})
 
 		// 投注历史流

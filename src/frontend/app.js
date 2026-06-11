@@ -3,20 +3,22 @@ let currentMatchID = "";
 let currentPredictions = null; // 保存当前比赛测算出的投注项
 let matchesMap = {}; // 保存比赛映射用于复盘历史翻译
 
+let lastNewsFingerprint = "";
+let lastOddsFingerprint = "";
+let lastHistoryFingerprint = "";
+
 // 1. 初始化赛程列表并默认选中比赛
-async function loadMatches() {
+// 1. 初始化赛程列表并默认选中比赛 (原地 DOM 增量更新防闪烁)
+async function loadMatches(skipAutoSelect = false) {
   try {
     const res = await fetch(`${API_BASE}/matches`);
     const matches = await res.json();
     const listDom = document.getElementById("match-list");
-    listDom.innerHTML = "";
+    const activeMatchIDBefore = currentMatchID;
 
     matches.forEach(m => {
       matchesMap[m.id] = m;
       const matchTime = new Date(m.scheduledAt).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-      const item = document.createElement("div");
-      item.className = "match-item";
-      item.dataset.matchId = m.id;
 
       // 动态设置状态色背景与 90% 透明度渐变，未开赛不设置背景
       let bgStyle = "";
@@ -42,23 +44,62 @@ async function loadMatches() {
         statusText = m.status;
       }
 
-      item.style = `${bgStyle} border: 1px solid var(--panel-border); border-radius: 8px; padding: 10px; cursor: pointer; transition: all 0.2s; ${textColor}`;
-      item.innerHTML = `
-        <div style="display: flex; justify-content: space-between; font-weight: 600;">
-          <span>${translateTeamName(m.homeTeam)} vs ${translateTeamName(m.awayTeam)}</span>
-          <span style="color: ${scoreColor};">${m.homeScore} - ${m.awayScore}</span>
-        </div>
-        <div style="display: flex; justify-content: space-between; font-size: 11px; ${subTextColorStyle} margin-top: 4px;">
-          <span>${m.venue}</span>
-          <span>${matchTime} | ${statusText}</span>
-        </div>
-      `;
-      item.onclick = () => selectMatch(m.id, item);
-      listDom.appendChild(item);
+      const cardStyle = `${bgStyle} border: 1px solid var(--panel-border); border-radius: 8px; padding: 10px; cursor: pointer; transition: all 0.2s; ${textColor}`;
+
+      let item = listDom.querySelector(`[data-match-id="${m.id}"]`);
+      if (item) {
+        // 原地增量更新 DOM 属性，防止整体重绘闪烁
+        const scoreSpan = item.querySelector(".match-score-text");
+        const statusSpan = item.querySelector(".match-status-text");
+        
+        const scoreStr = `${m.homeScore} - ${m.awayScore}`;
+        const statusStr = `${m.venue} | ${matchTime} | ${statusText}`;
+
+        if (scoreSpan && scoreSpan.innerText !== scoreStr) {
+          scoreSpan.innerText = scoreStr;
+          scoreSpan.style.color = scoreColor;
+        }
+        if (statusSpan && statusSpan.innerText !== statusStr) {
+          statusSpan.innerText = statusStr;
+        }
+        
+        // 保持卡片的基础背景渐变与文字颜色属性
+        item.style.cssText = cardStyle;
+        
+        // 恢复高亮样式
+        if (m.id === activeMatchIDBefore) {
+          item.style.borderColor = "var(--neon-green)";
+          item.style.boxShadow = "0 0 8px rgba(0, 255, 136, 0.3)";
+        }
+      } else {
+        // 冷启动创建新节点
+        item = document.createElement("div");
+        item.className = "match-item";
+        item.dataset.matchId = m.id;
+        item.style.cssText = cardStyle;
+
+        if (skipAutoSelect && m.id === activeMatchIDBefore) {
+          item.style.borderColor = "var(--neon-green)";
+          item.style.boxShadow = "0 0 8px rgba(0, 255, 136, 0.3)";
+        }
+
+        item.innerHTML = `
+          <div style="display: flex; justify-content: space-between; font-weight: 600;">
+            <span>${translateTeamName(m.homeTeam)} vs ${translateTeamName(m.awayTeam)}</span>
+            <span class="match-score-text" style="color: ${scoreColor};">${m.homeScore} - ${m.awayScore}</span>
+          </div>
+          <div class="match-status-text" style="display: flex; justify-content: space-between; font-size: 11px; ${subTextColorStyle} margin-top: 4px;">
+            <span>${m.venue}</span>
+            <span>${matchTime} | ${statusText}</span>
+          </div>
+        `;
+        item.onclick = () => selectMatch(m.id, item);
+        listDom.appendChild(item);
+      }
     });
 
-    // 默认选择比赛策略
-    if (matches && matches.length > 0) {
+    // 默认选择比赛策略 (仅在没有选中比赛，且不需要 skipAutoSelect 时进行)
+    if (!skipAutoSelect && !currentMatchID && matches && matches.length > 0) {
       let defaultMatch = matches.find(m => m.status === "Live");
       if (!defaultMatch) {
         defaultMatch = matches.find(m => m.status !== "FT" && m.status !== "Live");
@@ -72,6 +113,13 @@ async function loadMatches() {
         if (defaultItem) {
           selectMatch(defaultMatch.id, defaultItem);
         }
+      }
+    } else if (activeMatchIDBefore) {
+      // 确保高亮对象样式稳固
+      const previousItem = listDom.querySelector(`[data-match-id="${activeMatchIDBefore}"]`);
+      if (previousItem) {
+        previousItem.style.borderColor = "var(--neon-green)";
+        previousItem.style.boxShadow = "0 0 8px rgba(0, 255, 136, 0.3)";
       }
     }
 
@@ -241,6 +289,7 @@ document.addEventListener("DOMContentLoaded", () => {
   setInterval(runOddsShiftsTracker, 5000); // 5秒定时更新全球赔率偏移
   runArbitrageScanner();
   startCountdownTimer(); // 开启全自动倒计时精算流
+  setupSSE(); // 订阅比分即时推送
 
 });
 
@@ -275,6 +324,7 @@ async function triggerAutoCalculation() {
   badge.style.borderColor = "var(--neon-green)";
 
   // 执行全量活数据拉取与计算
+  await loadMatches(true); // 周期性更新比分列表
   await loadNews();
   await runOddsShiftsTracker();
   if (currentMatchID) {
@@ -378,6 +428,14 @@ async function runOddsShiftsTracker() {
   try {
     const res = await fetch(`${API_BASE}/odds/shifts?matchId=${currentMatchID}`);
     const shifts = await res.json();
+
+    // 指纹比对防闪烁
+    const newFingerprint = JSON.stringify(shifts);
+    if (newFingerprint === lastOddsFingerprint) {
+      return;
+    }
+    lastOddsFingerprint = newFingerprint;
+
     const listDom = document.getElementById("odds-shifts-list");
     listDom.innerHTML = "";
 
@@ -421,6 +479,13 @@ async function loadNews() {
     if (!Array.isArray(articles)) {
       throw new Error("返回的数据格式不正确，未包含情报列表");
     }
+
+    // 指纹比对防闪烁
+    const newFingerprint = JSON.stringify(articles);
+    if (newFingerprint === lastNewsFingerprint) {
+      return;
+    }
+    lastNewsFingerprint = newFingerprint;
 
     listDom.innerHTML = "";
     if (articles.length === 0) {
@@ -599,6 +664,13 @@ async function loadBacktestHistory() {
   try {
     const res = await fetch(`${API_BASE}/backtest/history`);
     const history = await res.json();
+
+    // 指纹比对防闪烁
+    const newFingerprint = JSON.stringify(history);
+    if (newFingerprint === lastHistoryFingerprint) {
+      return;
+    }
+    lastHistoryFingerprint = newFingerprint;
     
     const historyListDom = document.getElementById("backtest-history-list");
     if (history && history.length > 0) {
@@ -648,4 +720,21 @@ async function loadBacktestHistory() {
   } catch (err) {
     console.error("加载复盘历史异常:", err);
   }
+}
+
+// 订阅即时比分与状态推送 (SSE)
+function setupSSE() {
+  const source = new EventSource(`${API_BASE}/matches/stream`);
+
+  source.onmessage = async (event) => {
+    console.log("[SSE] 收到即时推送通知:", event.data);
+    if (event.data === "match_update") {
+      // 收到推送时，一站式触发重算与增量更新，杜绝冗余多次刷新
+      await triggerAutoCalculation();
+    }
+  };
+
+  source.onerror = (err) => {
+    console.error("[SSE] 连接异常，尝试重新连接:", err);
+  };
 }
