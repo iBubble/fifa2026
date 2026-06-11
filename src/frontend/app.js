@@ -3,7 +3,7 @@ let currentMatchID = "";
 let currentPredictions = null; // 保存当前比赛测算出的投注项
 let matchesMap = {}; // 保存比赛映射用于复盘历史翻译
 
-// 1. 初始化赛程列表
+// 1. 初始化赛程列表并默认选中比赛
 async function loadMatches() {
   try {
     const res = await fetch(`${API_BASE}/matches`);
@@ -25,12 +25,30 @@ async function loadMatches() {
         </div>
         <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted); margin-top: 4px;">
           <span>${m.venue}</span>
-          <span>${matchTime} | ${m.status === 'NS' ? '未开赛' : m.status}</span>
+          <span>${matchTime} | ${m.status === 'NS' ? '未开赛' : m.status === 'Live' ? '进行中' : m.status}</span>
         </div>
       `;
       item.onclick = () => selectMatch(m.id, item);
       listDom.appendChild(item);
     });
+
+    // 默认选择比赛策略
+    if (matches && matches.length > 0) {
+      let defaultMatch = matches.find(m => m.status === "Live");
+      if (!defaultMatch) {
+        defaultMatch = matches.find(m => m.status !== "FT" && m.status !== "Live");
+      }
+      if (!defaultMatch) {
+        defaultMatch = matches[0];
+      }
+
+      if (defaultMatch) {
+        const defaultItem = listDom.querySelector(`[data-match-id="${defaultMatch.id}"]`);
+        if (defaultItem) {
+          selectMatch(defaultMatch.id, defaultItem);
+        }
+      }
+    }
   } catch (err) {
     console.error("加载赛程失败:", err);
   }
