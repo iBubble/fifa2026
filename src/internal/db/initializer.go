@@ -43,39 +43,39 @@ func ImportInitialData(seasonsFilePath, featuresFilePath string) error {
 		return fmt.Errorf("解析赛季JSON失败: %w", err)
 	}
 
-	// 3. 读取各国家队历史特征，并导入初始 Elo
-	// 提示: 我们在这个初创阶段，将各队的特征导入，后续预测引擎可根据此处初始 Elo 计算进球 lambda
-	// 这一部分可以直接由 Go 的 Elo 服务进行内存化/数据库化加载
+	// 3. 读取各国家队历史特征并进行数据预加载（本系统由 Elo 服务实现）
 
-	// 4. 将静态赛程表的比赛写入 SQLite
+	// 4. 清理残留的旧静态导入赛程数据（注意：不要把已完赛的 FT 赛事删掉，以免丢失历史复盘和回测记录）
+	if _, err := DB.Exec("DELETE FROM matches WHERE id LIKE 'wc2026_%' AND status != 'FT'"); err != nil {
+		return fmt.Errorf("清理旧静态赛程失败: %w", err)
+	}
+
+	// 5. 导入 JSON 文件中的所有比赛，但在导入前检查并保护已经完赛的 FT 赛事
 	for _, m := range rawSeason.Matches {
-		// 检查数据库中是否已存在该比赛，避免覆盖已完赛 (FT) 或进行中 (Live) 的数据
-		var exists int
-		err := DB.QueryRow("SELECT 1 FROM matches WHERE id = ?", m.ID).Scan(&exists)
-		if err == nil && exists == 1 {
+		var existingStatus string
+		err := DB.QueryRow("SELECT status FROM matches WHERE id = ?", m.ID).Scan(&existingStatus)
+		if err == nil && existingStatus == "FT" {
+			// 如果已经完赛，保护其完赛历史比分
 			continue
 		}
 
-		// 真正的导入使用 types.go 中的 Match 结构
-		var match models.Match
-		match.ID = m.ID
-		match.TournamentID = "fifa_2026"
-		match.HomeTeam = m.HomeTeam
-		match.AwayTeam = m.AwayTeam
-		match.Group = m.Group
-		match.Status = m.Status
-		match.Venue = m.Venue
-
-		// 我们使用 time.Parse 来解析
-		// json 格式为 "2026-06-11T18:00:00Z" (RFC3339)
-		var tErr error
-		match.ScheduledAt, tErr = time.Parse("2006-01-02T15:04:05Z", m.ScheduledAt)
-		if tErr != nil {
-			match.ScheduledAt = time.Now() // 备用
+		scheduledTime, err := time.Parse(time.RFC3339, m.ScheduledAt)
+		if err != nil {
+			scheduledTime = time.Now().Add(24 * time.Hour) // 容错兜底
 		}
 
-		if err := SaveMatch(match); err != nil {
-			return fmt.Errorf("导入比赛 %s 失败: %w", match.ID, err)
+		matchObj := models.Match{
+			ID:           m.ID,
+			TournamentID: "fifa_2026",
+			HomeTeam:     m.HomeTeam,
+			AwayTeam:     m.AwayTeam,
+			Group:        m.Group,
+			ScheduledAt:  scheduledTime,
+			Status:       m.Status,
+			Venue:        m.Venue,
+		}
+		if err := SaveMatch(matchObj); err != nil {
+			return fmt.Errorf("保存静态赛事 %s 失败: %w", m.ID, err)
 		}
 	}
 

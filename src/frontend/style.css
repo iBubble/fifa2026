@@ -85,12 +85,11 @@ header {
 /* 霓虹闪烁套利警报 */
 .alert-glow {
   animation: pulse-border 1.5s infinite alternate;
-  border-color: var(--neon-green) !important;
 }
 
 @keyframes pulse-border {
-  0% { box-shadow: 0 0 4px rgba(0, 255, 136, 0.2); }
-  100% { box-shadow: 0 0 16px rgba(0, 255, 136, 0.8); }
+  0% { box-shadow: 0 0 4px rgba(136, 0, 255, 0.2); }
+  100% { box-shadow: 0 0 16px rgba(136, 0, 255, 0.4); }
 }
 
 /* 基础滑动条样式优化 */

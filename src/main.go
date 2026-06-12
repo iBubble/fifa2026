@@ -111,6 +111,28 @@ func main() {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 				return
 			}
+
+			// 对相同对阵和开赛时间的赛事进行去重，优先保留体彩格式 (sporttery_ 开头) 的比赛
+			seen := make(map[string]models.Match)
+			for _, m := range matches {
+				key := fmt.Sprintf("%s_%s_%d", m.HomeTeam, m.AwayTeam, m.ScheduledAt.Unix())
+				existing, ok := seen[key]
+				if !ok {
+					seen[key] = m
+					continue
+				}
+				if strings.HasPrefix(m.ID, "sporttery_") && !strings.HasPrefix(existing.ID, "sporttery_") {
+					seen[key] = m
+				}
+			}
+			var uniqueMatches []models.Match
+			for _, m := range seen {
+				uniqueMatches = append(uniqueMatches, m)
+			}
+			sort.Slice(uniqueMatches, func(i, j int) bool {
+				return uniqueMatches[i].ScheduledAt.Before(uniqueMatches[j].ScheduledAt)
+			})
+			matches = uniqueMatches
 			for _, m := range matches {
 				if m.Status == "FT" {
 					rep, errReview := db.GetBacktestReport(m.ID)
@@ -366,38 +388,6 @@ func main() {
 				return
 			}
 
-			// 保存这 5 套串关玩法方案
-			if len(resp.Recommended) >= 2 {
-				matchIDsStr := strings.Join(req.MatchIDs, ",")
-				for _, p := range resp.Parlays {
-					var descStr string
-					for _, ex := range resp.Excluded {
-						if ex.HomeTeam == p.ParlayType {
-							descStr = ex.AwayTeam
-							break
-						}
-					}
-					plan := models.LotteryPlan{
-						PlanType:           "parlay",
-						MatchIDs:           matchIDsStr,
-						ParlayType:         p.ParlayType,
-						ParlayMode:         req.ParlayMode,
-						ParlayOptions:      strings.Join(req.ParlayOptions, ","),
-						DescStr:            descStr,
-						WinsCount:          p.WinsCount,
-						Cost:               p.Cost,
-						SingleTicketPayout: p.SingleTicketPayout,
-						ComboOdds:          p.ComboOdds,
-						ComboProb:          p.ComboProb,
-						TotalEV:            p.TotalEV,
-						KellyStake:         p.KellyStake,
-						TicketsJSON:        p.TicketsJSON,
-						IsSettled:          0,
-					}
-					_ = db.SaveLotteryPlan(plan)
-				}
-			}
-
 			c.JSON(http.StatusOK, resp)
 		})
 
@@ -592,35 +582,6 @@ func main() {
 
 			singleAdvice := lotteryService.GenerateSingleAdvice(m1, oddsH, oddsD, oddsA, req.PredictReport)
 
-			// 在生成后自动持久化单场投注建议方案
-			if singleAdvice.Status != "EXCLUDED" {
-				var hedgeBetOutcome string
-				var hedgeBetOdds float64
-				var hedgeBetStake float64
-				if len(singleAdvice.HedgeBets) > 0 {
-					hedge := singleAdvice.HedgeBets[0]
-					hedgeBetOutcome = hedge.Outcome
-					hedgeBetOdds = hedge.Odds
-					hedgeBetStake = 20.0
-				}
-				plan := models.LotteryPlan{
-					PlanType:    "single",
-					MatchIDs:    m1.ID,
-					OddsH:       oddsH,
-					OddsD:       oddsD,
-					OddsA:       oddsA,
-					PrimaryBet:  singleAdvice.PrimaryBet,
-					PrimaryOdds: singleAdvice.PrimaryOdds,
-					PrimaryAmt:  80.0,
-					HedgeBet:    hedgeBetOutcome,
-					HedgeOdds:   hedgeBetOdds,
-					HedgeAmt:    hedgeBetStake,
-					DescStr:     singleAdvice.Reason,
-					IsSettled:   0,
-				}
-				_ = db.SaveLotteryPlan(plan)
-			}
-
 			var parlayAdvice *prediction.LotteryAdvice
 			if len(req.MatchIDs) >= 2 {
 				m2, err := db.GetMatch(req.MatchIDs[1])
@@ -637,6 +598,93 @@ func main() {
 				"parlay":    parlayAdvice,
 				"fivePlays": fivePlays,
 			})
+		})
+
+		// 手动保存单场投注建议方案
+		api.POST("/lottery/save-single", func(c *gin.Context) {
+			var req struct {
+				MatchID      string  `json:"matchId"`
+				OddsH        float64 `json:"oddsH"`
+				OddsD        float64 `json:"oddsD"`
+				OddsA        float64 `json:"oddsA"`
+				PrimaryBet   string  `json:"primaryBet"`
+				PrimaryOdds  float64 `json:"primaryOdds"`
+				HedgeBet     string  `json:"hedgeBet"`
+				HedgeOdds    float64 `json:"hedgeOdds"`
+				HedgeAmt     float64 `json:"hedgeAmt"`
+				Reason       string  `json:"reason"`
+			}
+			if err := c.ShouldBindJSON(&req); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
+			plan := models.LotteryPlan{
+				PlanType:    "single",
+				MatchIDs:    req.MatchID,
+				OddsH:       req.OddsH,
+				OddsD:       req.OddsD,
+				OddsA:       req.OddsA,
+				PrimaryBet:  req.PrimaryBet,
+				PrimaryOdds: req.PrimaryOdds,
+				PrimaryAmt:  80.0,
+				HedgeBet:    req.HedgeBet,
+				HedgeOdds:   req.HedgeOdds,
+				HedgeAmt:    req.HedgeAmt,
+				DescStr:     req.Reason,
+				IsSettled:   0,
+			}
+			err := db.SaveLotteryPlan(plan)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+			c.JSON(http.StatusOK, gin.H{"status": "success"})
+		})
+
+		// 手动保存多场串关方案
+		api.POST("/lottery/save-parlay", func(c *gin.Context) {
+			var req struct {
+				MatchIDs      string                     `json:"matchIds"`
+				ParlayMode    string                     `json:"parlayMode"`
+				ParlayOptions string                     `json:"parlayOptions"`
+				Parlays       []prediction.ParlayAdvice  `json:"parlays"`
+				Excluded      []prediction.ExcludedMatch `json:"excluded"`
+			}
+			if err := c.ShouldBindJSON(&req); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
+			savedCount := 0
+			for _, p := range req.Parlays {
+				var descStr string
+				for _, ex := range req.Excluded {
+					if ex.HomeTeam == p.ParlayType {
+						descStr = ex.AwayTeam
+						break
+					}
+				}
+				plan := models.LotteryPlan{
+					PlanType:           "parlay",
+					MatchIDs:           req.MatchIDs,
+					ParlayType:         p.ParlayType,
+					ParlayMode:         req.ParlayMode,
+					ParlayOptions:      req.ParlayOptions,
+					DescStr:            descStr,
+					WinsCount:          p.WinsCount,
+					Cost:               p.Cost,
+					SingleTicketPayout: p.SingleTicketPayout,
+					ComboOdds:          p.ComboOdds,
+					ComboProb:          p.ComboProb,
+					TotalEV:            p.TotalEV,
+					KellyStake:         p.KellyStake,
+					TicketsJSON:        p.TicketsJSON,
+					IsSettled:          0,
+				}
+				if err := db.SaveLotteryPlan(plan); err == nil {
+					savedCount++
+				}
+			}
+			c.JSON(http.StatusOK, gin.H{"status": "success", "saved": savedCount})
 		})
 		// 获取指定赛事的官方体彩赔率数据 (如果未开盘则利用 Elo 算法仿真)
 		api.GET("/lottery/official", func(c *gin.Context) {
@@ -725,6 +773,11 @@ func main() {
 					totalAggReturn += p.AggReturn
 
 					m, _ := db.GetMatch(p.MatchIDs)
+					primaryHit := checkLegHit(p.MatchIDs, p.PrimaryBet)
+					hedgeHit := false
+					if p.HedgeBet != "" {
+						hedgeHit = checkLegHit(p.MatchIDs, p.HedgeBet)
+					}
 
 					historyList = append(historyList, gin.H{
 						"id":          p.ID,
@@ -736,10 +789,10 @@ func main() {
 						"awayScore":   m.AwayScore,
 						"primaryBet":  p.PrimaryBet,
 						"primaryOdds": p.PrimaryOdds,
-						"primaryHit":  p.SafeReturn > p.HedgeAmt,
+						"primaryHit":  primaryHit,
 						"hedgeBet":    p.HedgeBet,
 						"hedgeOdds":   p.HedgeOdds,
-						"hedgeHit":    p.SafeReturn > p.PrimaryAmt,
+						"hedgeHit":    hedgeHit,
 						"safeReturn":  math.Round(p.SafeReturn*100) / 100,
 						"safeProfit":  math.Round(p.SafeProfit*100) / 100,
 						"aggReturn":   math.Round(p.AggReturn*100) / 100,
@@ -753,6 +806,62 @@ func main() {
 							mNames = fmt.Sprintf("%s等%d场串关", m.HomeTeam, len(mIDs))
 						}
 					}
+
+					var tickets []prediction.SavedTicket
+					if p.TicketsJSON != "" {
+						_ = json.Unmarshal([]byte(p.TicketsJSON), &tickets)
+					}
+
+					type LegWithResult struct {
+						MatchID   string  `json:"matchId"`
+						Option    string  `json:"option"`
+						Odds      float64 `json:"odds"`
+						HomeTeam  string  `json:"homeTeam"`
+						AwayTeam  string  `json:"awayTeam"`
+						HomeScore int     `json:"homeScore"`
+						AwayScore int     `json:"awayScore"`
+						Status    string  `json:"status"`
+						Hit       bool    `json:"hit"`
+					}
+					type TicketWithResult struct {
+						Odds   float64         `json:"odds"`
+						Payout float64         `json:"payout"`
+						Legs   []LegWithResult `json:"legs"`
+					}
+
+					var ticketsWithResult []TicketWithResult
+					for _, tk := range tickets {
+						var legsWithRes []LegWithResult
+						for _, leg := range tk.Legs {
+							m, err := db.GetMatch(leg.MatchID)
+							hScore, aScore := 0, 0
+							hTeam, aTeam := "", ""
+							mStatus := "NS"
+							if err == nil {
+								hScore, aScore = m.HomeScore, m.AwayScore
+								hTeam, aTeam = m.HomeTeam, m.AwayTeam
+								mStatus = m.Status
+							}
+							hit := checkLegHit(leg.MatchID, leg.Option)
+							legsWithRes = append(legsWithRes, LegWithResult{
+								MatchID:   leg.MatchID,
+								Option:    leg.Option,
+								Odds:      leg.Odds,
+								HomeTeam:  hTeam,
+								AwayTeam:  aTeam,
+								HomeScore: hScore,
+								AwayScore: aScore,
+								Status:    mStatus,
+								Hit:       hit,
+							})
+						}
+						ticketsWithResult = append(ticketsWithResult, TicketWithResult{
+							Odds:   tk.Odds,
+							Payout: tk.Payout,
+							Legs:   legsWithRes,
+						})
+					}
+
 					historyList = append(historyList, gin.H{
 						"id":          p.ID,
 						"planType":    p.PlanType,
@@ -771,6 +880,7 @@ func main() {
 						"safeProfit":  math.Round(p.SafeProfit*100) / 100,
 						"aggReturn":   math.Round(p.SafeReturn*100) / 100,
 						"aggProfit":   math.Round(p.SafeProfit*100) / 100,
+						"tickets":     ticketsWithResult,
 					})
 				}
 			}
@@ -873,25 +983,12 @@ func main() {
 				if p.PlanType == "single" {
 					m := finishedMatches[0]
 					// 1. 判定主推命中
-					primaryHit := false
-					if p.PrimaryBet == "主胜" || p.PrimaryBet == "主胜 (3)" {
-						primaryHit = m.HomeScore > m.AwayScore
-					} else if p.PrimaryBet == "平局" || p.PrimaryBet == "平局 (1)" {
-						primaryHit = m.HomeScore == m.AwayScore
-					} else if p.PrimaryBet == "客胜" || p.PrimaryBet == "客胜 (0)" {
-						primaryHit = m.HomeScore < m.AwayScore
-					}
+					primaryHit := checkLegHit(m.ID, p.PrimaryBet)
 
 					// 2. 判定对冲命中
 					hedgeHit := false
 					if p.HedgeBet != "" {
-						if p.HedgeBet == "比分 1-1" && m.HomeScore == 1 && m.AwayScore == 1 {
-							hedgeHit = true
-						} else if p.HedgeBet == "比分 1-0" && m.HomeScore == 1 && m.AwayScore == 0 {
-							hedgeHit = true
-						} else if p.HedgeBet == "比分 0-1" && m.HomeScore == 0 && m.AwayScore == 1 {
-							hedgeHit = true
-						}
+						hedgeHit = checkLegHit(m.ID, p.HedgeBet)
 					}
 
 					// 3. 计算稳妥型和激进型实际返还与利润

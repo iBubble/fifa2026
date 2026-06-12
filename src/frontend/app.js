@@ -703,68 +703,7 @@ async function renderLotteryPanel(recommendData = null) {
     html += `<div style="margin-bottom: 12px;">● 请在左侧选择比赛，系统将自动生成五大玩法最佳量化投注建议...</div>`;
   }
 
-  // 追加历史投注复盘明细和收益对比
-  try {
-    const res = await fetch(`${API_BASE}/lottery/history`);
-    const data = await res.json();
-    if (data && data.history && data.history.length > 0) {
-      const sum = data.summary;
-      
-      const safeColor = sum.totalSafeProfit >= 0 ? "var(--neon-green)" : "#ff4a4a";
-      const aggColor = sum.totalAggProfit >= 0 ? "var(--neon-green)" : "#ff4a4a";
 
-      html += `
-        <div style="border-top: 1px dashed rgba(255,255,255,0.1); margin: 6px 0 4px 0; padding-top: 6px;">
-          <h4 style="color: white; font-size: 13px; font-weight: 800; margin-bottom: 6px; display: flex; align-items: center; gap: 4px;">
-            📊 体彩实战收益历史复盘
-          </h4>
-          
-          <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px; margin-bottom: 8px; font-size: 11px;">
-            <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
-              <span>🛡️ 稳妥型累计净收益:</span>
-              <strong style="color: ${safeColor};">${sum.totalSafeProfit.toFixed(1)}元 (ROI: ${sum.safeRoi}%)</strong>
-            </div>
-            <div style="display: flex; justify-content: space-between;">
-              <span>⚡ 激进型累计净收益:</span>
-              <strong style="color: ${aggColor};">${sum.totalAggProfit.toFixed(1)}元 (ROI: ${sum.aggRoi}%)</strong>
-            </div>
-          </div>
-
-          <div style="font-size: 10px; color: var(--text-muted); margin-bottom: 4px; font-weight: 600;">历史投注明细 (滚动查看):</div>
-          <div style="max-height: 120px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding-right: 2px;">
-            ${data.history.map(h => {
-              const homeCn = translateTeamName(h.homeTeam);
-              const awayCn = translateTeamName(h.awayTeam);
-              
-              const safeText = h.safeProfit >= 0 ? `+${h.safeProfit.toFixed(1)}` : h.safeProfit.toFixed(1);
-              const aggText = h.aggProfit >= 0 ? `+${h.aggProfit.toFixed(1)}` : h.aggProfit.toFixed(1);
-              
-              const sColor = h.safeProfit >= 0 ? "var(--neon-green)" : "#ff4a4a";
-              const aColor = h.aggProfit >= 0 ? "var(--neon-green)" : "#ff4a4a";
-
-              const primaryBadge = h.primaryHit ? "🎯 主推中" : "❌ 主推失";
-              const hedgeBadge = h.hedgeHit ? "🛡️ 对冲中" : "❌ 对冲失";
-
-              return `
-                <div style="background: rgba(255,255,255,0.01); border: 1px solid rgba(255,255,255,0.04); border-radius: 4px; padding: 6px; font-size: 10px;">
-                  <div style="display: flex; justify-content: space-between; font-weight: 600; color: #fff; margin-bottom: 2px;">
-                    <span>${homeCn} ${h.homeScore} : ${h.awayScore} ${awayCn}</span>
-                    <span style="font-size: 9px; color: var(--text-muted);">${primaryBadge} | ${hedgeBadge}</span>
-                  </div>
-                  <div style="display: flex; justify-content: space-between; color: var(--text-muted); font-size: 9px;">
-                    <span>稳妥型: <strong style="color: ${sColor};">${safeText}元</strong> (返 ${h.safeReturn}元)</span>
-                    <span>激进型: <strong style="color: ${aColor};">${aggText}元</strong> (返 ${h.aggReturn}元)</span>
-                  </div>
-                </div>
-              `;
-            }).join("")}
-          </div>
-        </div>
-      `;
-    }
-  } catch (err) {
-    console.error("加载体彩历史复盘失败:", err);
-  }
 
   resultDom.innerHTML = html;
 
@@ -793,6 +732,68 @@ async function renderLotteryPanel(recommendData = null) {
       });
     };
   });
+
+  // 需求 3：动态更新单场记录按钮状态并绑定保存事件
+  const saveSingleBtn = document.getElementById("save-single-btn");
+  if (saveSingleBtn) {
+    if (recommendData && recommendData.single && recommendData.single.status !== "EXCLUDED") {
+      saveSingleBtn.disabled = false;
+      saveSingleBtn.style.opacity = "1";
+      saveSingleBtn.style.cursor = "pointer";
+      
+      saveSingleBtn.onclick = async () => {
+        const oldText = saveSingleBtn.innerText;
+        saveSingleBtn.innerText = "记录中...";
+        saveSingleBtn.disabled = true;
+        
+        let hedgeBetOutcome = "";
+        let hedgeBetOdds = 0.0;
+        let hedgeBetStake = 0.0;
+        if (recommendData.single.hedgeBets && recommendData.single.hedgeBets.length > 0) {
+          const hedge = recommendData.single.hedgeBets[0];
+          hedgeBetOutcome = hedge.outcome;
+          hedgeBetOdds = hedge.odds;
+          hedgeBetStake = 20.0;
+        }
+        
+        try {
+          const saveRes = await fetch(`${API_BASE}/lottery/save-single`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              matchId: currentMatchID,
+              oddsH: parseFloat(document.getElementById("lottery-odds-h")?.value || 1.95),
+              oddsD: parseFloat(document.getElementById("lottery-odds-d")?.value || 3.20),
+              oddsA: parseFloat(document.getElementById("lottery-odds-a")?.value || 3.80),
+              primaryBet: recommendData.single.primaryBet,
+              primaryOdds: recommendData.single.primaryOdds,
+              hedgeBet: hedgeBetOutcome,
+              hedgeOdds: hedgeBetOdds,
+              hedgeAmt: hedgeBetStake,
+              reason: recommendData.single.reason
+            })
+          });
+          const saveResult = await saveRes.json();
+          if (saveResult.status === "success") {
+            alert("💾 单场量化投注方案记录成功，已加入复盘库！");
+            renderLotteryPanel(recommendData);
+          } else {
+            alert("记录失败: " + (saveResult.error || "未知错误"));
+          }
+        } catch (err) {
+          alert("记录网络异常: " + err.message);
+        } finally {
+          saveSingleBtn.innerText = oldText;
+          saveSingleBtn.disabled = false;
+        }
+      };
+    } else {
+      saveSingleBtn.disabled = true;
+      saveSingleBtn.style.opacity = "0.5";
+      saveSingleBtn.style.cursor = "not-allowed";
+      saveSingleBtn.onclick = null;
+    }
+  }
 }
 
 // 绑定体彩量化建议按钮事件
@@ -1276,6 +1277,38 @@ document.getElementById("generate-parlay-btn").onclick = async () => {
     // 打开弹窗
     document.getElementById("parlay-modal").style.display = "flex";
 
+    // 绑定记录过关方案按钮事件
+    document.getElementById("record-parlay-btn").onclick = async () => {
+      const btn = document.getElementById("record-parlay-btn");
+      const oldText = btn.innerText;
+      btn.innerText = "记录中...";
+      btn.disabled = true;
+      try {
+        const saveRes = await fetch(`${API_BASE}/lottery/save-parlay`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            matchIds: matchIds.join(","),
+            parlayMode: parlayMode,
+            parlayOptions: subOpts.join(","),
+            parlays: data.parlays,
+            excluded: data.excluded
+          })
+        });
+        const saveResult = await saveRes.json();
+        if (saveResult.status === "success") {
+          alert(`💾 ${saveResult.saved} 套过关方案记录成功，已加入复盘库！`);
+        } else {
+          alert("记录失败: " + (saveResult.error || "未知错误"));
+        }
+      } catch (err) {
+        alert("记录失败，网络异常: " + err.message);
+      } finally {
+        btn.innerText = oldText;
+        btn.disabled = false;
+      }
+    };
+
     // 绑定复制按钮事件
     document.getElementById("copy-parlay-summary-btn").onclick = () => {
       let copyText = `🏆 FIFA 2026 智能过关方案精算推荐 (${matchIds.length}场串关):\n\n`;
@@ -1323,8 +1356,273 @@ window.onclick = (event) => {
   }
 };
 
-// 全自动端到端（E2E）精算测试调试钩子
+// 全自动量化交易复盘对账中心渲染逻辑
+let singleChartInstance = null;
+let parlayChartInstance = null;
+
+async function showSingleHistory() {
+  const modal = document.getElementById("single-history-modal");
+  const listDom = document.getElementById("single-history-list");
+  listDom.innerHTML = `<div style="text-align:center; padding:10px; color:var(--neon-green); font-size:11px;">加载历史数据...</div>`;
+  modal.style.display = "flex";
+  try {
+    const res = await fetch(`${API_BASE}/lottery/history`);
+    const data = await res.json();
+    const history = (data.history || []).filter(h => h.planType === "single").sort((a, b) => a.id - b.id);
+    const N = history.length;
+    document.getElementById("single-stat-total").innerText = `${N} 场`;
+    if (N === 0) {
+      document.getElementById("single-stat-primary-rate").innerText = "0.0%";
+      document.getElementById("single-stat-cover-rate").innerText = "0.0%";
+      listDom.innerHTML = `<div style="text-align:center; padding:20px; color:var(--text-muted); font-size:11px;">暂无已结算方案</div>`;
+      return;
+    }
+    const primaryHits = history.filter(h => h.primaryHit).length;
+    const coverHits = history.filter(h => h.primaryHit || h.hedgeHit).length;
+    document.getElementById("single-stat-primary-rate").innerText = `${((primaryHits / N) * 100).toFixed(1)}%`;
+    document.getElementById("single-stat-cover-rate").innerText = `${((coverHits / N) * 100).toFixed(1)}%`;
+
+    const chartDom = document.getElementById("single-history-chart");
+    if (singleChartInstance) singleChartInstance.dispose();
+    singleChartInstance = echarts.init(chartDom);
+    const xData = history.map((_, idx) => `#${idx + 1}`);
+    let runningPrimary = 0, runningCover = 0;
+    const yPrimary = [], yCover = [];
+    history.forEach((h, idx) => {
+      if (h.primaryHit) runningPrimary++;
+      if (h.primaryHit || h.hedgeHit) runningCover++;
+      yPrimary.push(((runningPrimary / (idx + 1)) * 100).toFixed(1));
+      yCover.push(((runningCover / (idx + 1)) * 100).toFixed(1));
+    });
+    singleChartInstance.setOption({
+      tooltip: { trigger: 'axis', formatter: '{b}<br/>主推精度: {c0}%<br/>覆盖率: {c1}%' },
+      grid: { left: '10%', right: '5%', top: '15%', bottom: '15%' },
+      xAxis: { type: 'category', data: xData, axisLine: { lineStyle: { color: 'rgba(255,255,255,0.2)' } } },
+      yAxis: { type: 'value', min: 0, max: 100, axisLabel: { formatter: '{value}%' }, splitLine: { lineStyle: { color: 'rgba(255,255,255,0.05)' } } },
+      series: [
+        { name: '主推命中率', type: 'line', data: yPrimary, itemStyle: { color: 'var(--neon-green)' }, smooth: true },
+        { name: '整体覆盖率', type: 'line', data: yCover, itemStyle: { color: '#ffeb3b' }, smooth: true }
+      ]
+    });
+
+    listDom.innerHTML = history.slice().reverse().map(h => {
+      const home = translateTeamName(h.homeTeam);
+      const away = translateTeamName(h.awayTeam);
+      const primaryBadge = h.primaryHit ? `<span style="color:var(--neon-green);">主推: 🎯 ${h.primaryBet}(中)</span>` : `<span style="color:var(--text-muted);">主推: ❌ ${h.primaryBet}(失)</span>`;
+      const hedgeBadge = h.hedgeBet ? (h.hedgeHit ? `<span style="color:#ffeb3b; margin-left:8px;">对冲: 🛡️ ${h.hedgeBet}(中)</span>` : `<span style="color:var(--text-muted); margin-left:8px;">对冲: ❌ ${h.hedgeBet}(失)</span>`) : `<span style="color:var(--text-muted); margin-left:8px;">无对冲</span>`;
+      return `
+        <div style="background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.05); border-radius:6px; padding:6px; font-size:11px;">
+          <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+            <span><strong>${home} ${h.homeScore}:${h.awayScore} ${away}</strong></span>
+          </div>
+          <div>${primaryBadge} ${hedgeBadge}</div>
+        </div>
+      `;
+    }).join("");
+  } catch (err) {
+    listDom.innerHTML = `<div style="color:#ff4a4a; padding:10px; font-size:11px; text-align:center;">数据拉取失败: ${err.message}</div>`;
+  }
+}
+
+async function showParlayHistory() {
+  const modal = document.getElementById("parlay-history-modal");
+  const listDom = document.getElementById("parlay-history-list");
+  listDom.innerHTML = `<div style="text-align:center; padding:10px; color:var(--neon-purple); font-size:11px;">加载历史数据...</div>`;
+  modal.style.display = "flex";
+  try {
+    const res = await fetch(`${API_BASE}/lottery/history`);
+    const data = await res.json();
+    const history = (data.history || []).filter(h => h.planType === "parlay").sort((a, b) => a.id - b.id);
+    const N = history.length;
+    document.getElementById("parlay-stat-total").innerText = `${N} 组`;
+    if (N === 0) {
+      document.getElementById("parlay-stat-combo-rate").innerText = "0.0%";
+      document.getElementById("parlay-stat-leg-rate").innerText = "0.0%";
+      listDom.innerHTML = `<div style="text-align:center; padding:20px; color:var(--text-muted); font-size:11px;">暂无已结算方案</div>`;
+      return;
+    }
+    const comboHits = history.filter(h => h.primaryHit).length;
+    let totalLegs = 0, hitLegs = 0;
+    history.forEach(h => {
+      (h.tickets || []).forEach(tk => {
+        (tk.legs || []).forEach(leg => {
+          totalLegs++;
+          if (leg.hit) hitLegs++;
+        });
+      });
+    });
+    const avgLegRate = totalLegs > 0 ? (hitLegs / totalLegs) * 100 : 0.0;
+    document.getElementById("parlay-stat-combo-rate").innerText = `${((comboHits / N) * 100).toFixed(1)}%`;
+    document.getElementById("parlay-stat-leg-rate").innerText = `${avgLegRate.toFixed(1)}%`;
+
+    const chartDom = document.getElementById("parlay-history-chart");
+    if (parlayChartInstance) parlayChartInstance.dispose();
+    parlayChartInstance = echarts.init(chartDom);
+    const xData = history.map((_, idx) => `#${idx + 1}`);
+    let runningCombo = 0, runningLegsTotal = 0, runningLegsHit = 0;
+    const yCombo = [], yLeg = [];
+    history.forEach((h, idx) => {
+      if (h.primaryHit) runningCombo++;
+      (h.tickets || []).forEach(tk => {
+        (tk.legs || []).forEach(leg => {
+          runningLegsTotal++;
+          if (leg.hit) runningLegsHit++;
+        });
+      });
+      yCombo.push(((runningCombo / (idx + 1)) * 100).toFixed(1));
+      yLeg.push(runningLegsTotal > 0 ? ((runningLegsHit / runningLegsTotal) * 100).toFixed(1) : 0.0);
+    });
+
+    parlayChartInstance.setOption({
+      tooltip: { trigger: 'axis', formatter: '{b}<br/>组合中奖率: {c0}%<br/>Leg命中率: {c1}%' },
+      grid: { left: '10%', right: '5%', top: '15%', bottom: '15%' },
+      xAxis: { type: 'category', data: xData, axisLine: { lineStyle: { color: 'rgba(255,255,255,0.2)' } } },
+      yAxis: { type: 'value', min: 0, max: 100, axisLabel: { formatter: '{value}%' }, splitLine: { lineStyle: { color: 'rgba(255,255,255,0.05)' } } },
+      series: [
+        { name: '组合整体命中率', type: 'line', data: yCombo, itemStyle: { color: '#ff0088' }, smooth: true },
+        { name: 'Leg预测平均命中率', type: 'line', data: yLeg, itemStyle: { color: '#ff9800' }, smooth: true }
+      ]
+    });
+
+    listDom.innerHTML = history.slice().reverse().map(h => {
+      const comboStatus = h.primaryHit ? `<span style="color:var(--neon-green); font-weight:800;">🎯 组合中奖</span>` : `<span style="color:var(--text-muted);">❌ 组合失效</span>`;
+      const uniqueLegsMap = {};
+      (h.tickets || []).forEach(tk => {
+        (tk.legs || []).forEach(leg => {
+          const key = `${leg.matchId}_${leg.option}`;
+          uniqueLegsMap[key] = leg;
+        });
+      });
+      const legsHtml = Object.values(uniqueLegsMap).map(leg => {
+        const homeCn = translateTeamName(leg.homeTeam || "");
+        const awayCn = translateTeamName(leg.awayTeam || "");
+        const hitText = leg.hit ? `<span style="color:var(--neon-green);">中</span>` : `<span style="color:var(--text-muted);">失</span>`;
+        return `
+          <div style="color:var(--text-muted); padding:2px 0; border-bottom:1px dashed rgba(255,255,255,0.02);">
+            • ${homeCn} ${leg.homeScore}:${leg.awayScore} ${awayCn} | 预测: ${leg.option} (${hitText})
+          </div>
+        `;
+      }).join("");
+
+      return `
+        <div style="background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.05); border-radius:6px; padding:6px; font-size:11px; display:flex; flex-direction:column; gap:4px;">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span><strong>${h.homeTeam} (${h.awayTeam})</strong></span>
+            <span>${comboStatus}</span>
+          </div>
+          <div style="padding-left:6px; border-left:2px solid var(--neon-purple); display:flex; flex-direction:column; gap:2px;">
+            ${legsHtml}
+          </div>
+        </div>
+      `;
+    }).join("");
+  } catch (err) {
+    listDom.innerHTML = `<div style="color:#ff4a4a; padding:10px; font-size:11px; text-align:center;">数据拉取失败: ${err.message}</div>`;
+  }
+}
+
+// 绑定所有的复盘与关闭交互事件
 window.addEventListener("DOMContentLoaded", () => {
+  // 绑定历史记录查看按钮
+  const historySingleBtn = document.getElementById("history-single-btn");
+  if (historySingleBtn) {
+    historySingleBtn.onclick = () => showSingleHistory();
+  }
+
+  const historyParlayBtn = document.getElementById("history-parlay-btn");
+  if (historyParlayBtn) {
+    historyParlayBtn.onclick = () => showParlayHistory();
+  }
+
+  // 绑定智能多场过关复盘按钮
+  const settleParlayBtn = document.getElementById("settle-parlay-btn");
+  if (settleParlayBtn) {
+    settleParlayBtn.onclick = async () => {
+      const oldText = settleParlayBtn.innerText;
+      settleParlayBtn.innerText = "复盘中...";
+      settleParlayBtn.disabled = true;
+      try {
+        const res = await fetch(`${API_BASE}/lottery/settle`, { method: "POST" });
+        const resData = await res.json();
+        if (resData.status === "success") {
+          await showParlayHistory();
+        } else {
+          alert("复盘结算失败: " + (resData.error || "未知错误"));
+        }
+      } catch (err) {
+        alert("复盘网络异常: " + err.message);
+      } finally {
+        settleParlayBtn.innerText = oldText;
+        settleParlayBtn.disabled = false;
+      }
+    };
+  }
+
+  // 绑定单场复盘按钮
+  const settleSingleBtn = document.getElementById("settle-single-btn");
+  if (settleSingleBtn) {
+    settleSingleBtn.onclick = async () => {
+      const oldText = settleSingleBtn.innerText;
+      settleSingleBtn.innerText = "复盘中...";
+      settleSingleBtn.disabled = true;
+      try {
+        const res = await fetch(`${API_BASE}/lottery/settle`, { method: "POST" });
+        const resData = await res.json();
+        if (resData.status === "success") {
+          await showSingleHistory();
+        } else {
+          alert("复盘结算失败: " + (resData.error || "未知错误"));
+        }
+      } catch (err) {
+        alert("复盘网络异常: " + err.message);
+      } finally {
+        settleSingleBtn.innerText = oldText;
+        settleSingleBtn.disabled = false;
+      }
+    };
+  }
+
+  // 单场历史弹窗关闭逻辑
+  const closeSingleBtn = document.getElementById("close-single-history-btn");
+  if (closeSingleBtn) {
+    closeSingleBtn.onclick = () => {
+      document.getElementById("single-history-modal").style.display = "none";
+    };
+  }
+  const confirmSingleBtn = document.getElementById("confirm-single-history-btn");
+  if (confirmSingleBtn) {
+    confirmSingleBtn.onclick = () => {
+      document.getElementById("single-history-modal").style.display = "none";
+    };
+  }
+
+  // 过关历史弹窗关闭逻辑
+  const closeParlayBtn = document.getElementById("close-parlay-history-btn");
+  if (closeParlayBtn) {
+    closeParlayBtn.onclick = () => {
+      document.getElementById("parlay-history-modal").style.display = "none";
+    };
+  }
+  const confirmParlayBtn = document.getElementById("confirm-parlay-history-btn");
+  if (confirmParlayBtn) {
+    confirmParlayBtn.onclick = () => {
+      document.getElementById("parlay-history-modal").style.display = "none";
+    };
+  }
+
+  // 点击背景遮罩关闭
+  const singleModal = document.getElementById("single-history-modal");
+  const parlayModal = document.getElementById("parlay-history-modal");
+  window.addEventListener("click", (event) => {
+    if (event.target === singleModal) {
+      singleModal.style.display = "none";
+    }
+    if (event.target === parlayModal) {
+      parlayModal.style.display = "none";
+    }
+  });
+
+  // 保留全自动端到端（E2E）精算测试调试钩子
   if (window.location.search.includes("auto_verify=true")) {
     setTimeout(() => {
       const chks = document.querySelectorAll(".match-select-chk");
