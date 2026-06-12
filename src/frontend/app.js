@@ -455,13 +455,13 @@ async function autoFetchAndCalculate() {
     const displayIntel = translatedParts.join("\n");
 
     document.getElementById("qualitative-input").value = displayIntel;
-    document.getElementById("use-llm-chk").checked = true;
+    const useLLM = document.getElementById("use-llm-chk").checked;
 
     // 2. 自动触发双变量泊松估值
     const resPredict = await fetch(`${API_BASE}/predict`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ matchId: currentMatchID, info: displayIntel, useLLM: true })
+      body: JSON.stringify({ matchId: currentMatchID, info: displayIntel, useLLM: useLLM })
     });
     const report = await resPredict.json();
     currentPredictions = report;
