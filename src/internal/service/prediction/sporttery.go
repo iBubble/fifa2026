@@ -18,9 +18,12 @@ type OfficialOdds struct {
 	HhadDrawOdds float64            `json:"hhadDrawOdds"`
 	HhadAwayOdds float64            `json:"hhadAwayOdds"`
 	CrsOdds      map[string]float64 `json:"crsOdds"`
+	TtgOdds      map[string]float64 `json:"ttgOdds"`
+	HafuOdds     map[string]float64 `json:"hafuOdds"`
 	IsAvailable  bool               `json:"isAvailable"`
 	IsSimulation bool               `json:"isSimulation"`
 }
+
 
 type SportteryService struct {
 	cachedOdds    map[string]OfficialOdds
@@ -53,7 +56,7 @@ func (s *SportteryService) FetchAllOdds() {
 	}()
 
 	client := &http.Client{Timeout: 5 * time.Second}
-	req, err := http.NewRequest("GET", "https://webapi.sporttery.cn/gateway/jc/football/getMatchCalculatorV1.qry?poolCode=had,hhad,crs&channel=c", nil)
+	req, err := http.NewRequest("GET", "https://webapi.sporttery.cn/gateway/jc/football/getMatchCalculatorV1.qry?poolCode=had,hhad,crs,ttg,hafu&channel=c", nil)
 	if err != nil {
 		return
 	}
@@ -66,7 +69,6 @@ func (s *SportteryService) FetchAllOdds() {
 	}
 	defer resp.Body.Close()
 
-	// 允许 200 和云盾的 567 挑战状态码，只要内容是 JSON 即可
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != 567 {
 		return
 	}
@@ -89,7 +91,9 @@ func (s *SportteryService) FetchAllOdds() {
 						A        string `json:"a"`
 						GoalLine string `json:"goalLine"`
 					} `json:"hhad"`
-					Crs map[string]interface{} `json:"crs"`
+					Crs  map[string]interface{} `json:"crs"`
+					Ttg  map[string]interface{} `json:"ttg"`
+					Hafu map[string]interface{} `json:"hafu"`
 				} `json:"subMatchList"`
 			} `json:"matchInfoList"`
 		} `json:"value"`
@@ -99,7 +103,6 @@ func (s *SportteryService) FetchAllOdds() {
 		return
 	}
 
-	// 内存写入时重新加锁，采用增量覆盖方式，保留已下架赛事的历史真实赔率
 	s.mu.Lock()
 	if s.cachedOdds == nil {
 		s.cachedOdds = make(map[string]OfficialOdds)
@@ -124,6 +127,24 @@ func (s *SportteryService) FetchAllOdds() {
 				}
 			}
 
+			ttgOdds := make(map[string]float64)
+			for k, v := range m.Ttg {
+				if strVal, ok := v.(string); ok && strVal != "" {
+					if val, err := strconv.ParseFloat(strVal, 64); err == nil {
+						ttgOdds[k] = val
+					}
+				}
+			}
+
+			hafuOdds := make(map[string]float64)
+			for k, v := range m.Hafu {
+				if strVal, ok := v.(string); ok && strVal != "" {
+					if val, err := strconv.ParseFloat(strVal, 64); err == nil {
+						hafuOdds[k] = val
+					}
+				}
+			}
+
 			s.cachedOdds[key] = OfficialOdds{
 				HomeOdds:     h,
 				DrawOdds:     d,
@@ -133,10 +154,13 @@ func (s *SportteryService) FetchAllOdds() {
 				HhadDrawOdds: hd,
 				HhadAwayOdds: ha,
 				CrsOdds:      crsOdds,
+				TtgOdds:      ttgOdds,
+				HafuOdds:     hafuOdds,
 				IsAvailable:  h > 0.0,
 			}
 		}
 	}
+
 	s.lastFetchTime = time.Now()
 	s.mu.Unlock()
 }

@@ -71,7 +71,7 @@ function updateSimulationChart(results) {
   // 只截取前 8 名显示，以保证图表美观
   const topResults = results.slice(0, 8).reverse();
   
-  const yData = topResults.map(r => translateTeamName(r.teamName));
+  const yData = topResults.map(r => translateTeamNameText(r.teamName));
   const xData = topResults.map(r => parseFloat(r.winnerProb.toFixed(2)));
   
   simulationChart.setOption({
@@ -80,61 +80,130 @@ function updateSimulationChart(results) {
   });
 }
 
-// 简易的中英国家队名称互译，提升中文体验
-function translateTeamName(enName) {
+// 国家英文名到 FlagCDN 二位码的映射字典 (包含英伦三岛的特异性二位码)
+const countryCodes = {
+  "Brazil": "br",
+  "Argentina": "ar",
+  "France": "fr",
+  "Germany": "de",
+  "Spain": "es",
+  "England": "gb-eng",
+  "Italy": "it",
+  "Netherlands": "nl",
+  "Portugal": "pt",
+  "Croatia": "hr",
+  "Japan": "jp",
+  "USA": "us",
+  "Mexico": "mx",
+  "Ecuador": "ec",
+  "Venezuela": "ve",
+  "Jamaica": "jm",
+  "Iran": "ir",
+  "Wales": "gb-wls",
+  "Saudi Arabia": "sa",
+  "Poland": "pl",
+  "Australia": "au",
+  "Denmark": "dk",
+  "Tunisia": "tn",
+  "Costa Rica": "cr",
+  "Belgium": "be",
+  "Canada": "ca",
+  "Morocco": "ma",
+  "Serbia": "rs",
+  "Switzerland": "ch",
+  "Cameroon": "cm",
+  "Ghana": "gh",
+  "Uruguay": "uy",
+  "South Korea": "kr",
+  "Colombia": "co",
+  "Algeria": "dz",
+  "Chile": "cl",
+  "Nigeria": "ng",
+  "Scotland": "gb-sct",
+  "Hungary": "hu",
+  "Panama": "pa",
+  "Bolivia": "bo",
+  "Peru": "pe",
+  "South Africa": "za",
+  "Czech Republic": "cz",
+  "Bosnia and Herzegovina": "ba",
+  "Paraguay": "py",
+  "Qatar": "qa",
+  "Haiti": "ht",
+  "Turkey": "tr"
+};
+
+// 获取团队国旗的 HTML 标签，用于跨平台 (如 Windows) 的优雅降级渲染
+function getTeamFlagHtml(enName) {
+  const code = countryCodes[enName];
+  if (!code) return "";
+  return `<img src="https://flagcdn.com/w20/${code}.png" class="team-flag" alt="${enName}" style="width: 20px; height: auto; vertical-align: middle; margin-right: 4px; border-radius: 2px; box-shadow: 0 1px 3px rgba(0,0,0,0.2);">`;
+}
+
+// 翻译纯中文名称，防止在 ECharts 等不支持 HTML 标签的组件中溢出
+function translateTeamNameText(enName) {
   const dict = {
-    "Brazil": "🇧🇷 巴西",
-    "Argentina": "🇦🇷 阿根廷",
-    "France": "🇫🇷 法国",
-    "Germany": "🇩🇪 德国",
-    "Spain": "🇪🇸 西班牙",
-    "England": "🏴󠁧󠁢󠁥󠁮󠁧󠁿 英格兰",
-    "Italy": "🇮🇹 意大利",
-    "Netherlands": "🇳🇱 荷兰",
-    "Portugal": "🇵🇹 葡萄牙",
-    "Croatia": "🇭🇷 克罗地亚",
-    "Japan": "🇯🇵 日本",
-    "USA": "🇺🇸 美国",
-    "Mexico": "🇲🇽 墨西哥",
-    "Ecuador": "🇪🇨 厄瓜多尔",
-    "Venezuela": "🇻🇪 委内瑞拉",
-    "Jamaica": "🇯🇲 牙买加",
-    "Iran": "🇮🇷 伊朗",
-    "Wales": "🏴󠁧󠁢󠁷󠁬󠁳󠁿 威尔士",
-    "Saudi Arabia": "🇸🇦 沙特阿拉伯",
-    "Poland": "🇵🇱 波兰",
-    "Australia": "🇦🇺 澳大利亚",
-    "Denmark": "🇩🇰 丹麦",
-    "Tunisia": "🇹🇳 突尼斯",
-    "Costa Rica": "🇨🇷 哥斯达黎加",
-    "Belgium": "🇧🇪 比利时",
-    "Canada": "🇨🇦 加拿大",
-    "Morocco": "🇲🇦 摩洛哥",
-    "Serbia": "🇷🇸 塞尔维亚",
-    "Switzerland": "🇨🇭 瑞士",
-    "Cameroon": "🇨🇲 喀麦隆",
-    "Ghana": "🇬🇭 加纳",
-    "Uruguay": "🇺🇾 乌拉圭",
-    "South Korea": "🇰🇷 韩国",
-    "Colombia": "🇨🇴 哥伦比亚",
-    "Algeria": "🇩🇿 阿尔及利亚",
-    "Chile": "🇨🇱 智利",
-    "Nigeria": "🇳🇬 尼日利亚",
-    "Scotland": "🏴󠁧󠁢󠁳󠁣󠁴󠁿 苏格兰",
-    "Hungary": "🇭🇺 匈牙利",
-    "Panama": "🇵🇦 巴拿马",
-    "Bolivia": "🇧🇴 玻利维亚",
-    "Peru": "🇵🇪 秘鲁",
-    "South Africa": "🇿🇦 南非",
-    "Czech Republic": "🇨🇿 捷克",
-    "Bosnia and Herzegovina": "🇧🇦 波黑",
-    "Paraguay": "🇵🇾 巴拉圭",
-    "Qatar": "🇶🇦 卡塔尔",
-    "Haiti": "🇭🇹 海地",
-    "Turkey": "🇹🇷 土耳其"
+    "Brazil": "巴西",
+    "Argentina": "阿根廷",
+    "France": "法国",
+    "Germany": "德国",
+    "Spain": "西班牙",
+    "England": "英格兰",
+    "Italy": "意大利",
+    "Netherlands": "荷兰",
+    "Portugal": "葡萄牙",
+    "Croatia": "克罗地亚",
+    "Japan": "日本",
+    "USA": "美国",
+    "Mexico": "墨西哥",
+    "Ecuador": "厄瓜多尔",
+    "Venezuela": "委内瑞拉",
+    "Jamaica": "牙买加",
+    "Iran": "伊朗",
+    "Wales": "威尔士",
+    "Saudi Arabia": "沙特阿拉伯",
+    "Poland": "波兰",
+    "Australia": "澳大利亚",
+    "Denmark": "丹麦",
+    "Tunisia": "突尼斯",
+    "Costa Rica": "哥斯达黎加",
+    "Belgium": "比利时",
+    "Canada": "加拿大",
+    "Morocco": "摩洛哥",
+    "Serbia": "塞尔维亚",
+    "Switzerland": "瑞士",
+    "Cameroon": "喀麦隆",
+    "Ghana": "加纳",
+    "Uruguay": "乌拉圭",
+    "South Korea": "韩国",
+    "Colombia": "哥伦比亚",
+    "Algeria": "阿尔及利亚",
+    "Chile": "智利",
+    "Nigeria": "尼日利亚",
+    "Scotland": "苏格兰",
+    "Hungary": "匈牙利",
+    "Panama": "巴拿马",
+    "Bolivia": "玻利维亚",
+    "Peru": "秘鲁",
+    "South Africa": "南非",
+    "Czech Republic": "捷克",
+    "Bosnia and Herzegovina": "波黑",
+    "Paraguay": "巴拉圭",
+    "Qatar": "卡塔尔",
+    "Haiti": "海地",
+    "Turkey": "土耳其"
   };
   return dict[enName] || enName;
 }
+
+// 带国旗 HTML 标签的团队翻译函数，用于 innerHTML 渲染
+function translateTeamName(enName) {
+  const flagHtml = getTeamFlagHtml(enName);
+  const cnName = translateTeamNameText(enName);
+  if (!flagHtml) return cnName;
+  return `${flagHtml}${cnName}`;
+}
+
 
 // 页面加载完毕后默认初始化
 document.addEventListener('DOMContentLoaded', () => {

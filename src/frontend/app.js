@@ -83,14 +83,23 @@ async function loadMatches(skipAutoSelect = false) {
           item.style.boxShadow = "0 0 8px rgba(0, 255, 136, 0.3)";
         }
 
+        const checkboxHtml = m.status === "FT"
+          ? `<div style="width: 15px; height: 15px; display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 11px; flex-shrink: 0;" title="已完赛，不可串关">🔒</div>`
+          : `<input type="checkbox" class="match-select-chk" data-match-id="${m.id}" style="cursor: pointer; width: 15px; height: 15px; accent-color: var(--neon-purple); flex-shrink: 0;" onclick="event.stopPropagation(); onMatchCheckChange();">`;
+
         item.innerHTML = `
-          <div style="display: flex; justify-content: space-between; font-weight: 600;">
-            <span>${translateTeamName(m.homeTeam)} vs ${translateTeamName(m.awayTeam)}</span>
-            <span class="match-score-text" style="color: ${scoreColor};">${m.homeScore} - ${m.awayScore}</span>
-          </div>
-          <div class="match-status-text" style="display: flex; justify-content: space-between; font-size: 11px; ${subTextColorStyle} margin-top: 4px;">
-            <span>${m.venue}</span>
-            <span>${matchTime} | ${statusText}</span>
+          <div style="display: flex; align-items: center; gap: 10px; width: 100%;">
+            ${checkboxHtml}
+            <div style="flex: 1; min-width: 0;">
+              <div style="display: flex; justify-content: space-between; font-weight: 600;">
+                <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${translateTeamName(m.homeTeam)} vs ${translateTeamName(m.awayTeam)}</span>
+                <span class="match-score-text" style="color: ${scoreColor}; flex-shrink: 0; margin-left: 8px;">${m.homeScore} - ${m.awayScore}</span>
+              </div>
+              <div class="match-status-text" style="display: flex; justify-content: space-between; font-size: 11px; ${subTextColorStyle} margin-top: 4px;">
+                <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 4px;">${m.venue}</span>
+                <span style="flex-shrink: 0;">${matchTime} | ${statusText}</span>
+              </div>
+            </div>
           </div>
         `;
         item.onclick = () => selectMatch(m.id, item);
@@ -151,7 +160,25 @@ async function selectMatch(matchID, element) {
 
   const teamSpan = element.querySelector("div span");
   if (teamSpan) {
-    document.getElementById("current-match-title").innerText = teamSpan.innerText;
+    document.getElementById("current-match-title").innerHTML = teamSpan.innerHTML;
+  }
+  
+  // 切换比赛时立刻展示 Loading 态，清除上一场的残留数据以防幻觉
+  const predDom = document.getElementById("prediction-result");
+  const rankBar = document.getElementById("match-h2h-rank-bar");
+  if (rankBar) {
+    rankBar.style.display = "none";
+    rankBar.innerHTML = "";
+  }
+  if (predDom) {
+    predDom.style.display = "block";
+    predDom.innerHTML = `
+      <div style="background: rgba(136,0,255,0.04); border: 1px dashed var(--neon-purple); padding: 15px; border-radius: 8px; text-align: center; color: var(--neon-purple); font-weight: 600; font-size: 12px;">
+        <span style="display:inline-block; width:12px; height:12px; border:2px solid var(--neon-purple); border-top-color:transparent; border-radius:50%; animation: spin 1s linear infinite; margin-right:6px; vertical-align: middle;"></span>
+        量化精算模型推演中，请稍候...
+      </div>
+      <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
+    `;
   }
   
   // 异步加载官方竞彩赔率并回填
@@ -173,6 +200,19 @@ document.getElementById("predict-btn").onclick = async () => {
   const btn = document.getElementById("predict-btn");
   btn.innerText = "量化管道推演中...";
   btn.disabled = true;
+
+  // 手动触发时展示 Loading 态，并特别标明大模型修正中
+  const predDom = document.getElementById("prediction-result");
+  if (predDom) {
+    predDom.style.display = "block";
+    predDom.innerHTML = `
+      <div style="background: rgba(136,0,255,0.04); border: 1px dashed var(--neon-purple); padding: 15px; border-radius: 8px; text-align: center; color: var(--neon-purple); font-weight: 600; font-size: 12px;">
+        <span style="display:inline-block; width:12px; height:12px; border:2px solid var(--neon-purple); border-top-color:transparent; border-radius:50%; animation: spin 1s linear infinite; margin-right:6px; vertical-align: middle;"></span>
+        大模型偏置修正与精算推演中，请稍候...
+      </div>
+      <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
+    `;
+  }
 
   try {
     const res = await fetch(`${API_BASE}/predict`, {
@@ -198,6 +238,30 @@ document.getElementById("predict-btn").onclick = async () => {
 function renderPredictionResult(report) {
   const dom = document.getElementById("prediction-result");
   dom.style.display = "block";
+
+  // 渲染历史 H2H 交锋数据与国际量化实力排名横条
+  const rankBar = document.getElementById("match-h2h-rank-bar");
+  if (rankBar) {
+    if (report.homeRank && report.awayRank) {
+      let h2hHtml = "";
+      if (report.h2h && report.h2h.totalMatches > 0) {
+        const matchInfo = matchesMap[report.matchId];
+        const homeCn = matchInfo ? translateTeamNameText(matchInfo.homeTeam) : "主队";
+        const awayCn = matchInfo ? translateTeamNameText(matchInfo.awayTeam) : "客队";
+        h2hHtml = `<span style="color: var(--neon-purple); font-weight: 800; text-shadow: 0 0 8px rgba(136, 0, 255, 0.3);">${report.h2h.homeWins}（${homeCn}胜） ${report.h2h.draws}（平） ${report.h2h.awayWins}（${awayCn}胜）</span>`;
+      } else {
+        h2hHtml = `<span style="color: var(--text-muted); font-style: italic;">[无历史交锋记录]</span>`;
+      }
+      rankBar.innerHTML = `
+        <span>实力排名: <strong style="color: var(--neon-green);">${report.homeRank}</strong></span>
+        ${h2hHtml}
+        <span>实力排名: <strong style="color: var(--neon-green);">${report.awayRank}</strong></span>
+      `;
+      rankBar.style.display = "flex";
+    } else {
+      rankBar.style.display = "none";
+    }
+  }
   
   // 找出最可能比分 (概率前三)
   const sortedMatrix = [...report.scoreMatrix].sort((a,b) => b.prob - a.prob).slice(0, 3);
@@ -292,9 +356,39 @@ document.addEventListener("DOMContentLoaded", () => {
   setInterval(runArbitrageScanner, 10000); // 10秒定时轮询套利警报
   setInterval(runOddsShiftsTracker, 5000); // 5秒定时更新全球赔率偏移
   runArbitrageScanner();
-  startCountdownTimer(); // 开启全自动倒计时精算流
   setupSSE(); // 订阅比分即时推送
+  startCountdownTimer(); // 开启全自动倒计时精算流
 
+  // 一键收益复盘按钮绑定
+  const settleBtn = document.getElementById("lottery-settle-btn");
+  if (settleBtn) {
+    settleBtn.onclick = async () => {
+      settleBtn.disabled = true;
+      const originalText = settleBtn.innerHTML;
+      settleBtn.innerHTML = "⏳ 复盘中...";
+      try {
+        const res = await fetch(`${API_BASE}/lottery/settle`, { method: "POST" });
+        const data = await res.json();
+        alert(`🎉 赛后复盘完成！共结算了 ${data.settled || 0} 个方案。`);
+        // 重新刷新体彩面板 & 量化复盘精度看板
+        await renderLotteryPanel();
+        await loadBacktestHistory();
+      } catch (err) {
+        alert("复盘结算失败: " + err);
+      } finally {
+        settleBtn.disabled = false;
+        settleBtn.innerHTML = originalText;
+      }
+    };
+  }
+
+  // 绑定过关方式切换事件，实时刷新子选项
+  document.querySelectorAll('input[name="parlay-mode"]').forEach(el => {
+    el.addEventListener('change', () => {
+      const chks = document.querySelectorAll(".match-select-chk:checked");
+      updateParlayOptions(chks.length);
+    });
+  });
 });
 
 // 全自动倒计时精算流
@@ -352,16 +446,22 @@ async function autoFetchAndCalculate() {
     const resNews = await fetch(`${API_BASE}/news?matchId=${currentMatchID}`);
     const articles = await resNews.json();
     
-    // 挑选前 3 篇真实资讯进行合并，作为外围大模型定性偏置的上下文
-    const combinedIntel = articles.slice(0, 3).map(art => `${art.title} —— ${art.summary}`).join("\n");
-    document.getElementById("qualitative-input").value = combinedIntel;
+    // 挑选前 3 篇真实资讯并合并，作为外围大模型定性偏置的上下文
+    const topArticles = articles.slice(0, 3);
+    const translatedParts = [];
+    for (let art of topArticles) {
+      translatedParts.push(`【${art.sourceSite}】${art.title} —— ${art.summary}`);
+    }
+    const displayIntel = translatedParts.join("\n");
+
+    document.getElementById("qualitative-input").value = displayIntel;
     document.getElementById("use-llm-chk").checked = true;
 
     // 2. 自动触发双变量泊松估值
     const resPredict = await fetch(`${API_BASE}/predict`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ matchId: currentMatchID, info: combinedIntel, useLLM: true })
+      body: JSON.stringify({ matchId: currentMatchID, info: displayIntel, useLLM: true })
     });
     const report = await resPredict.json();
     currentPredictions = report;
@@ -468,44 +568,60 @@ async function loadNews() {
       return;
     }
 
-    articles.forEach(art => {
+    articles.forEach((art, idx) => {
       const dateStr = new Date(art.time).toLocaleString('zh-CN', { hour: '2-digit', minute: '2-digit' });
       const item = document.createElement("div");
       item.style = "background: rgba(255,255,255,0.02); border: 1px solid var(--panel-border); border-radius: 8px; padding: 8px; display: flex; flex-direction: column; gap: 4px;";
+      
       item.innerHTML = `
         <div style="font-weight: 600; line-height: 1.3;">
-          <a href="${art.sourceUrl}" target="_blank" style="color: var(--neon-purple); text-decoration: none; font-size:11px;">
+          <a href="${art.sourceUrl}" target="_blank" style="color: var(--neon-purple); text-decoration: none; font-size:11px;" class="news-title" data-raw="${art.title}">
             🔗 ${art.title}
           </a>
         </div>
-        <div style="color: var(--text-muted); font-size: 10px; line-height: 1.4;">
+        <div style="color: var(--text-muted); font-size: 10px; line-height: 1.4;" class="news-summary" data-raw="${art.summary}">
           ${art.summary}
         </div>
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
-          <span style="font-size: 9px; color: var(--text-muted);">${art.sourceSite} | ${dateStr}</span>
-          <span style="background: rgba(136,0,255,0.1); border: 1px solid var(--neon-purple); border-radius: 4px; padding: 1px 6px; color: var(--text-muted); font-size: 8px; font-weight: 600;">已自动导入</span>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px; font-size: 9px; color: var(--text-muted);">
+          <span>${art.sourceSite} | ${dateStr}</span>
         </div>
       `;
       listDom.appendChild(item);
     });
 
-    // 自动将最新的前 3 条真实情报，实时更新到大模型定性偏置修正输入框中，并默认开启修正开关
-    if (articles.length > 0) {
-      const topArticles = articles.slice(0, 3);
-      const combinedIntel = topArticles.map(art => `【${art.sourceSite}】${art.title} - ${art.summary}`).join("\n");
-      const inputDom = document.getElementById("qualitative-input");
-      if (inputDom) {
-        inputDom.value = combinedIntel;
-      }
-      const useLLMChk = document.getElementById("use-llm-chk");
-      if (useLLMChk) {
-        useLLMChk.checked = true;
-      }
+    // 渲染新闻完毕后，直接拼装前3条新闻到大模型输入框内
+    updateQualitativeInputFromArticles(articles);
+
+    // 默认点亮大模型定性偏置修正开关
+    const useLLMChk = document.getElementById("use-llm-chk");
+    if (useLLMChk) {
+      useLLMChk.checked = true;
     }
+
   } catch (err) {
     console.error("加载情报新闻失败:", err);
     listDom.innerHTML = `<div style="color: #ff4a4a; font-size: 10px; padding: 10px; text-align: center;">⚠️ 实时情报加载失败 (请检查网络链接)</div>`;
   }
+}
+
+
+
+// 防抖拼装前 3 篇已翻译的中文情报更新至 qualitative-input 文本框
+let updateInputTimeout = null;
+function updateQualitativeInputFromArticles(allArticles) {
+  if (updateInputTimeout) clearTimeout(updateInputTimeout);
+  updateInputTimeout = setTimeout(() => {
+    const topArticles = allArticles.slice(0, 3);
+    const translatedParts = [];
+    for (let art of topArticles) {
+      translatedParts.push(`【${art.sourceSite}】${art.title} —— ${art.summary}`);
+    }
+    const combinedIntel = translatedParts.join("\n");
+    const inputDom = document.getElementById("qualitative-input");
+    if (inputDom) {
+      inputDom.value = combinedIntel;
+    }
+  }, 100);
 }
 
 let lastLotteryData = null;
@@ -782,3 +898,404 @@ function setupSSE() {
     console.error("[SSE] 连接异常，尝试重新连接:", err);
   };
 }
+
+// 14. 混合过关前端勾选与生成精算推荐交互
+function onMatchCheckChange() {
+  const chks = document.querySelectorAll(".match-select-chk:checked");
+  const count = chks.length;
+  document.getElementById("checked-matches-count").innerText = count;
+  const btn = document.getElementById("generate-parlay-btn");
+  if (count >= 2) {
+    btn.disabled = false;
+    btn.style.background = "rgba(136,0,255,0.18)";
+    btn.style.color = "var(--neon-green)";
+    btn.style.borderColor = "var(--neon-green)";
+    btn.style.cursor = "pointer";
+  } else {
+    btn.disabled = true;
+    btn.style.background = "rgba(136,0,255,0.08)";
+    btn.style.color = "var(--neon-purple)";
+    btn.style.borderColor = "var(--neon-purple)";
+    btn.style.cursor = "not-allowed";
+  }
+  updateParlayOptions(count);
+}
+
+function updateParlayOptions(count) {
+  const subDiv = document.getElementById("parlay-sub-options");
+  if (count < 2) {
+    subDiv.innerHTML = `<span style="color: var(--text-muted); font-style: italic;">请先在左侧选择至少2场比赛...</span>`;
+    return;
+  }
+  const checkedMode = document.querySelector('input[name="parlay-mode"]:checked');
+  const mode = checkedMode ? checkedMode.value : "m_n";
+  subDiv.innerHTML = "";
+
+  if (mode === "m_n") {
+    let opts = [];
+    if (count === 2) {
+      opts = [
+        { label: "2串1", value: "2x1", checked: true },
+        { label: "2串3", value: "2x3" }
+      ];
+    } else if (count === 3) {
+      opts = [
+        { label: "3串1", value: "3x1", checked: true },
+        { label: "3串3", value: "3x3" },
+        { label: "3串4", value: "3x4" },
+        { label: "3串7", value: "3x7" }
+      ];
+    } else if (count === 4) {
+      opts = [
+        { label: "4串1", value: "4x1" },
+        { label: "4串4", value: "4x4", checked: true },
+        { label: "4串5", value: "4x5" },
+        { label: "4串6", value: "4x6" },
+        { label: "4串11", value: "4x11" }
+      ];
+    } else if (count === 5) {
+      opts = [
+        { label: "5串1", value: "5x1", checked: true },
+        { label: "5串5", value: "5x5" },
+        { label: "5串6", value: "5x6" },
+        { label: "5串10", value: "5x10" },
+        { label: "5串16", value: "5x16" },
+        { label: "5串20", value: "5x20" },
+        { label: "5串26", value: "5x26" }
+      ];
+    } else {
+      opts = [
+        { label: `${count}串1`, value: `${count}x1`, checked: true },
+        { label: `${count}串6`, value: `${count}x6` },
+        { label: `${count}串7`, value: `${count}x7` },
+        { label: `${count}串15`, value: `${count}x15` },
+        { label: `${count}串20`, value: `${count}x20` },
+        { label: `${count}串22`, value: `${count}x22` },
+        { label: `${count}串35`, value: `${count}x35` },
+        { label: `${count}串50`, value: `${count}x50` },
+        { label: `${count}串57`, value: `${count}x57` }
+      ];
+    }
+    opts.forEach(opt => {
+      const checkedAttr = opt.checked ? "checked" : "";
+      subDiv.innerHTML += `
+        <label style="display: inline-flex; align-items: center; gap: 3px; cursor: pointer; color: white;">
+          <input type="radio" name="parlay-sub-opt" value="${opt.value}" ${checkedAttr} style="accent-color: var(--neon-green); cursor: pointer;"> ${opt.label}
+        </label>
+      `;
+    });
+  } else {
+    for (let i = 2; i <= count; i++) {
+      const checkedAttr = i === count ? "checked" : "";
+      subDiv.innerHTML += `
+        <label style="display: inline-flex; align-items: center; gap: 3px; cursor: pointer; color: white;">
+          <input type="checkbox" name="parlay-sub-opt" value="${i}" ${checkedAttr} style="accent-color: var(--neon-green); cursor: pointer;"> ${i}串1
+        </label>
+      `;
+    }
+  }
+}
+
+document.getElementById("generate-parlay-btn").onclick = async () => {
+  const chks = document.querySelectorAll(".match-select-chk:checked");
+  const matchIds = Array.from(chks).map(el => el.dataset.matchId);
+  if (matchIds.length < 2) return;
+
+  const checkedMode = document.querySelector('input[name="parlay-mode"]:checked');
+  const parlayMode = checkedMode ? checkedMode.value : "m_n";
+  const subOpts = Array.from(document.querySelectorAll('input[name="parlay-sub-opt"]:checked')).map(el => el.value);
+
+  if (subOpts.length === 0) {
+    alert("请至少勾选一个具体的过关选项！");
+    return;
+  }
+
+  const resultDom = document.getElementById("parlay-result");
+  const btn = document.getElementById("generate-parlay-btn");
+  const oldText = btn.innerText;
+  btn.innerText = "精算中...";
+  btn.disabled = true;
+
+  resultDom.innerHTML = `<div style="text-align:center; padding:20px; color:var(--neon-purple); font-size:12px;">
+    <span style="display:inline-block; width:12px; height:12px; border:2px solid var(--neon-purple); border-top-color:transparent; border-radius:50%; animation: spin 1s linear infinite; margin-right:6px; vertical-align: middle;"></span>
+    过关模型五套方案精算中，请稍候...
+  </div>`;
+
+  try {
+    const res = await fetch(`${API_BASE}/parlay/recommend`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ 
+        matchIds,
+        parlayMode,
+        parlayOptions: subOpts
+      })
+    });
+    const data = await res.json();
+    if (data.error) {
+      resultDom.innerHTML = `<div style="color:#ff4a4a; padding:10px; font-size:11px;">❌ 计算失败: ${data.error}</div>`;
+      btn.innerText = oldText;
+      btn.disabled = false;
+      return;
+    }
+
+    // 更新侧边栏的小字简略版，增加重新查看弹窗的按钮
+    resultDom.innerHTML = `
+      <div style="text-align:center; padding:10px 0; display:flex; flex-direction:column; align-items:center; gap:8px;">
+        <span style="color:var(--neon-green); font-weight:600; font-size:11.5px;">🎉 精算完成！方案已在弹窗呈现。</span>
+        <button id="reopen-parlay-modal-btn" style="background: rgba(0, 255, 136, 0.12); border: 1px solid var(--neon-green); border-radius: 6px; color: var(--neon-green); padding: 5px 12px; font-size: 11px; cursor: pointer; font-weight: 600; transition: all 0.2s; outline: none; box-shadow: 0 2px 8px rgba(0, 255, 136, 0.15);">
+          👁️ 重新打开结果弹窗
+        </button>
+      </div>
+    `;
+    
+    const reopenBtn = document.getElementById("reopen-parlay-modal-btn");
+    reopenBtn.onclick = () => {
+      document.getElementById("parlay-modal").style.display = "flex";
+    };
+    reopenBtn.onmouseover = () => {
+      reopenBtn.style.background = "rgba(0, 255, 136, 0.25)";
+      reopenBtn.style.boxShadow = "0 4px 12px rgba(0, 255, 136, 0.35)";
+    };
+    reopenBtn.onmouseout = () => {
+      reopenBtn.style.background = "rgba(0, 255, 136, 0.12)";
+      reopenBtn.style.boxShadow = "0 2px 8px rgba(0, 255, 136, 0.15)";
+    };
+
+    btn.innerText = oldText;
+    btn.disabled = false;
+
+    // 弹窗数据灌入
+    const totalSelected = matchIds.length;
+    const activeParlayCount = data.recommended ? data.recommended.length : 0;
+    const excludedCount = totalSelected - activeParlayCount;
+
+    let descHtml = `系统已为您对所勾选的场次完成 <strong>${totalSelected}</strong> 场比赛的精算。针对中国体彩官方五大玩法（胜平负、让球、半全场、总进球、比分），我们已最大期望价值（EV）进行了科学组合：`;
+    
+    // 过滤出含有 ⚠️ 的软风险预警
+    const softWarnings = data.excluded ? data.excluded.filter(ex => 
+      ex.matchId !== "had" && 
+      ex.matchId !== "hhad" && 
+      ex.matchId !== "hafu" && 
+      ex.matchId !== "ttg" && 
+      ex.matchId !== "crs" && 
+      ex.reason && ex.reason.includes("⚠️")
+    ) : [];
+
+    if (softWarnings.length > 0) {
+      let warningDetailHtml = "";
+      softWarnings.forEach(w => {
+         warningDetailHtml += `<li style="margin-bottom:2px;"><strong>${w.homeTeam} vs ${w.awayTeam}</strong>: ${w.reason}</li>`;
+      });
+      descHtml = `
+        <div style="background: rgba(255, 183, 0, 0.08); border: 1px solid rgba(255, 183, 0, 0.25); border-radius: 8px; padding: 10px; margin-bottom: 12px; color: #ffb700; font-size: 11px; line-height: 1.5;">
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 5px;">
+            <span style="font-size:16px;">⚠️</span>
+            <strong style="color: #ffb700;">智能量化防雷风险提示：</strong>
+          </div>
+          <ul style="margin: 0; padding-left: 18px; line-height: 1.4;">
+            ${warningDetailHtml}
+          </ul>
+          <span style="font-size:10px; color: var(--text-muted); display:block; margin-top:5px;">💡 温馨提示：系统已尊重您的决定，将上述赛事完整纳入过关组合，请在投注时留意潜在冷门风险。</span>
+        </div>
+        ${descHtml}
+      `;
+    }
+    document.querySelector(".modal-desc").innerHTML = descHtml;
+
+    const schemesList = document.getElementById("modal-schemes-list");
+    schemesList.innerHTML = "";
+
+    if (!data.parlays || data.parlays.length === 0) {
+      let exclHtml = "";
+      if (data.excluded && data.excluded.length > 0) {
+        data.excluded.forEach(ex => {
+          if (ex.matchId !== "had" && ex.matchId !== "hhad" && ex.matchId !== "hafu" && ex.matchId !== "ttg" && ex.matchId !== "crs") {
+            exclHtml += `
+              <div style="background: rgba(255, 74, 74, 0.08); border: 1px solid rgba(255, 74, 74, 0.2); border-radius: 6px; padding: 8px; margin-bottom: 6px; color: #ff9d9d; font-size: 11px; display: flex; flex-direction: column; gap: 3px;">
+                <div style="display:flex; justify-content:space-between; font-weight:600;">
+                  <span>⚠️ 拦截场次: ${ex.homeTeam} vs ${ex.awayTeam}</span>
+                </div>
+                <div style="color: var(--text-muted); font-size: 10px;">拦截原因: ${ex.reason}</div>
+              </div>
+            `;
+          }
+        });
+      }
+      schemesList.innerHTML = `
+        <div style="grid-column: 1 / -1; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:25px 10px; text-align:center; background: rgba(0,0,0,0.2); border-radius: 12px; border: 1px dashed var(--panel-border); width: 100%;">
+          <span style="font-size: 28px; margin-bottom: 8px;">🛡️</span>
+          <h3 style="color: #ff4a4a; margin-bottom: 6px; font-size: 13px; font-weight:700;">智能量化风控防御系统已拦截</h3>
+          <p style="font-size:11px; color: var(--text-muted); max-width: 480px; line-height: 1.5; margin-bottom: 12px; padding: 0 10px;">
+            当前所勾选的比赛存在高危偏置属性（如天气突变、情报利空、均势平局或历史天敌克制等），已被防御机制排除。剩余未被排出的有效场次不足 2 场，故无法生成过关推荐方案：
+          </p>
+          <div style="width: 100%; text-align: left; max-height: 140px; overflow-y: auto; padding: 0 10px; box-sizing: border-box;">
+            ${exclHtml || '<div style="color:var(--text-muted); text-align:center; font-size:11px;">暂无排除明细</div>'}
+          </div>
+          <p style="font-size:11px; color: var(--neon-purple); margin-top: 12px; font-weight:600;">
+            💡 操作提示: 请重新选择其他中低风险的未开赛场次，再次发起精算。
+          </p>
+        </div>
+      `;
+      document.getElementById("copy-parlay-summary-btn").disabled = true;
+      document.getElementById("copy-parlay-summary-btn").style.opacity = "0.5";
+      document.getElementById("copy-parlay-summary-btn").style.cursor = "not-allowed";
+      document.getElementById("parlay-modal").style.display = "flex";
+      return;
+    }
+
+    document.getElementById("copy-parlay-summary-btn").disabled = false;
+    document.getElementById("copy-parlay-summary-btn").style.opacity = "1";
+    document.getElementById("copy-parlay-summary-btn").style.cursor = "pointer";
+
+    // 寻找概率最高的一套方案作为“主推”
+    let maxProb = -1;
+    let bestIndex = 0;
+    data.parlays.forEach((p, idx) => {
+      if (p.comboProb > maxProb) {
+        maxProb = p.comboProb;
+        bestIndex = idx;
+      }
+    });
+
+    data.parlays.forEach((p, idx) => {
+      const isBest = idx === bestIndex;
+      const cardClass = isBest ? "scheme-card best-pick" : "scheme-card";
+      const badgeText = isBest ? "🔥 胜率主推" : "📊 玩法方案";
+
+      // 提取本玩法下串关单场明细（借助之前在 Excluded 里面转存的信息）
+      let detailDesc = "单场选择暂缺";
+      if (data.excluded && data.excluded.length > 0) {
+        const matchingDetail = data.excluded.find(e => e.homeTeam === p.parlayType);
+        if (matchingDetail) {
+          detailDesc = matchingDetail.awayTeam;
+        }
+      }
+
+      // 计算环形图圆周 2 * PI * r = 2 * 3.14159 * 38 = 238.76
+      const radius = 38;
+      const circ = 2 * Math.PI * radius;
+      const offset = circ - (p.comboProb * circ);
+
+      const roiColor = p.totalEv >= 0 ? "var(--neon-green)" : "#ff4a4a";
+      const roiSign = p.totalEv >= 0 ? "+" : "";
+
+      schemesList.innerHTML += `
+        <div class="${cardClass}">
+          <div class="scheme-header">
+            <span style="font-size:13px; font-weight:800; color:white;">${p.parlayType}</span>
+            <span class="scheme-badge">${badgeText}</span>
+          </div>
+          
+          <div class="scheme-prob-ring">
+            <svg class="prob-circle-svg">
+              <circle class="prob-circle-bg" cx="45" cy="45" r="${radius}"></circle>
+              <circle class="prob-circle-val" cx="45" cy="45" r="${radius}" 
+                style="stroke-dasharray: ${circ}; stroke-dashoffset: ${offset};"></circle>
+            </svg>
+            <span class="prob-text">${(p.comboProb * 100).toFixed(1)}%</span>
+          </div>
+
+          <div class="scheme-meta">
+            <div class="scheme-payout-row">
+              <span style="color:var(--text-muted);">过关总赔率</span>
+              <strong style="color:var(--neon-green);">@${p.comboOdds.toFixed(2)}</strong>
+            </div>
+            <div class="scheme-payout-row">
+              <span style="color:var(--text-muted);">总投注方案</span>
+              <strong style="color:white;">${p.winsCount || 1} 注 (${(p.cost || 2.0).toFixed(0)} 元)</strong>
+            </div>
+            <div class="scheme-payout-row">
+              <span style="color:var(--text-muted);">极限最高奖金</span>
+              <strong style="color:#ffb700;">${p.singleTicketPayout.toFixed(2)} 元</strong>
+            </div>
+            <div class="scheme-payout-row">
+              <span style="color:var(--text-muted);">期望 ROI</span>
+              <strong style="color:${roiColor};">${roiSign}${(p.totalEv * 100).toFixed(1)}%</strong>
+            </div>
+            <div class="scheme-payout-row">
+              <span style="color:var(--text-muted);">建议配资比例</span>
+              <strong style="color:white;">${(p.kellyStake * 100).toFixed(1)}%</strong>
+            </div>
+          </div>
+
+          <div class="scheme-detail-desc">
+            <strong>方案细则:</strong><br>${detailDesc}
+          </div>
+        </div>
+      `;
+    });
+
+    // 打开弹窗
+    document.getElementById("parlay-modal").style.display = "flex";
+
+    // 绑定复制按钮事件
+    document.getElementById("copy-parlay-summary-btn").onclick = () => {
+      let copyText = `🏆 FIFA 2026 智能过关方案精算推荐 (${matchIds.length}场串关):\n\n`;
+      data.parlays.forEach(p => {
+        let detailDesc = "单场选择暂缺";
+        if (data.excluded && data.excluded.length > 0) {
+          const matchingDetail = data.excluded.find(e => e.homeTeam === p.parlayType);
+          if (matchingDetail) {
+            detailDesc = matchingDetail.awayTeam;
+          }
+        }
+        // 将 HTML 中的 <br> 替换为换行和缩进，便于粘贴阅读
+        const textDesc = detailDesc.replace(/<br\s*\/?>/gi, "\n  ");
+        copyText += `【${p.parlayType}方案】\n`;
+        copyText += `- 单场明细:\n  ${textDesc}\n`;
+        copyText += `- 组合总赔率: @${p.comboOdds.toFixed(2)}\n`;
+        copyText += `- 投注详情: ${p.winsCount || 1}注 (共${(p.cost || 2.0).toFixed(0)}元)\n`;
+        copyText += `- 预估正确率: ${(p.comboProb * 100).toFixed(1)}%\n`;
+        copyText += `- 全对极限奖金: ${p.singleTicketPayout.toFixed(2)}元\n`;
+        copyText += `- 期望 ROI: ${(p.totalEv * 100).toFixed(1)}%\n\n`;
+      });
+      copyText += `* 数据基于去抽水 Shin 氏算法与 Dixon-Coles 泊松仿真演算，投注有风险，量化仅供参考。`;
+      navigator.clipboard.writeText(copyText).then(() => {
+        alert("🎉 五套过关方案文本已成功复制到剪贴板！");
+      }).catch(err => {
+        alert("复制失败: " + err);
+      });
+    };
+
+  } catch (err) {
+    resultDom.innerHTML = `<div style="color:#ff4a4a; padding:10px; font-size:11px;">❌ 网络异常: ${err.message}</div>`;
+    btn.innerText = oldText;
+    btn.disabled = false;
+  }
+};
+
+// 弹窗关闭事件绑定
+document.getElementById("close-modal-btn").onclick = () => {
+  document.getElementById("parlay-modal").style.display = "none";
+};
+window.onclick = (event) => {
+  const modal = document.getElementById("parlay-modal");
+  if (event.target === modal) {
+    modal.style.display = "none";
+  }
+};
+
+// 全自动端到端（E2E）精算测试调试钩子
+window.addEventListener("DOMContentLoaded", () => {
+  if (window.location.search.includes("auto_verify=true")) {
+    setTimeout(() => {
+      const chks = document.querySelectorAll(".match-select-chk");
+      let count = 0;
+      chks.forEach(chk => {
+        if (count < 4) {
+          chk.checked = true;
+          count++;
+        }
+      });
+      onMatchCheckChange();
+      setTimeout(() => {
+        const btn = document.getElementById("generate-parlay-btn");
+        if (btn && !btn.disabled) {
+          btn.click();
+        }
+      }, 500);
+    }, 2500); // 等待2.5秒以使赛程拉取完毕
+  }
+});
+

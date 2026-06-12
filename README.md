@@ -44,8 +44,9 @@ graph TD
 
 > [!TIP]
 > **2. 混合型定性偏置修正 (AI Parameter Refiner)**
-> - 自动提取 SQLite 中持久化的实时战术、天气、关键伤停情报。
+> - 自动提取 SQLite 中持久化的实时战术、天气、关键伤停情报（原生英文展示，零算力开销）。
 > - 联动本地 **Ollama 实例** 智能解算定量模型偏置量，融合“定量数学”与“定性推理”。
+> - **算力优化策略**：已彻底剥离外围情报大模型翻译功能，并释放了轻量级的 `qwen3:8b` 模型。本地 Ollama 专职且常驻加载高精度 `qwen3.6:35b-q4` 大模型，避免了频繁冷启动与切换，彻底消除了显存开销与超时导致的降级隐患。
 
 > [!NOTE]
 > **3. 布莱尔分数自适应反馈进化 (Online Parameter Tuning)**
@@ -70,7 +71,7 @@ graph TD
 
 * **后端 (Backend)**：Go (1.22-alpine) 核心服务 / Gin Web 框架 / 跨平台纯 Go 驱动 SQLite。
 * **算法模型 (Models)**：Dixon-Coles 回归 / 梯度自校准 / Shin 氏去抽水 / 二次规划多臂凯利公式。
-* **大语言模型 (LLM)**：Ollama 容器连通（默认支持 `qwen3.6:35b-q4` 及 Llama 系列）。
+* **大语言模型 (LLM)**：Ollama 容器连通（专精常驻高精度 `qwen3.6:35b-q4`，已彻底下线 8B 级轻量翻译模型，腾退显存）。
 * **前端 (Frontend)**：HTML5 / 原生 CSS3 暗黑霓虹美学 / Vanilla JS (ES6) / ECharts (v5) 可视化。
 
 ---

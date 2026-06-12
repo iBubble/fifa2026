@@ -44,7 +44,7 @@ func TestLiveSyncService(t *testing.T) {
 	_ = db.SaveMatch(m)
 
 	elo, _ := NewEloService("../../../../data/seasons/history_features.json")
-	dc := NewDixonColesService(elo)
+	dc := NewDixonColesService(elo, nil)
 	ollama := ai.NewOllamaService("", "")
 	backtest := NewBacktestService(elo, ollama, dc)
 

@@ -34,6 +34,9 @@ type PredictionReport struct {
 	Under2_5Prob    float64            `json:"under25Prob"` // 小球 (Under 2.5) 概率
 	TacticsAnalysis string             `json:"tacticsAnalysis"`
 	PosterPrompt    string             `json:"posterPrompt"`
+	H2H             *H2HRecord         `json:"h2h"`      // 历史直接交锋记录
+	HomeRank        int                `json:"homeRank"` // 主队实力排名
+	AwayRank        int                `json:"awayRank"` // 客队实力排名
 }
 
 // SimulationResult 世界杯蒙特卡洛 10,000 次推演出的晋级/夺冠期望
@@ -45,4 +48,14 @@ type SimulationResult struct {
 	SemiProb     float64 `json:"semiProb"`     // 4强概率
 	FinalProb    float64 `json:"finalProb"`    // 决赛概率
 	WinnerProb   float64 `json:"winnerProb"`   // 夺冠概率
+}
+
+// H2HRecord 代表两队之间的历史直接交手统计数据
+type H2HRecord struct {
+	TotalMatches int     `json:"totalMatches"`
+	HomeWins     int     `json:"homeWins"`
+	Draws        int     `json:"draws"`
+	AwayWins     int     `json:"awayWins"`
+	AvgHomeGoals float64 `json:"avgHomeGoals"`
+	AvgAwayGoals float64 `json:"avgAwayGoals"`
 }

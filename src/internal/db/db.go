@@ -131,6 +131,57 @@ func createTables() error {
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			FOREIGN KEY (match_id) REFERENCES matches(id)
 		);`,
+
+		`CREATE TABLE IF NOT EXISTS team_api_mappings (
+			team_name TEXT PRIMARY KEY,
+			api_team_id INTEGER NOT NULL,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		);`,
+
+		`CREATE TABLE IF NOT EXISTS h2h_records (
+			team_key TEXT PRIMARY KEY,
+			total_matches INTEGER NOT NULL,
+			team_a_wins INTEGER NOT NULL,
+			draws INTEGER NOT NULL,
+			team_b_wins INTEGER NOT NULL,
+			avg_a_goals REAL NOT NULL,
+			avg_b_goals REAL NOT NULL,
+			last_updated DATETIME DEFAULT CURRENT_TIMESTAMP
+		);`,
+
+		`CREATE TABLE IF NOT EXISTS lottery_plans (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			plan_type TEXT NOT NULL,
+			match_ids TEXT NOT NULL,
+			risk_level TEXT,
+			odds_h REAL,
+			odds_d REAL,
+			odds_a REAL,
+			primary_bet TEXT,
+			primary_odds REAL,
+			primary_amt REAL,
+			hedge_bet TEXT,
+			hedge_odds REAL,
+			hedge_amt REAL,
+			parlay_type TEXT,
+			parlay_mode TEXT,
+			parlay_options TEXT,
+			desc_str TEXT,
+			wins_count INTEGER,
+			cost REAL,
+			single_ticket_payout REAL,
+			combo_odds REAL,
+			combo_prob REAL,
+			total_ev REAL,
+			kelly_stake REAL,
+			tickets_json TEXT,
+			is_settled INTEGER DEFAULT 0,
+			safe_profit REAL DEFAULT 0.0,
+			safe_return REAL DEFAULT 0.0,
+			agg_profit REAL DEFAULT 0.0,
+			agg_return REAL DEFAULT 0.0,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		);`,
 	}
 
 	for _, query := range queries {

@@ -122,11 +122,34 @@ func (s *LotteryService) GenerateSingleAdvice(match models.Match, oddsHome, odds
 		}
 	}
 
-	if maxP < 0.38 || (maxP-minP) < 0.10 || hasNegativeInfo {
+	// 历史交锋极端天敌克制风控排除
+	hasClashRisk := false
+	var clashReason string
+	if report != nil && report.H2H != nil && report.H2H.TotalMatches >= 3 {
+		h2h := report.H2H
+		homeWinRate := float64(h2h.HomeWins) / float64(h2h.TotalMatches)
+		awayWinRate := float64(h2h.AwayWins) / float64(h2h.TotalMatches)
+
+		// 判定潜在的主推倾向
+		tempPrimaryWinHome := winH >= draw && winH >= winA
+		tempPrimaryWinAway := winA >= winH && winA >= draw
+
+		if homeWinRate == 0 && tempPrimaryWinHome {
+			hasClashRisk = true
+			clashReason = fmt.Sprintf("【交手天敌克制拦截】两队历史交锋 %d 次，主队 %s 胜率为 0%%。虽大盘模型偏向主胜，但历史直接交锋天敌属性极强，防范爆冷故安全排除。", h2h.TotalMatches, match.HomeTeam)
+		} else if awayWinRate == 0 && tempPrimaryWinAway {
+			hasClashRisk = true
+			clashReason = fmt.Sprintf("【交手天敌克制拦截】两队历史交锋 %d 次，客队 %s 胜率为 0%%。虽大盘模型偏向客胜，但历史直接交锋天敌属性极强，防范爆冷故安全排除。", h2h.TotalMatches, match.AwayTeam)
+		}
+	}
+
+	if maxP < 0.38 || (maxP-minP) < 0.10 || hasNegativeInfo || hasClashRisk {
 		advice.Status = "EXCLUDED"
 		reason := "【体彩风控拦截】胜平负概率均等，研判有冷门风险，建议排除在串关之外。"
 		if hasNegativeInfo {
 			reason = "【体彩情报风控拦截】大模型研判本场受到伤病/天气/突发事件负面冲击，已进行安全隔离排除。"
+		} else if hasClashRisk {
+			reason = clashReason
 		}
 		advice.Reason = reason
 		return advice

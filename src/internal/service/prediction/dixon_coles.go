@@ -8,12 +8,14 @@ import (
 
 type DixonColesService struct {
 	elo       *EloService
+	apiSports *APISportsService
 	rhoOffset float64
 }
 
-func NewDixonColesService(elo *EloService) *DixonColesService {
+func NewDixonColesService(elo *EloService, apiSports *APISportsService) *DixonColesService {
 	s := &DixonColesService{
 		elo:       elo,
+		apiSports: apiSports,
 		rhoOffset: 0.0,
 	}
 	s.RecalculateRhoOffset()
@@ -39,12 +41,63 @@ func (s *DixonColesService) CalculateParamsWithoutOffset(homeTeam, awayTeam stri
 	eloA := s.elo.GetElo(awayTeam)
 	diff := (eloH - eloA) / 400.0
 
-	// 历史世界杯进球率拟合出的回归模型参数 (指数映射)
-	lambdaH := math.Exp(0.12 + 0.35*diff)
-	lambdaA := math.Exp(-0.12 - 0.35*diff)
+	// 整合历史场均进失球特征 (交战攻防底蕴)
+	featH := s.elo.GetFeature(homeTeam)
+	featA := s.elo.GetFeature(awayTeam)
+
+	// 计算基础进球概率倾向 (几何平均数以平衡两队攻防，除以 1.35 归一化以维持传统比分数学中位数期望)
+	baseH := math.Sqrt(featH.AvgGoalsScored * featA.AvgGoalsConceded) / 1.35
+	baseA := math.Sqrt(featA.AvgGoalsScored * featH.AvgGoalsConceded) / 1.35
+
+	// 融入 api-football 历史直接交锋记录 (H2H) 场均进球数并与模型大盘进球率进行自适应加权混合
+	var h2hDiff float64
+	var hasH2H bool
+	var drawRate float64
+	var totalH2HMatches int
+	if s.apiSports != nil {
+		h2h, err := s.apiSports.GetH2HRecord(homeTeam, awayTeam)
+		if err == nil && h2h.TotalMatches > 0 {
+			hasH2H = true
+			totalH2HMatches = h2h.TotalMatches
+			// 自适应 H2H 权重：交手次数越多，克制权重越高，上限为 30%
+			h2hWeight := math.Min(0.30, float64(h2h.TotalMatches)*0.08)
+			baseH = (1.0-h2hWeight)*baseH + h2hWeight*h2h.AvgHomeGoals
+			baseA = (1.0-h2hWeight)*baseA + h2hWeight*h2h.AvgAwayGoals
+			// 计算双方历史交手胜率差值倾向 (值范围 -1.0 到 1.0)
+			h2hDiff = (float64(h2h.HomeWins) - float64(h2h.AwayWins)) / float64(h2h.TotalMatches)
+			drawRate = float64(h2h.Draws) / float64(h2h.TotalMatches)
+		}
+	}
+
+	// 安全上限与下限约束，防止异常边界值导致数学溢出
+	if baseH <= 0.2 {
+		baseH = 0.2
+	}
+	if baseA <= 0.2 {
+		baseA = 0.2
+	}
+
+	// 最终复合进球期望 Lambda：将基础攻防与实时 Elo 实力差的指数级加权调节相叠加
+	lambdaH := baseH * math.Exp(0.12 + 0.35*diff)
+	lambdaA := baseA * math.Exp(-0.12 - 0.35*diff)
+
+	// 如果存在历史交战统计，继续叠加上 15% 上下浮动的胜率克制修正系数
+	if hasH2H {
+		lambdaH = lambdaH * (1.0 + 0.15*h2hDiff)
+		lambdaA = lambdaA * (1.0 - 0.15*h2hDiff)
+	}
 
 	// 经典平局相关系数初始值
 	rho := -0.08
+	if hasH2H && totalH2HMatches >= 3 {
+		if drawRate >= 0.35 {
+			// 平局倾向强：负向加深 rho，强化 0-0/1-1 概率倾向
+			rho -= 0.10 * drawRate
+		} else if drawRate == 0 {
+			// 无平局倾向：削弱平局因子
+			rho += 0.04
+		}
+	}
 
 	return models.DixonColesParams{
 		LambdaHome: lambdaH,

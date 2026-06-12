@@ -203,3 +203,4 @@ func (s *OllamaService) ReviewPrediction(match models.Match, brierScore float64,
 
 	return rawRes.Choices[0].Message.Content, nil
 }
+

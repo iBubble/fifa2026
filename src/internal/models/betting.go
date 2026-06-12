@@ -94,3 +94,39 @@ type OddsRecord struct {
 	AwayOdds   float64   `json:"awayOdds"`
 	CapturedAt time.Time `json:"capturedAt"`
 }
+
+// LotteryPlan 代表已保存的投注精算方案
+type LotteryPlan struct {
+	ID                 int64     `json:"id"`
+	PlanType           string    `json:"planType"` // "single" 或 "parlay"
+	MatchIDs           string    `json:"matchIds"` // 逗号分隔的比赛ID
+	RiskLevel          string    `json:"riskLevel,omitempty"`
+	OddsH              float64   `json:"oddsH,omitempty"`
+	OddsD              float64   `json:"oddsD,omitempty"`
+	OddsA              float64   `json:"oddsA,omitempty"`
+	PrimaryBet         string    `json:"primaryBet,omitempty"`
+	PrimaryOdds        float64   `json:"primaryOdds,omitempty"`
+	PrimaryAmt         float64   `json:"primaryAmt,omitempty"`
+	HedgeBet           string    `json:"hedgeBet,omitempty"`
+	HedgeOdds          float64   `json:"hedgeOdds,omitempty"`
+	HedgeAmt           float64   `json:"hedgeAmt,omitempty"`
+	ParlayType         string    `json:"parlayType,omitempty"`
+	ParlayMode         string    `json:"parlayMode,omitempty"`
+	ParlayOptions      string    `json:"parlayOptions,omitempty"`
+	DescStr            string    `json:"descStr"`
+	WinsCount          int       `json:"winsCount,omitempty"`
+	Cost               float64   `json:"cost,omitempty"`
+	SingleTicketPayout float64   `json:"singleTicketPayout,omitempty"`
+	ComboOdds          float64   `json:"comboOdds,omitempty"`
+	ComboProb          float64   `json:"comboProb,omitempty"`
+	TotalEV            float64   `json:"totalEv,omitempty"`
+	KellyStake         float64   `json:"kellyStake,omitempty"`
+	TicketsJSON        string    `json:"ticketsJson,omitempty"`
+	IsSettled          int       `json:"isSettled"` // 0: 待结算, 1: 已结算
+	SafeProfit         float64   `json:"safeProfit"`
+	SafeReturn         float64   `json:"safeReturn"`
+	AggProfit          float64   `json:"aggProfit"`
+	AggReturn          float64   `json:"aggReturn"`
+	CreatedAt          time.Time `json:"createdAt"`
+}
+

@@ -5,16 +5,50 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>FIFA 2026 足球量化分析</title>
   <link rel="stylesheet" href="/static/style.css">
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
   <!-- 引入 ECharts CDN 用于渲染复杂的蒙特卡洛与雷达图 -->
   <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
 </head>
 <body>
   <div class="dashboard-grid">
-    <header class="glass-panel" style="height: 55px; display: flex; align-items: center; justify-content: space-between;">
-      <h1 style="font-size: 18px; font-weight: 800; background: linear-gradient(to right, #00ff88, #8800ff); -webkit-background-clip: text; color: transparent;">
-        FIFA 2026 QUANTITATIVE ANALYTICS
-      </h1>
+    <header class="glass-panel" style="height: 55px; display: flex; align-items: center; justify-content: space-between; padding: 0 20px;">
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <!-- 足球竞彩量化精算 SVG LOGO -->
+        <div class="logo-container" style="display: flex; align-items: center; justify-content: center; cursor: pointer;">
+          <svg width="32" height="32" viewBox="0 0 100 100" style="filter: drop-shadow(0 0 6px rgba(0, 255, 136, 0.45)); transition: transform 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);">
+            <defs>
+              <linearGradient id="logo-grad-1" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#00ff88"/>
+                <stop offset="100%" stop-color="#8800ff"/>
+              </linearGradient>
+            </defs>
+            <circle cx="50" cy="50" r="46" fill="none" stroke="url(#logo-grad-1)" stroke-width="3.5" stroke-dasharray="12 6 36 6" opacity="0.85"/>
+            <!-- 竞彩三色彩带绕行线 -->
+            <path d="M 12 50 A 38 38 0 1 1 88 50" fill="none" stroke="#00ff88" stroke-width="4.5" stroke-linecap="round"/>
+            <path d="M 88 50 A 38 38 0 0 1 12 50" fill="none" stroke="#ffb700" stroke-width="4.5" stroke-linecap="round"/>
+            <path d="M 20 50 A 30 30 0 0 1 80 50" fill="none" stroke="#ff4a4a" stroke-width="3" stroke-linecap="round" opacity="0.8"/>
+            <!-- 核心足球主体 -->
+            <circle cx="50" cy="50" r="23" fill="#0b0f17" stroke="white" stroke-width="1.8"/>
+            <polygon points="50,38 61,46 57,59 43,59 39,46" fill="url(#logo-grad-1)"/>
+            <line x1="50" y1="38" x2="50" y2="27" stroke="white" stroke-width="1.5"/>
+            <line x1="61" y1="46" x2="71" y2="43" stroke="white" stroke-width="1.5"/>
+            <line x1="57" y1="59" x2="64" y2="68" stroke="white" stroke-width="1.5"/>
+            <line x1="43" y1="59" x2="36" y2="68" stroke="white" stroke-width="1.5"/>
+            <line x1="39" y1="46" x2="29" y2="43" stroke="white" stroke-width="1.5"/>
+            <!-- 足球边缘细节边面 -->
+            <polygon points="50,27 43,21 57,21" fill="white" opacity="0.4"/>
+            <polygon points="71,43 77,34 81,46" fill="white" opacity="0.4"/>
+            <polygon points="64,68 74,67 67,74" fill="white" opacity="0.4"/>
+            <polygon points="36,68 26,67 33,74" fill="white" opacity="0.4"/>
+            <polygon points="29,43 23,34 19,46" fill="white" opacity="0.4"/>
+          </svg>
+        </div>
+        <h1 style="font-size: 17px; font-weight: 800; background: linear-gradient(to right, #00ff88, #8800ff); -webkit-background-clip: text; color: transparent; margin: 0; display: flex; align-items: center; gap: 8px;">
+          FIFA 2026 QUANTITATIVE ANALYTICS
+          <span style="font-size: 9px; background: rgba(0, 255, 136, 0.12); border: 1px solid rgba(0, 255, 136, 0.25); padding: 1px 6px; border-radius: 4px; color: var(--neon-green); font-weight: bold; letter-spacing: 0.5px; -webkit-background-clip: initial; text-fill-color: initial;">中国竞彩量化精算版</span>
+        </h1>
+      </div>
       <div style="display: flex; align-items: center; gap: 15px; font-size: 13px;">
         <div id="quant-pipeline-countdown" style="background: rgba(136,0,255,0.12); border: 1px solid rgba(136,0,255,0.25); padding: 4px 10px; border-radius: 6px; color: var(--text-main); font-weight: 800; display: flex; align-items: center; gap: 6px; transition: all 0.5s;">
           ⏳ 自动量化精算: <span id="countdown-clock" style="color: var(--neon-green);">10:00</span>
@@ -51,7 +85,7 @@
         </div>
       </div>
 
-      <div class="glass-panel" style="flex: 1; min-height: 200px; display: flex; flex-direction: column; gap: 6px; margin-top: 10px;">
+      <div class="glass-panel" style="flex: 1; min-height: 330px; display: flex; flex-direction: column; gap: 6px; margin-top: 10px;">
         <h3 style="border-left-color: var(--neon-purple);">全球巨头赔率偏移监测</h3>
         <div style="font-size: 10px; color: var(--text-muted); line-height: 1.4; margin-bottom: 4px;">
           实时追踪各大博彩公司赔率偏移走向。点击来源超链接直接跳转真实验证。
@@ -64,14 +98,15 @@
 
     <!-- 中列: 预测面板与蒙特卡洛推演 -->
     <div class="center-col">
-      <div class="glass-panel" style="flex: 2; min-height: 400px; display: flex; flex-direction: column; gap: 10px;">
+      <div class="glass-panel" style="flex: 2; min-height: 480px; display: flex; flex-direction: column; gap: 10px;">
         <h2 id="current-match-title" style="font-size: 26px; font-weight: 800; text-align: center; color: white; margin-bottom: 5px; text-shadow: 0 0 12px rgba(0, 255, 136, 0.4); letter-spacing: 1px;">请在左侧选择一场比赛</h2>
+        <div id="match-h2h-rank-bar" style="font-size: 11px; text-align: center; color: var(--text-muted); margin-top: 5px; margin-bottom: 12px; display: none; background: rgba(255,255,255,0.03); border: 1px solid var(--panel-border); padding: 4px 10px; border-radius: 6px; justify-content: center; gap: 20px; align-items: center; letter-spacing: 0.5px; font-weight: 600;"></div>
         <h3>单场深度预测 & 大模型偏置修正</h3>
         <div style="display: flex; gap: 10px; font-size: 13px; align-items: center;">
           <input type="checkbox" id="use-llm-chk" checked>
           <label for="use-llm-chk" style="color: var(--neon-green); font-weight: 600;">启动本地 Ollama 定性偏置修正 (Qwen/Llama)</label>
         </div>
-        <textarea id="qualitative-input" placeholder="输入突发战术变数（如：墨西哥队前锋骨折缺阵，南非队高空球及防守反击优势擅长逼平）" style="width: 100%; height: 50px; background: rgba(0,0,0,0.2); border: 1px solid var(--panel-border); border-radius: 8px; color: white; padding: 8px; font-size: 12px; resize: none; outline: none;"></textarea>
+        <textarea id="qualitative-input" placeholder="输入突发战术变数（如：墨西哥队前锋骨折缺阵，南非队高空球及防守反击优势擅长逼平）" style="width: 100%; height: 72px; background: rgba(0,0,0,0.2); border: 1px solid var(--panel-border); border-radius: 8px; color: white; padding: 8px; font-size: 12px; resize: none; outline: none;"></textarea>
         <button id="predict-btn" style="width: 100%; height: 32px; background: linear-gradient(135deg, var(--neon-purple), var(--neon-green)); border: none; border-radius: 8px; color: white; font-weight: 800; cursor: pointer; font-size: 13px;">触发双变量泊松估值预测</button>
         
         <div id="prediction-result" style="display: none; font-size: 12px; color: var(--text-muted); flex: 1; overflow-y: auto;">
@@ -79,17 +114,22 @@
         </div>
       </div>
 
-      <div class="glass-panel" style="flex: 1.4; min-height: 310px; display: flex; flex-direction: column; margin-top: 10px;">
-        <h3 style="border-left-color: var(--neon-purple);">赛后量化复盘与预测精度进化</h3>
+      <div class="glass-panel" style="flex: 1.4; min-height: 620px; display: flex; flex-direction: column; margin-top: 10px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+          <h3 style="border-left-color: var(--neon-purple); margin-bottom: 0;">赛后量化复盘与预测精度进化</h3>
+          <button id="lottery-settle-btn" style="background: linear-gradient(135deg, rgba(136,0,255,0.25), rgba(0,255,136,0.25)); border: 1px solid var(--neon-green); border-radius: 6px; color: var(--neon-green); padding: 5px 12px; font-size: 11px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 4px; transition: all 0.2s; outline: none; box-shadow: 0 0 10px rgba(0, 255, 136, 0.15);">
+            🔄 一键收益复盘
+          </button>
+        </div>
         <div style="font-size: 10px; color: var(--text-muted); line-height: 1.4; margin-bottom: 6px;">
           自动跟踪已结算赛事的布莱尔精度得分 (Brier Score，越低越精准) 及 Elo 在线纠偏反馈。
         </div>
-        <div style="display: flex; gap: 15px; flex: 1; min-height: 120px;">
-          <div id="backtest-chart" style="width: 50%; min-height: 120px;"></div>
+        <div style="display: flex; gap: 15px; flex: 1; min-height: 200px;">
+          <div id="backtest-chart" style="width: 50%; min-height: 200px;"></div>
           <div style="width: 50%; display: flex; flex-direction: column; gap: 6px; justify-content: center; font-size: 11px;">
             <div style="background: rgba(136,0,255,0.08); border: 1px solid rgba(136,0,255,0.25); padding: 8px; border-radius: 6px; flex: 1; display: flex; flex-direction: column; gap: 4px;">
               <strong style="color: var(--neon-purple);">最新大模型量化反馈反思:</strong>
-              <p id="backtest-review-text" style="font-style: italic; line-height: 1.4; margin-top: 4px; color: var(--text-main); flex: 1; overflow-y: auto; max-height: 70px;">
+              <p id="backtest-review-text" style="font-style: italic; line-height: 1.4; margin-top: 4px; color: var(--text-main); flex: 1; overflow-y: auto; max-height: 150px;">
                 ● 暂无已结算赛后反思，模型进化演化中...
               </p>
             </div>
@@ -101,7 +141,7 @@
             <span>📖 已完赛复盘历史记录</span>
             <span style="font-size: 10px; color: var(--text-muted); font-weight: normal;">(上下滚动查看)</span>
           </strong>
-          <div id="backtest-history-list" style="max-height: 75px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; font-size: 11px; margin-top: 4px; padding-right: 4px;">
+          <div id="backtest-history-list" style="max-height: 260px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; font-size: 11px; margin-top: 4px; padding-right: 4px;">
             <div style="color: var(--text-muted); text-align: center; padding: 10px;">暂无已结算完赛历史</div>
           </div>
         </div>
@@ -140,11 +180,63 @@
           ● 请在左侧选择比赛，设置参考赔率后生成策略...
         </div>
       </div>
+
+      <div class="glass-panel" style="flex: 1.5; display: flex; flex-direction: column; gap: 8px; margin-top: 10px;">
+        <h3 style="border-left-color: var(--neon-purple);">智能多场混合过关精算</h3>
+        <div style="font-size: 11px; color: var(--text-muted); line-height: 1.4;">
+          勾选左侧多选框以选中比赛，系统自动执行风控过滤，匹配各玩法期望价值（EV）最高项，精算舍入过关总赔率。
+        </div>
+        <!-- 新增过关方式选择面板 -->
+        <div id="parlay-options-panel" style="background: rgba(0,0,0,0.2); border: 1px solid var(--panel-border); border-radius: 6px; padding: 10px; margin-top: 6px; display: flex; flex-direction: column; gap: 8px;">
+          <div style="display: flex; align-items: center; gap: 12px; font-size: 12px; color: var(--text-main);">
+            <span style="font-weight: 600;">过关方式:</span>
+            <label style="display: inline-flex; align-items: center; gap: 4px; cursor: pointer;">
+              <input type="radio" name="parlay-mode" value="m_n" checked style="accent-color: var(--neon-purple); cursor: pointer;"> M串N
+            </label>
+            <label style="display: inline-flex; align-items: center; gap: 4px; cursor: pointer;">
+              <input type="radio" name="parlay-mode" value="free" style="accent-color: var(--neon-purple); cursor: pointer;"> 自由过关
+            </label>
+          </div>
+          <!-- 动态生成的过关具体选项 -->
+          <div id="parlay-sub-options" style="display: flex; flex-wrap: wrap; gap: 10px; font-size: 11px; color: var(--text-muted);">
+            <span style="color: var(--text-muted); font-style: italic;">请先在左侧选择至少2场比赛...</span>
+          </div>
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
+          <span style="font-size: 12px; color: var(--text-main);">已勾选: <span id="checked-matches-count" style="color: var(--neon-green); font-weight: 800;">0</span> 场比赛</span>
+          <button id="generate-parlay-btn" disabled style="background: rgba(136,0,255,0.08); border: 1px solid var(--neon-purple); border-radius: 6px; color: var(--neon-purple); padding: 5px 12px; font-size: 11px; font-weight: 600; cursor: not-allowed; outline: none; transition: all 0.2s;">生成过关购买方案</button>
+        </div>
+        <div id="parlay-result" style="flex: 1; overflow-y: auto; font-size: 12px; line-height: 1.6; color: var(--text-muted); background: rgba(0,0,0,0.15); padding: 12px; border-radius: 8px; min-height: 150px; max-height: 250px;">
+          ● 请在左侧勾选 2 场或以上比赛，然后点击“生成过关购买方案”...
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 全局高级毛玻璃精算方案弹窗 -->
+  <div id="parlay-modal" class="modal-overlay" style="display: none;">
+    <div class="modal-content glass-panel">
+      <div class="modal-header">
+        <h2>🏆 智能多玩法过关精算大师建议</h2>
+        <span class="modal-close" id="close-modal-btn">&times;</span>
+      </div>
+      <div class="modal-body">
+        <p class="modal-desc">
+          系统已为您对所勾选的场次完成 <strong id="modal-matches-text">4</strong> 场比赛的精算。针对中国体彩官方五大玩法（胜平负、让球、半全场、总进球、比分），我们过滤了高危爆冷因素并以最大期望价值（EV）进行了科学组合：
+        </p>
+        <div class="schemes-container" id="modal-schemes-list">
+          <!-- JS 动态灌入五套卡片 -->
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="modal-action-btn" id="copy-parlay-summary-btn">📋 复制五套过关方案文本</button>
+      </div>
     </div>
   </div>
 
   <!-- 引入 logic 交互脚本 -->
   <script src="/static/charts.js"></script>
-  <script src="/static/app.js"></script>
+  <script src="/static/app.js?v=20260612_1852"></script>
 </body>
 </html>
+
