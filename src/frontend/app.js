@@ -635,41 +635,74 @@ document.getElementById("lottery-risk-level").onchange = () => {
 
 async function renderLotteryPanel(recommendData = null) {
   const resultDom = document.getElementById("lottery-result");
-  const riskLevel = document.getElementById("lottery-risk-level").value;
   
   let html = "";
   
   if (recommendData) {
-    const s = recommendData.single;
-    if (s.status === "EXCLUDED") {
+    // 渲染五大核心玩法量化建议
+    if (recommendData.fivePlays && recommendData.fivePlays.length > 0) {
+      html += `
+        <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px;">
+          <strong style="color: var(--neon-green); font-size: 11px; display: block; border-left: 2px solid var(--neon-green); padding-left: 6px;">
+            📊 官方五大玩法量化精算明细
+          </strong>
+      `;
+
+      recommendData.fivePlays.forEach(play => {
+        const safeEvText = play.safe.ev >= 0 ? `+${(play.safe.ev * 100).toFixed(1)}%` : `${(play.safe.ev * 100).toFixed(1)}%`;
+        const aggEvText = play.aggressive.ev >= 0 ? `+${(play.aggressive.ev * 100).toFixed(1)}%` : `${(play.aggressive.ev * 100).toFixed(1)}%`;
+        
+        const safeEvColor = play.safe.ev >= 0 ? "var(--neon-green)" : "#ff4a4a";
+        const aggEvColor = play.aggressive.ev >= 0 ? "var(--neon-green)" : "#ff4a4a";
+
+        html += `
+          <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 6px; padding: 8px; font-size: 11px;">
+            <div style="font-weight: 700; color: #fff; margin-bottom: 6px; display: flex; align-items: center; justify-content: space-between;">
+              <span>🎫 ${play.playName}</span>
+            </div>
+            
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+              <!-- 稳妥型 -->
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span style="color: var(--text-muted); font-size: 10px; display: flex; align-items: center; gap: 4px;">
+                  <span style="background: rgba(0, 255, 136, 0.15); color: var(--neon-green); padding: 1px 4px; border-radius: 3px; font-size: 9px; font-weight: bold;">稳妥型</span>
+                </span>
+                <span style="color: #fff; font-weight: 600;">${play.safe.option} <span style="color: var(--neon-green);">@${play.safe.odds.toFixed(2)}</span></span>
+              </div>
+              <div style="display: flex; justify-content: space-between; color: var(--text-muted); font-size: 9px; padding-left: 4px; margin-bottom: 2px;">
+                <span>几率: <strong style="color: #fff;">${(play.safe.prob * 100).toFixed(1)}%</strong></span>
+                <span>收益率: <strong style="color: ${safeEvColor};">${safeEvText}</strong></span>
+              </div>
+              
+              <!-- 激进型 -->
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span style="color: var(--text-muted); font-size: 10px; display: flex; align-items: center; gap: 4px;">
+                  <span style="background: rgba(136, 0, 255, 0.15); color: var(--neon-purple); padding: 1px 4px; border-radius: 3px; font-size: 9px; font-weight: bold;">激进型</span>
+                </span>
+                <span style="color: #fff; font-weight: 600;">${play.aggressive.option} <span style="color: var(--neon-green);">@${play.aggressive.odds.toFixed(2)}</span></span>
+              </div>
+              <div style="display: flex; justify-content: space-between; color: var(--text-muted); font-size: 9px; padding-left: 4px;">
+                <span>几率: <strong style="color: #fff;">${(play.aggressive.prob * 100).toFixed(1)}%</strong></span>
+                <span>收益率: <strong style="color: ${aggEvColor};">${aggEvText}</strong></span>
+              </div>
+            </div>
+          </div>
+        `;
+      });
+      html += `</div>`;
+    }
+
+    // 单场风控拦截警告（保留以实现完整安全屏障）
+    if (recommendData.single && recommendData.single.status === "EXCLUDED") {
       html += `
         <div style="border-left: 2px solid red; padding-left: 6px; margin-bottom: 8px; color: #ff4a4a;">
           <strong>🚨 单场风控过滤警告</strong><br>
-          ${s.reason}
-        </div>
-      `;
-    } else {
-      let primaryAmt, hedgeAmt, hedgeText;
-      if (riskLevel === "激进") {
-        primaryAmt = 100;
-        hedgeAmt = 0;
-        hedgeText = `<span style="color: var(--text-muted);">已放弃比分防守，100元全仓博取高奖金</span>`;
-      } else {
-        primaryAmt = 80;
-        hedgeAmt = 20;
-        hedgeText = `分配 20%: <span style="color: white; font-weight:600;">${s.hedgeBets[0].outcome} @ ${s.hedgeBets[0].odds.toFixed(2)}</span> (投入 <strong style="color:var(--neon-green);">${hedgeAmt}元</strong>)`;
-      }
-
-      html += `
-        <div style="border-left: 2px solid var(--neon-green); padding-left: 6px; margin-bottom: 8px;">
-          <strong style="color: var(--neon-green); font-size:12px;">🎯 竞彩单场优化方案 (总本金: 100元)</strong><br>
-          主投 80%: <span style="color: white; font-weight:600;">${s.primaryBet} @ ${s.primaryOdds.toFixed(2)}</span> (投入 <strong style="color:var(--neon-green);">${primaryAmt}元</strong>)<br>
-          防守对冲: ${hedgeText}<br>
-          <span style="font-size:10px; color: var(--text-muted); display:block; margin-top:4px; line-height: 1.4;">${s.reason}</span>
+          ${recommendData.single.reason}
         </div>
       `;
     }
 
+    // 2串1 时序对冲混合过关建议
     if (recommendData.parlay) {
       html += `
         <div style="border-left: 2px solid var(--neon-purple); padding-left: 6px; margin-top: 8px; border-top: 1px solid var(--panel-border); padding-top: 6px; margin-bottom: 8px;">
@@ -679,7 +712,7 @@ async function renderLotteryPanel(recommendData = null) {
       `;
     }
   } else {
-    html += `<div style="margin-bottom: 12px;">● 请在左侧选择比赛，设置参考赔率后生成策略...</div>`;
+    html += `<div style="margin-bottom: 12px;">● 请在左侧选择比赛，系统将自动生成五大玩法最佳量化投注建议...</div>`;
   }
 
   // 追加历史投注复盘明细和收益对比

@@ -6,6 +6,8 @@
 - 后端新增 [TranslateArticles](file:///Users/gemini/Projects/Own/FIFA2026/src/internal/service/news/scraper.go#L298-L351) 后台静默汉化协程。自动在后台抓取和预温时将外围资讯翻译为中文落库，消除了前台用户的翻译压力。
 - 前端 [app.js](file:///Users/gemini/Projects/Own/FIFA2026/src/frontend/app.js) 新增 `hasChinese` 文本检测，拦截已汉化数据的翻译请求，避免冗余 fetch。
 - 前端 [app.js](file:///Users/gemini/Projects/Own/FIFA2026/src/frontend/app.js) 中新增 `[翻译超时, 点击重试]` 暗红发光交互按钮，允许用户在冷启动或超时降级后手动一键重新汉化卡片，克服死锁。
+- 后端扩展了单场投注建议服务，支持对官方五大核心玩法（胜平负、让球胜平负、比分、总进球数、半全场胜平负）的“稳妥型”（最大概率项）和“激进型”（最大EV期望项）进行最佳期权、收益率（EV）和概率的综合量化计算。
+- 前端“中国体彩量化投注建议”控制板改版：隐藏了传统的赔率手填输入与按钮控制，替换为根据左侧高亮比赛自动推送并全部平铺展开渲染这五大玩法，直接显示稳妥/激进推荐、对应赔率、几率和收益率，消除了 100 元本金的局限假设。
 
 ### Changed
 - 将翻译模型从 `qwen3.6:35b-q4` 调整为更轻量的 [qwen3:8b](file:///Users/gemini/Projects/Own/FIFA2026/docker-compose.yml#L14)，单次热启动翻译缩短至 1.8 秒。

@@ -158,26 +158,18 @@
     <div class="right-col">
       <div class="glass-panel" style="flex: 1; display: flex; flex-direction: column; gap: 8px; height: 100%;">
         <h3 style="border-left-color: var(--neon-green);">中国体彩量化投注建议</h3>
-        <div style="font-size: 11px; display: flex; gap: 8px; flex-direction: column; margin-bottom: 6px;">
-          <div style="color: var(--text-muted); font-size: 11px; line-height: 1.4;">
-            输入竞彩参考赔率，测算比分/半全场对冲套利占比与多场串关排除机制。
-          </div>
-          <div style="display: flex; gap: 6px; width: 100%;">
-            <input type="number" id="lottery-odds-h" placeholder="胜(如1.8)" step="0.01" style="flex: 1; min-width: 0; background: rgba(0,0,0,0.2); border: 1px solid var(--panel-border); border-radius: 4px; color: white; padding: 6px; font-size: 12px; outline: none;">
-            <input type="number" id="lottery-odds-d" placeholder="平(如3.2)" step="0.01" style="flex: 1; min-width: 0; background: rgba(0,0,0,0.2); border: 1px solid var(--panel-border); border-radius: 4px; color: white; padding: 6px; font-size: 12px; outline: none;">
-            <input type="number" id="lottery-odds-a" placeholder="负(如3.6)" step="0.01" style="flex: 1; min-width: 0; background: rgba(0,0,0,0.2); border: 1px solid var(--panel-border); border-radius: 4px; color: white; padding: 6px; font-size: 12px; outline: none;">
-          </div>
-          <div style="display: flex; align-items: center; gap: 6px; margin-top: 4px; margin-bottom: 2px; width: 100%;">
-            <label for="lottery-risk-level" style="color: var(--text-muted); font-size: 11px; white-space: nowrap;">方案倾向:</label>
-            <select id="lottery-risk-level" style="flex: 1; min-width: 0; background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); border-radius: 4px; color: white; padding: 5px; font-size: 11px; outline: none; cursor: pointer;">
-              <option value="稳妥">稳妥型 (主推 80元 + 比分对冲 20元)</option>
-              <option value="激进">激进型 (全仓主推 100元，放弃防守)</option>
-            </select>
-          </div>
-          <button id="lottery-btn" style="width: 100%; height: 32px; background: rgba(0,255,136,0.15); border: 1px solid var(--neon-green); border-radius: 8px; color: var(--neon-green); font-size: 12px; cursor: pointer; font-weight: 600; outline: none; transition: all 0.2s;">生成体彩量化套利优化单</button>
+        <!-- 隐藏旧有赔率配置及触发机制以保持后向兼容 -->
+        <div style="display: none;">
+          <input type="number" id="lottery-odds-h">
+          <input type="number" id="lottery-odds-d">
+          <input type="number" id="lottery-odds-a">
+          <select id="lottery-risk-level">
+            <option value="稳妥" selected>稳妥</option>
+          </select>
+          <button id="lottery-btn"></button>
         </div>
         <div id="lottery-result" style="flex: 1; overflow-y: auto; font-size: 12px; line-height: 1.6; color: var(--text-muted); background: rgba(0,0,0,0.15); padding: 12px; border-radius: 8px;">
-          ● 请在左侧选择比赛，设置参考赔率后生成策略...
+          ● 请在左侧选择比赛，系统将自动生成五大玩法最佳量化投注建议...
         </div>
       </div>
 

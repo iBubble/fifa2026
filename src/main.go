@@ -611,9 +611,12 @@ func main() {
 				}
 			}
 
+			fivePlays := lotteryService.GenerateFivePlaysAdvice(m1, req.PredictReport)
+
 			c.JSON(http.StatusOK, gin.H{
-				"single": singleAdvice,
-				"parlay": parlayAdvice,
+				"single":    singleAdvice,
+				"parlay":    parlayAdvice,
+				"fivePlays": fivePlays,
 			})
 		})
 		// 获取指定赛事的官方体彩赔率数据 (如果未开盘则利用 Elo 算法仿真)
