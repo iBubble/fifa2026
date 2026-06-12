@@ -175,6 +175,11 @@ func (s *LiveSyncService) SyncMatches() {
 				}
 			}
 
+			// 兜底状态修正：有比分产生时，状态绝不可能是未开赛 (NS)
+			if finalStatus == "NS" && (maxHome > 0 || maxAway > 0) {
+				finalStatus = "Live"
+			}
+
 			// 若合并后的比分或状态发生变更，执行更新并广播
 			if m.HomeScore != maxHome || m.AwayScore != maxAway || m.Status != finalStatus {
 				m.HomeScore = maxHome
@@ -309,13 +314,13 @@ func fetchBaiduMatchResults() map[string]RealtimeMatch {
 				aScore, _ := strconv.Atoi(item.RightLogo.Score)
 
 				var status string
-				switch item.MatchStatusText {
-				case "进行中":
-					status = "Live"
-				case "已完赛":
+				statusText := strings.TrimSpace(item.MatchStatusText)
+				if statusText == "已完赛" || statusText == "完赛" || statusText == "FT" {
 					status = "FT"
-				default:
+				} else if statusText == "未开赛" || statusText == "VS" || statusText == "" {
 					status = "NS"
+				} else {
+					status = "Live"
 				}
 
 				key := homeEn + "_" + awayEn

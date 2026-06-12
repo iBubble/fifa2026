@@ -158,12 +158,27 @@ func (s *LotteryService) GenerateSingleAdvice(match models.Match, oddsHome, odds
 	if primary == "主胜 (3)" {
 		hedgeOutcome = "比分 1-1"
 		hedgeOdds = 6.00
+		if official.CrsOdds != nil {
+			if val, ok := official.CrsOdds["s01s01"]; ok && val > 0 {
+				hedgeOdds = val
+			}
+		}
 	} else if primary == "客胜 (0)" {
 		hedgeOutcome = "比分 1-1"
 		hedgeOdds = 6.00
+		if official.CrsOdds != nil {
+			if val, ok := official.CrsOdds["s01s01"]; ok && val > 0 {
+				hedgeOdds = val
+			}
+		}
 	} else {
 		hedgeOutcome = "比分 1-0"
 		hedgeOdds = 6.50
+		if official.CrsOdds != nil {
+			if val, ok := official.CrsOdds["s01s00"]; ok && val > 0 {
+				hedgeOdds = val
+			}
+		}
 	}
 
 	advice.HedgeBets = []Hedge{

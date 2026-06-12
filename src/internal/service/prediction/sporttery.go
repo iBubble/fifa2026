@@ -10,21 +10,23 @@ import (
 )
 
 type OfficialOdds struct {
-	HomeOdds     float64 `json:"homeOdds"`
-	DrawOdds     float64 `json:"drawOdds"`
-	AwayOdds     float64 `json:"awayOdds"`
-	GoalLine     int     `json:"goalLine"`
-	HhadHomeOdds float64 `json:"hhadHomeOdds"`
-	HhadDrawOdds float64 `json:"hhadDrawOdds"`
-	HhadAwayOdds float64 `json:"hhadAwayOdds"`
-	IsAvailable  bool    `json:"isAvailable"`
-	IsSimulation bool    `json:"isSimulation"`
+	HomeOdds     float64            `json:"homeOdds"`
+	DrawOdds     float64            `json:"drawOdds"`
+	AwayOdds     float64            `json:"awayOdds"`
+	GoalLine     int                `json:"goalLine"`
+	HhadHomeOdds float64            `json:"hhadHomeOdds"`
+	HhadDrawOdds float64            `json:"hhadDrawOdds"`
+	HhadAwayOdds float64            `json:"hhadAwayOdds"`
+	CrsOdds      map[string]float64 `json:"crsOdds"`
+	IsAvailable  bool               `json:"isAvailable"`
+	IsSimulation bool               `json:"isSimulation"`
 }
 
 type SportteryService struct {
 	cachedOdds    map[string]OfficialOdds
 	lastFetchTime time.Time
 	mu            sync.Mutex
+	isFetching    bool
 }
 
 func NewSportteryService() *SportteryService {
@@ -36,19 +38,26 @@ func NewSportteryService() *SportteryService {
 // FetchAllOdds 拉取体彩官网全部实时赔率并存入内存缓存，限制半小时内最多请求一次
 func (s *SportteryService) FetchAllOdds() {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	// 缓存30分钟，防频繁抓取导致 IP 封禁
-	if time.Since(s.lastFetchTime) < 30*time.Minute && len(s.cachedOdds) > 0 {
+	// 如果已经在抓取，或者缓存还没过期，直接无阻塞返回
+	if s.isFetching || (time.Since(s.lastFetchTime) < 30*time.Minute && len(s.cachedOdds) > 0) {
+		s.mu.Unlock()
 		return
 	}
+	s.isFetching = true
+	s.mu.Unlock()
+
+	defer func() {
+		s.mu.Lock()
+		s.isFetching = false
+		s.mu.Unlock()
+	}()
 
 	client := &http.Client{Timeout: 5 * time.Second}
-	req, err := http.NewRequest("GET", "https://webapi.sporttery.cn/gateway/uniform/football/getMatchCalculatorV1.qry?channel=c", nil)
+	req, err := http.NewRequest("GET", "https://webapi.sporttery.cn/gateway/jc/football/getMatchCalculatorV1.qry?poolCode=had,hhad,crs&channel=c", nil)
 	if err != nil {
 		return
 	}
-	req.Header.Set("Referer", "https://www.sporttery.cn/")
+	req.Header.Set("Referer", "https://www.lottery.gov.cn/")
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 
 	resp, err := client.Do(req)
@@ -57,7 +66,8 @@ func (s *SportteryService) FetchAllOdds() {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
+	// 允许 200 和云盾的 567 挑战状态码，只要内容是 JSON 即可
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != 567 {
 		return
 	}
 
@@ -79,6 +89,7 @@ func (s *SportteryService) FetchAllOdds() {
 						A        string `json:"a"`
 						GoalLine string `json:"goalLine"`
 					} `json:"hhad"`
+					Crs map[string]interface{} `json:"crs"`
 				} `json:"subMatchList"`
 			} `json:"matchInfoList"`
 		} `json:"value"`
@@ -88,7 +99,8 @@ func (s *SportteryService) FetchAllOdds() {
 		return
 	}
 
-	// 清理旧缓存并更新
+	// 内存写入时重新加锁
+	s.mu.Lock()
 	s.cachedOdds = make(map[string]OfficialOdds)
 	for _, day := range res.Value.MatchInfoList {
 		for _, m := range day.SubMatchList {
@@ -101,6 +113,15 @@ func (s *SportteryService) FetchAllOdds() {
 			ha, _ := strconv.ParseFloat(m.Hhad.A, 64)
 			gl, _ := strconv.Atoi(m.Hhad.GoalLine)
 
+			crsOdds := make(map[string]float64)
+			for k, v := range m.Crs {
+				if strVal, ok := v.(string); ok && strVal != "" {
+					if val, err := strconv.ParseFloat(strVal, 64); err == nil {
+						crsOdds[k] = val
+					}
+				}
+			}
+
 			s.cachedOdds[key] = OfficialOdds{
 				HomeOdds:     h,
 				DrawOdds:     d,
@@ -109,11 +130,13 @@ func (s *SportteryService) FetchAllOdds() {
 				HhadHomeOdds: hh,
 				HhadDrawOdds: hd,
 				HhadAwayOdds: ha,
+				CrsOdds:      crsOdds,
 				IsAvailable:  h > 0.0,
 			}
 		}
 	}
 	s.lastFetchTime = time.Now()
+	s.mu.Unlock()
 }
 
 // GetMatchOdds 获取指定比赛的体彩官网最新赔率
