@@ -38,17 +38,66 @@ func NewSportteryService() *SportteryService {
 	}
 }
 
-// FetchAllOdds 拉取体彩官网全部实时赔率并存入内存缓存，限制半小时内最多请求一次
-func (s *SportteryService) FetchAllOdds() {
+func isJCOpen(t time.Time) bool {
+	hour := t.Hour()
+	w := t.Weekday()
+	if hour < 11 {
+		return false
+	}
+	if w == time.Saturday || w == time.Sunday {
+		return hour < 23
+	}
+	return hour < 22
+}
+
+// StartBackgroundRefresh 启动后台定时刷新（在开售时间段内每10分钟主动刷新一次）
+func (s *SportteryService) StartBackgroundRefresh() {
+	go func() {
+		// 启动时如果处于开售时段，先强刷一次赔率，保障页面数据新鲜度
+		if isJCOpen(time.Now()) {
+			s.FetchAllOddsForced()
+		}
+		ticker := time.NewTicker(10 * time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+			if isJCOpen(time.Now()) {
+				s.FetchAllOddsForced()
+			}
+		}
+	}()
+}
+
+// FetchAllOddsForced 强行刷新赔率，绕过缓存间隔限制
+func (s *SportteryService) FetchAllOddsForced() {
 	s.mu.Lock()
-	// 如果已经在抓取，或者缓存还没过期，直接无阻塞返回
-	if s.isFetching || (time.Since(s.lastFetchTime) < 30*time.Minute && len(s.cachedOdds) > 0) {
+	if s.isFetching {
 		s.mu.Unlock()
 		return
 	}
 	s.isFetching = true
 	s.mu.Unlock()
 
+	s.executeFetch()
+}
+
+// FetchAllOdds 拉取体彩官网全部实时赔率并存入内存缓存（开售期缓存10分钟，非开售期缓存30分钟）
+func (s *SportteryService) FetchAllOdds() {
+	s.mu.Lock()
+	interval := 30 * time.Minute
+	if isJCOpen(time.Now()) {
+		interval = 10 * time.Minute
+	}
+	if s.isFetching || (time.Since(s.lastFetchTime) < interval && len(s.cachedOdds) > 0) {
+		s.mu.Unlock()
+		return
+	}
+	s.isFetching = true
+	s.mu.Unlock()
+
+	s.executeFetch()
+}
+
+func (s *SportteryService) executeFetch() {
 	defer func() {
 		s.mu.Lock()
 		s.isFetching = false

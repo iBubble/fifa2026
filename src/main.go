@@ -50,6 +50,7 @@ func main() {
 	arbService := prediction.NewArbitrageService()
 
 	sportteryService := prediction.NewSportteryService()
+	sportteryService.StartBackgroundRefresh()
 	backtestService := prediction.NewBacktestService(eloService, ollamaService, dcService)
 	lotteryService := prediction.NewLotteryService(dcService, sportteryService)
 	parlayService := prediction.NewParlayService(dcService, sportteryService, eloService, shinService)
