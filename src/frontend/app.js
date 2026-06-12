@@ -112,6 +112,9 @@ async function loadMatches(skipAutoSelect = false) {
         const defaultItem = listDom.querySelector(`[data-match-id="${defaultMatch.id}"]`);
         if (defaultItem) {
           selectMatch(defaultMatch.id, defaultItem);
+          // 自动滚动，使当前选中的比赛位于第一位
+          const relativeTop = defaultItem.getBoundingClientRect().top - listDom.getBoundingClientRect().top;
+          listDom.scrollTop += relativeTop;
         }
       }
     } else if (activeMatchIDBefore) {

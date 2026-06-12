@@ -7,14 +7,18 @@ import (
 	"fifa2026/src/internal/models"
 	"fmt"
 	"net/http"
+	"os"
+	"strconv"
 	"strings"
 	"time"
 )
 
 type OllamaService struct {
-	client *http.Client
-	apiURL string
-	model  string
+	client         *http.Client
+	apiURL         string
+	model          string
+	predictTimeout time.Duration
+	reviewTimeout  time.Duration
 }
 
 func NewOllamaService(apiURL, model string) *OllamaService {
@@ -29,10 +33,27 @@ func NewOllamaService(apiURL, model string) *OllamaService {
 	if model == "" {
 		model = "qwen2.5"
 	}
+
+	predictTimeout := 15 * time.Second
+	if envPredict := os.Getenv("OLLAMA_PREDICT_TIMEOUT"); envPredict != "" {
+		if d, err := strconv.Atoi(envPredict); err == nil && d > 0 {
+			predictTimeout = time.Duration(d) * time.Second
+		}
+	}
+
+	reviewTimeout := 60 * time.Second
+	if envReview := os.Getenv("OLLAMA_REVIEW_TIMEOUT"); envReview != "" {
+		if d, err := strconv.Atoi(envReview); err == nil && d > 0 {
+			reviewTimeout = time.Duration(d) * time.Second
+		}
+	}
+
 	return &OllamaService{
-		client: &http.Client{Timeout: 5 * time.Second}, // 强制 5 秒超时熔断
-		apiURL: apiURL,
-		model:  model,
+		client:         &http.Client{Timeout: 90 * time.Second}, // 全局安全兜底超时，具体超时由 Context 控制
+		apiURL:         apiURL,
+		model:          model,
+		predictTimeout: predictTimeout,
+		reviewTimeout:  reviewTimeout,
 	}
 }
 
@@ -74,7 +95,10 @@ func (s *OllamaService) RefineParams(match models.Match, eloDiff float64, p mode
 		return models.LLMRefineOffsets{}, err
 	}
 
-	req, err := http.NewRequestWithContext(context.Background(), "POST", s.apiURL, bytes.NewBuffer(bytesPayload))
+	ctx, cancel := context.WithTimeout(context.Background(), s.predictTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "POST", s.apiURL, bytes.NewBuffer(bytesPayload))
 	if err != nil {
 		return models.LLMRefineOffsets{}, err
 	}
@@ -142,7 +166,10 @@ func (s *OllamaService) ReviewPrediction(match models.Match, brierScore float64,
 		return "", err
 	}
 
-	req, err := http.NewRequestWithContext(context.Background(), "POST", s.apiURL, bytes.NewBuffer(bytesPayload))
+	ctx, cancel := context.WithTimeout(context.Background(), s.reviewTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "POST", s.apiURL, bytes.NewBuffer(bytesPayload))
 	if err != nil {
 		return "", err
 	}

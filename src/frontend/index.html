@@ -79,17 +79,17 @@
         </div>
       </div>
 
-      <div class="glass-panel" style="flex: 1.4; min-height: 280px; display: flex; flex-direction: column; margin-top: 10px;">
+      <div class="glass-panel" style="flex: 1.4; min-height: 310px; display: flex; flex-direction: column; margin-top: 10px;">
         <h3 style="border-left-color: var(--neon-purple);">赛后量化复盘与预测精度进化</h3>
         <div style="font-size: 10px; color: var(--text-muted); line-height: 1.4; margin-bottom: 6px;">
           自动跟踪已结算赛事的布莱尔精度得分 (Brier Score，越低越精准) 及 Elo 在线纠偏反馈。
         </div>
-        <div style="display: flex; gap: 15px; flex: 1; min-height: 140px;">
-          <div id="backtest-chart" style="width: 50%; min-height: 140px;"></div>
+        <div style="display: flex; gap: 15px; flex: 1; min-height: 120px;">
+          <div id="backtest-chart" style="width: 50%; min-height: 120px;"></div>
           <div style="width: 50%; display: flex; flex-direction: column; gap: 6px; justify-content: center; font-size: 11px;">
             <div style="background: rgba(136,0,255,0.08); border: 1px solid rgba(136,0,255,0.25); padding: 8px; border-radius: 6px; flex: 1; display: flex; flex-direction: column; gap: 4px;">
               <strong style="color: var(--neon-purple);">最新大模型量化反馈反思:</strong>
-              <p id="backtest-review-text" style="font-style: italic; line-height: 1.4; margin-top: 4px; color: var(--text-main); flex: 1; overflow-y: auto; max-height: 90px;">
+              <p id="backtest-review-text" style="font-style: italic; line-height: 1.4; margin-top: 4px; color: var(--text-main); flex: 1; overflow-y: auto; max-height: 70px;">
                 ● 暂无已结算赛后反思，模型进化演化中...
               </p>
             </div>
@@ -101,7 +101,7 @@
             <span>📖 已完赛复盘历史记录</span>
             <span style="font-size: 10px; color: var(--text-muted); font-weight: normal;">(上下滚动查看)</span>
           </strong>
-          <div id="backtest-history-list" style="max-height: 110px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; font-size: 11px; margin-top: 4px; padding-right: 4px;">
+          <div id="backtest-history-list" style="max-height: 75px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; font-size: 11px; margin-top: 4px; padding-right: 4px;">
             <div style="color: var(--text-muted); text-align: center; padding: 10px;">暂无已结算完赛历史</div>
           </div>
         </div>

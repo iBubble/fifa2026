@@ -12,6 +12,7 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/gin-contrib/cors"
@@ -82,11 +83,14 @@ func main() {
 			}
 			for _, m := range matches {
 				if m.Status == "FT" {
-					if _, errReview := db.GetBacktestReport(m.ID); errReview != nil {
+					rep, errReview := db.GetBacktestReport(m.ID)
+					if errReview != nil || rep.TacticsReview == "" || strings.Contains(rep.TacticsReview, "超时降级") {
+						log.Printf("[Server] 检测到比赛 %s (%s vs %s) 尚未复盘或处于超时降级状态，发起异步复盘...", m.ID, m.HomeTeam, m.AwayTeam)
 						go func(m models.Match) {
+							log.Printf("[Server] 比赛 %s 异步复盘 Goroutine 开始执行...", m.ID)
 							params := dcService.CalculateParams(m.HomeTeam, m.AwayTeam)
 							matrix, over25, under25 := dcService.GenerateProbabilityMatrix(params)
-							rep := models.PredictionReport{
+							r := models.PredictionReport{
 								MatchID:        m.ID,
 								OriginalParams: params,
 								RefinedParams:  params,
@@ -94,7 +98,12 @@ func main() {
 								Over2_5Prob:    over25,
 								Under2_5Prob:   under25,
 							}
-							_, _ = backtestService.ReviewMatch(m, &rep)
+							res, err := backtestService.ReviewMatch(m, &r)
+							if err != nil {
+								log.Printf("[Server] ❌ 比赛 %s 异步复盘失败: %v", m.ID, err)
+							} else {
+								log.Printf("[Server] ✅ 比赛 %s 异步复盘成功，反思结果: %s", m.ID, res.TacticsReview)
+							}
 						}(m)
 					}
 				}
