@@ -477,6 +477,127 @@ func main() {
 			c.JSON(http.StatusOK, odds)
 		})
 
+		// 获取历史体彩建议收益结算
+		api.GET("/lottery/history", func(c *gin.Context) {
+			matches, err := db.GetMatchesByTournament("fifa_2026")
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+
+			var historyList []gin.H
+			var totalSafeCost, totalSafeReturn float64
+			var totalAggCost, totalAggReturn float64
+
+			for _, m := range matches {
+				if m.Status == "FT" {
+					// 1. 获取预测报告
+					var report *models.PredictionReport
+					rep, errRep := db.GetPredictionReport(m.ID)
+					if errRep == nil {
+						report = &rep
+					}
+
+					// 2. 生成体彩建议
+					oddsH, oddsD, oddsA := 1.95, 3.20, 3.80
+					advice := lotteryService.GenerateSingleAdvice(m, oddsH, oddsD, oddsA, report)
+					if advice.Status == "EXCLUDED" {
+						continue // 被排除的比赛不计入投注收益统计
+					}
+
+					// 3. 结算实际收益
+					// 判定主推是否命中
+					primaryHit := false
+					if advice.PrimaryBet == "主胜 (3)" && m.HomeScore > m.AwayScore {
+						primaryHit = true
+					} else if advice.PrimaryBet == "平局 (1)" && m.HomeScore == m.AwayScore {
+						primaryHit = true
+					} else if advice.PrimaryBet == "客胜 (0)" && m.HomeScore < m.AwayScore {
+						primaryHit = true
+					}
+
+					// 判定对冲是否命中
+					hedgeHit := false
+					var hedgeOdds float64
+					if len(advice.HedgeBets) > 0 {
+						hedge := advice.HedgeBets[0]
+						hedgeOdds = hedge.Odds
+						if hedge.Outcome == "比分 1-1" && m.HomeScore == 1 && m.AwayScore == 1 {
+							hedgeHit = true
+						} else if hedge.Outcome == "比分 1-0" && m.HomeScore == 1 && m.AwayScore == 0 {
+							hedgeHit = true
+						} else if hedge.Outcome == "比分 0-1" && m.HomeScore == 0 && m.AwayScore == 1 {
+							hedgeHit = true
+						}
+					}
+
+					// 稳妥型：主推投80元，对冲投20元
+					safeReturn := 0.0
+					if primaryHit {
+						safeReturn += 80.0 * advice.PrimaryOdds
+					}
+					if hedgeHit {
+						safeReturn += 20.0 * hedgeOdds
+					}
+
+					// 激进型：主推投100元，不对冲
+					aggReturn := 0.0
+					if primaryHit {
+						aggReturn += 100.0 * advice.PrimaryOdds
+					}
+
+					totalSafeCost += 100.0
+					totalSafeReturn += safeReturn
+					totalAggCost += 100.0
+					totalAggReturn += aggReturn
+
+					historyList = append(historyList, gin.H{
+						"matchId":     m.ID,
+						"homeTeam":    m.HomeTeam,
+						"awayTeam":    m.AwayTeam,
+						"homeScore":   m.HomeScore,
+						"awayScore":   m.AwayScore,
+						"primaryBet":  advice.PrimaryBet,
+						"primaryOdds": advice.PrimaryOdds,
+						"primaryHit":  primaryHit,
+						"hedgeBet":    advice.HedgeBets[0].Outcome,
+						"hedgeOdds":   hedgeOdds,
+						"hedgeHit":    hedgeHit,
+						"safeReturn":  math.Round(safeReturn*100) / 100,
+						"safeProfit":  math.Round((safeReturn-100)*100) / 100,
+						"aggReturn":   math.Round(aggReturn*100) / 100,
+						"aggProfit":   math.Round((aggReturn-100)*100) / 100,
+					})
+				}
+			}
+
+			safeProfit := totalSafeReturn - totalSafeCost
+			aggProfit := totalAggReturn - totalAggCost
+
+			safeRoi := 0.0
+			if totalSafeCost > 0 {
+				safeRoi = (safeProfit / totalSafeCost) * 100.0
+			}
+			aggRoi := 0.0
+			if totalAggCost > 0 {
+				aggRoi = (aggProfit / totalAggCost) * 100.0
+			}
+
+			c.JSON(http.StatusOK, gin.H{
+				"history": historyList,
+				"summary": gin.H{
+					"totalSafeCost":   totalSafeCost,
+					"totalSafeReturn": math.Round(totalSafeReturn*100) / 100,
+					"totalSafeProfit": math.Round(safeProfit*100) / 100,
+					"safeRoi":         math.Round(safeRoi*100) / 100,
+					"totalAggCost":    totalAggCost,
+					"totalAggReturn":  math.Round(totalAggReturn*100) / 100,
+					"totalAggProfit":  math.Round(aggProfit*100) / 100,
+					"aggRoi":          math.Round(aggRoi*100) / 100,
+				},
+			})
+		})
+
 		// 拉取所有已完赛复盘报告历史数据，供大屏绘制 Brier Score 曲线
 		api.GET("/backtest/history", func(c *gin.Context) {
 			reports, err := db.GetBacktestReports()

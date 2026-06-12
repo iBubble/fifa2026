@@ -285,6 +285,7 @@ async function runArbitrageScanner() {
 // 初始化冷启动
 document.addEventListener("DOMContentLoaded", () => {
   loadMatches();
+  renderLotteryPanel(); // 初始化体彩面板并载入实战收益历史
   loadNews(); // 新增真实新闻初始化拉取
   runOddsShiftsTracker(); // 赔率偏移初始化拉取
   loadBacktestHistory(); // 加载复盘精度看板数据
@@ -389,37 +390,8 @@ async function autoFetchAndCalculate() {
       body: JSON.stringify({ matchIds: matchIDs, odds: [oddsH, oddsD, oddsA], predictReport: report })
     });
     const data = await resLottery.json();
-
-    // 渲染体彩优化单
-    let html = "";
-    const s = data.single;
-    if (s.status === "EXCLUDED") {
-      html += `
-        <div style="border-left: 2px solid red; padding-left: 6px; margin-bottom: 8px; color: #ff4a4a;">
-          <strong>🚨 单场风控过滤警告</strong><br>
-          ${s.reason}
-        </div>
-      `;
-    } else {
-      html += `
-        <div style="border-left: 2px solid var(--neon-green); padding-left: 6px; margin-bottom: 8px;">
-          <strong style="color: var(--neon-green); font-size:12px;">🎯 竞彩单场对冲方案 (主推+避险)</strong><br>
-          主投推荐: <span style="color: white; font-weight:600;">${s.primaryBet} @ ${s.primaryOdds.toFixed(2)}</span> (分配 ${s.primaryStake * 100}%)<br>
-          防守对冲: <span style="color: white; font-weight:600;">${s.hedgeBets[0].outcome} @ ${s.hedgeBets[0].odds.toFixed(2)}</span> (分配 ${s.hedgeBets[0].stakePct * 100}%)<br>
-          <span style="font-size:10px; color: var(--text-muted); display:block; margin-top:4px; line-height: 1.4;">${s.reason}</span>
-        </div>
-      `;
-    }
-
-    if (data.parlay) {
-      html += `
-        <div style="border-left: 2px solid var(--neon-purple); padding-left: 6px; margin-top: 8px; border-top: 1px solid var(--panel-border); padding-top: 6px;">
-          <strong style="color: var(--neon-purple); font-size:12px;">🔗 2串1 时序避险对冲建议</strong><br>
-          <span style="font-size:10px; color: var(--text-muted); line-height: 1.4; display:block; margin-top:2px;">${data.parlay.reason}</span>
-        </div>
-      `;
-    }
-    document.getElementById("lottery-result").innerHTML = html;
+    lastLotteryData = data;
+    await renderLotteryPanel(data);
 
   } catch (err) {
     console.error("全自动量化流计算失败:", err);
@@ -541,54 +513,122 @@ let lastLotteryData = null;
 // 绑定倾向下拉框改变事件，实现无延迟即时本金重算
 document.getElementById("lottery-risk-level").onchange = () => {
   if (lastLotteryData) {
-    renderLotteryResult(lastLotteryData);
+    renderLotteryPanel(lastLotteryData);
   }
 };
 
-function renderLotteryResult(data) {
-  lastLotteryData = data;
+async function renderLotteryPanel(recommendData = null) {
   const resultDom = document.getElementById("lottery-result");
   const riskLevel = document.getElementById("lottery-risk-level").value;
   
   let html = "";
-  const s = data.single;
-  if (s.status === "EXCLUDED") {
-    html += `
-      <div style="border-left: 2px solid red; padding-left: 6px; margin-bottom: 8px; color: #ff4a4a;">
-        <strong>🚨 单场风控过滤警告</strong><br>
-        ${s.reason}
-      </div>
-    `;
-  } else {
-    let primaryAmt, hedgeAmt, hedgeText;
-    if (riskLevel === "激进") {
-      primaryAmt = 100;
-      hedgeAmt = 0;
-      hedgeText = `<span style="color: var(--text-muted);">已放弃比分防守，100元全仓博取高奖金</span>`;
+  
+  if (recommendData) {
+    const s = recommendData.single;
+    if (s.status === "EXCLUDED") {
+      html += `
+        <div style="border-left: 2px solid red; padding-left: 6px; margin-bottom: 8px; color: #ff4a4a;">
+          <strong>🚨 单场风控过滤警告</strong><br>
+          ${s.reason}
+        </div>
+      `;
     } else {
-      primaryAmt = 80;
-      hedgeAmt = 20;
-      hedgeText = `分配 20%: <span style="color: white; font-weight:600;">${s.hedgeBets[0].outcome} @ ${s.hedgeBets[0].odds.toFixed(2)}</span> (投入 <strong style="color:var(--neon-green);">${hedgeAmt}元</strong>)`;
+      let primaryAmt, hedgeAmt, hedgeText;
+      if (riskLevel === "激进") {
+        primaryAmt = 100;
+        hedgeAmt = 0;
+        hedgeText = `<span style="color: var(--text-muted);">已放弃比分防守，100元全仓博取高奖金</span>`;
+      } else {
+        primaryAmt = 80;
+        hedgeAmt = 20;
+        hedgeText = `分配 20%: <span style="color: white; font-weight:600;">${s.hedgeBets[0].outcome} @ ${s.hedgeBets[0].odds.toFixed(2)}</span> (投入 <strong style="color:var(--neon-green);">${hedgeAmt}元</strong>)`;
+      }
+
+      html += `
+        <div style="border-left: 2px solid var(--neon-green); padding-left: 6px; margin-bottom: 8px;">
+          <strong style="color: var(--neon-green); font-size:12px;">🎯 竞彩单场优化方案 (总本金: 100元)</strong><br>
+          主投 80%: <span style="color: white; font-weight:600;">${s.primaryBet} @ ${s.primaryOdds.toFixed(2)}</span> (投入 <strong style="color:var(--neon-green);">${primaryAmt}元</strong>)<br>
+          防守对冲: ${hedgeText}<br>
+          <span style="font-size:10px; color: var(--text-muted); display:block; margin-top:4px; line-height: 1.4;">${s.reason}</span>
+        </div>
+      `;
     }
 
-    html += `
-      <div style="border-left: 2px solid var(--neon-green); padding-left: 6px; margin-bottom: 8px;">
-        <strong style="color: var(--neon-green); font-size:12px;">🎯 竞彩单场优化方案 (总本金: 100元)</strong><br>
-        主投 80%: <span style="color: white; font-weight:600;">${s.primaryBet} @ ${s.primaryOdds.toFixed(2)}</span> (投入 <strong style="color:var(--neon-green);">${primaryAmt}元</strong>)<br>
-        防守对冲: ${hedgeText}<br>
-        <span style="font-size:10px; color: var(--text-muted); display:block; margin-top:4px; line-height: 1.4;">${s.reason}</span>
-      </div>
-    `;
+    if (recommendData.parlay) {
+      html += `
+        <div style="border-left: 2px solid var(--neon-purple); padding-left: 6px; margin-top: 8px; border-top: 1px solid var(--panel-border); padding-top: 6px; margin-bottom: 8px;">
+          <strong style="color: var(--neon-purple); font-size:12px;">🔗 2串1 时序对冲混合过关建议</strong><br>
+          <span style="font-size:10px; color: var(--text-muted); line-height: 1.4; display:block; margin-top:2px;">${recommendData.parlay.reason}</span>
+        </div>
+      `;
+    }
+  } else {
+    html += `<div style="margin-bottom: 12px;">● 请在左侧选择比赛，设置参考赔率后生成策略...</div>`;
   }
 
-  if (data.parlay) {
-    html += `
-      <div style="border-left: 2px solid var(--neon-purple); padding-left: 6px; margin-top: 8px; border-top: 1px solid var(--panel-border); padding-top: 6px;">
-        <strong style="color: var(--neon-purple); font-size:12px;">🔗 2串1 时序对冲混合过关建议</strong><br>
-        <span style="font-size:10px; color: var(--text-muted); line-height: 1.4; display:block; margin-top:2px;">${data.parlay.reason}</span>
-      </div>
-    `;
+  // 追加历史投注复盘明细和收益对比
+  try {
+    const res = await fetch(`${API_BASE}/lottery/history`);
+    const data = await res.json();
+    if (data && data.history && data.history.length > 0) {
+      const sum = data.summary;
+      
+      const safeColor = sum.totalSafeProfit >= 0 ? "var(--neon-green)" : "#ff4a4a";
+      const aggColor = sum.totalAggProfit >= 0 ? "var(--neon-green)" : "#ff4a4a";
+
+      html += `
+        <div style="border-top: 1px dashed rgba(255,255,255,0.1); margin: 12px 0 8px 0; padding-top: 10px;">
+          <h4 style="color: white; font-size: 13px; font-weight: 800; margin-bottom: 6px; display: flex; align-items: center; gap: 4px;">
+            📊 体彩实战收益历史复盘
+          </h4>
+          
+          <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px; margin-bottom: 8px; font-size: 11px;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
+              <span>🛡️ 稳妥型累计净收益:</span>
+              <strong style="color: ${safeColor};">${sum.totalSafeProfit.toFixed(1)}元 (ROI: ${sum.safeRoi}%)</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+              <span>⚡ 激进型累计净收益:</span>
+              <strong style="color: ${aggColor};">${sum.totalAggProfit.toFixed(1)}元 (ROI: ${sum.aggRoi}%)</strong>
+            </div>
+          </div>
+
+          <div style="font-size: 10px; color: var(--text-muted); margin-bottom: 4px; font-weight: 600;">历史投注明细 (滚动查看):</div>
+          <div style="max-height: 120px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding-right: 2px;">
+            ${data.history.map(h => {
+              const homeCn = translateTeamName(h.homeTeam);
+              const awayCn = translateTeamName(h.awayTeam);
+              
+              const safeText = h.safeProfit >= 0 ? `+${h.safeProfit.toFixed(1)}` : h.safeProfit.toFixed(1);
+              const aggText = h.aggProfit >= 0 ? `+${h.aggProfit.toFixed(1)}` : h.aggProfit.toFixed(1);
+              
+              const sColor = h.safeProfit >= 0 ? "var(--neon-green)" : "#ff4a4a";
+              const aColor = h.aggProfit >= 0 ? "var(--neon-green)" : "#ff4a4a";
+
+              const primaryBadge = h.primaryHit ? "🎯 主推中" : "❌ 主推失";
+              const hedgeBadge = h.hedgeHit ? "🛡️ 对冲中" : "❌ 对冲失";
+
+              return `
+                <div style="background: rgba(255,255,255,0.01); border: 1px solid rgba(255,255,255,0.04); border-radius: 4px; padding: 6px; font-size: 10px;">
+                  <div style="display: flex; justify-content: space-between; font-weight: 600; color: #fff; margin-bottom: 2px;">
+                    <span>${homeCn} ${h.homeScore} : ${h.awayScore} ${awayCn}</span>
+                    <span style="font-size: 9px; color: var(--text-muted);">${primaryBadge} | ${hedgeBadge}</span>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; color: var(--text-muted); font-size: 9px;">
+                    <span>稳妥型: <strong style="color: ${sColor};">${safeText}元</strong> (返 ${h.safeReturn}元)</span>
+                    <span>激进型: <strong style="color: ${aColor};">${aggText}元</strong> (返 ${h.aggReturn}元)</span>
+                  </div>
+                </div>
+              `;
+            }).join("")}
+          </div>
+        </div>
+      `;
+    }
+  } catch (err) {
+    console.error("加载体彩历史复盘失败:", err);
   }
+
   resultDom.innerHTML = html;
 }
 
@@ -626,7 +666,8 @@ document.getElementById("lottery-btn").onclick = async () => {
       })
     });
     const data = await res.json();
-    renderLotteryResult(data);
+    lastLotteryData = data;
+    await renderLotteryPanel(data);
   } catch (err) {
     resultDom.innerText = "体彩量化测算失败: " + err;
   }
