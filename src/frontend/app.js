@@ -804,7 +804,7 @@ async function loadOfficialOdds(matchID) {
       inputD.value = odds.drawOdds.toFixed(2);
       inputA.value = odds.awayOdds.toFixed(2);
       if (odds.isSimulation) {
-        headerTitle.innerHTML = `中国体彩量化投注建议 <span style="font-size:10px; color:#ffb700; font-weight:normal; border:1px solid #ffb700; padding:2px 6px; border-radius:4px; margin-left:6px; background:rgba(255,183,0,0.08);">● 官方仿真赔率</span>`;
+        headerTitle.innerHTML = `中国体彩量化投注建议 <span style="font-size:10px; color:#ffb700; font-weight:normal; border:1px solid #ffb700; padding:2px 6px; border-radius:4px; margin-left:6px; background:rgba(255,183,0,0.08);">● 官方参考赔率</span>`;
       } else {
         headerTitle.innerHTML = `中国体彩量化投注建议 <span style="font-size:10px; color:var(--neon-green); font-weight:normal; border:1px solid var(--neon-green); padding:2px 6px; border-radius:4px; margin-left:6px; background:rgba(0,255,136,0.08);">● 官方实时赔率</span>`;
       }
@@ -1250,7 +1250,7 @@ document.getElementById("generate-parlay-btn").onclick = async () => {
         copyText += `- 全对极限奖金: ${p.singleTicketPayout.toFixed(2)}元\n`;
         copyText += `- 期望 ROI: ${(p.totalEv * 100).toFixed(1)}%\n\n`;
       });
-      copyText += `* 数据基于去抽水 Shin 氏算法与 Dixon-Coles 泊松仿真演算，投注有风险，量化仅供参考。`;
+      copyText += `* 数据基于去抽水 Shin 氏算法与 Dixon-Coles 泊松模型演算，投注有风险，量化仅供参考。`;
       navigator.clipboard.writeText(copyText).then(() => {
         alert("🎉 五套过关方案文本已成功复制到剪贴板！");
       }).catch(err => {
