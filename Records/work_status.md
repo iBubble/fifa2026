@@ -4,11 +4,11 @@
 
 ✅ **Done (核心突破)**:
 - 优化体彩锁粒度并避免网络堵塞：在 [sporttery.go](file:///Users/gemini/Projects/Own/FIFA2026/src/internal/service/prediction/sporttery.go) 中将 HTTP 请求剥离出互斥锁，并引入并发去抖标志，消除了轮询导致系统假死和卡顿的瓶颈。
-- 官方真实赔率 API 对接：更新体彩接口 URL 至最新计算器，支持 `567` 挑战状态码，提取 CRS 比分赔率集合并让 [lottery.go](file:///Users/gemini/Projects/Own/FIFA2026/src/internal/service/prediction/lottery.go) 在生成投注单时动态映射对冲赔率，彻底终结了仿真赔率。
-- 修复比分已变但状态未开赛的 Bug：修正 [live_sync.go](file:///Users/gemini/Projects/Own/FIFA2026/src/internal/service/prediction/live_sync.go) 百度体育状态解析与共识引擎，对于比分大于 0 的赛事强制纠偏为 Live。
+- 官方真实赔率 API 对接与增量缓存：更新体彩接口 URL 至最新计算器，支持 `567` 挑战状态码并提取 CRS 真实比分赔率；将赔率缓存改为增量覆盖，永久保留已开赛下架赛事的赛前真实赔率，防止赛中/赛后降级为仿真赔率。
+- 修复比分已变但状态显示“未开赛”/“进行中”的 Bug：重构 [live_sync.go](file:///Users/gemini/Projects/Own/FIFA2026/src/internal/service/prediction/live_sync.go) 的状态映射与多源共识机制，对已结束字样做完赛映射，且加入“开赛超过 105 分钟且已开始自动转 FT”的时间轴兜底流转，确保“韩国 vs 捷克”状态正确变更为“已完赛”。
 
 ⏳ **To-Do (待办事项)**:
-- 提交第三阶段的代码并推送至 GitHub。
+- 无。
 
 ---
 
