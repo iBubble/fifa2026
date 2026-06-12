@@ -34,21 +34,25 @@ func (s *LotteryService) GenerateFivePlaysAdvice(match models.Match, report *mod
 		la = params.LambdaAway
 	}
 
+	// 基础 Dixon-Coles 概率与参数，用于生成更具波动且逼真的仿真官方赔率（模拟在资讯偏差之前的初始赔率）
+	baseParams := s.dcService.CalculateParams(match.HomeTeam, match.AwayTeam)
+	baseMatrix, _, _ := s.dcService.GenerateProbabilityMatrix(baseParams)
+
 	odds := s.sportteryService.GetMatchOdds(match.HomeTeam, match.AwayTeam)
 	if !odds.IsAvailable {
-		pHome, pDraw, pAway := 0.0, 0.0, 0.0
-		for _, cell := range matrix {
+		pHomeBase, pDrawBase, pAwayBase := 0.0, 0.0, 0.0
+		for _, cell := range baseMatrix {
 			if cell.HomeScore > cell.AwayScore {
-				pHome += cell.Prob
+				pHomeBase += cell.Prob
 			} else if cell.HomeScore == cell.AwayScore {
-				pDraw += cell.Prob
+				pDrawBase += cell.Prob
 			} else {
-				pAway += cell.Prob
+				pAwayBase += cell.Prob
 			}
 		}
-		odds.HomeOdds = math.Min(100.0, 0.89/math.Max(0.001, pHome))
-		odds.DrawOdds = math.Min(100.0, 0.89/math.Max(0.001, pDraw))
-		odds.AwayOdds = math.Min(100.0, 0.89/math.Max(0.001, pAway))
+		odds.HomeOdds = math.Min(100.0, 0.89/math.Max(0.001, pHomeBase))
+		odds.DrawOdds = math.Min(100.0, 0.89/math.Max(0.001, pDrawBase))
+		odds.AwayOdds = math.Min(100.0, 0.89/math.Max(0.001, pAwayBase))
 		odds.GoalLine = -1
 		odds.IsAvailable = true
 	}
@@ -110,11 +114,23 @@ func (s *LotteryService) GenerateFivePlaysAdvice(match models.Match, report *mod
 				pRAway += cell.Prob
 			}
 		}
+
 		oRH, oRD, oRA := odds.HhadHomeOdds, odds.HhadDrawOdds, odds.HhadAwayOdds
 		if oRH <= 0 {
-			oRH = math.Min(100.0, 0.89/math.Max(0.001, pRHome))
-			oRD = math.Min(100.0, 0.89/math.Max(0.001, pRDraw))
-			oRA = math.Min(100.0, 0.89/math.Max(0.001, pRAway))
+			pRHomeBase, pRDrawBase, pRAwayBase := 0.0, 0.0, 0.0
+			for _, cell := range baseMatrix {
+				diff := cell.HomeScore - cell.AwayScore + gLine
+				if diff > 0 {
+					pRHomeBase += cell.Prob
+				} else if diff == 0 {
+					pRDrawBase += cell.Prob
+				} else {
+					pRAwayBase += cell.Prob
+				}
+			}
+			oRH = math.Min(100.0, 0.89/math.Max(0.001, pRHomeBase))
+			oRD = math.Min(100.0, 0.89/math.Max(0.001, pRDrawBase))
+			oRA = math.Min(100.0, 0.89/math.Max(0.001, pRAwayBase))
 		}
 		evRH := pRHome*oRH - 1.0
 		evRD := pRDraw*oRD - 1.0
@@ -151,7 +167,17 @@ func (s *LotteryService) GenerateFivePlaysAdvice(match models.Match, report *mod
 			preciseKey := getPreciseCrsKey(cell.HomeScore, cell.AwayScore)
 			oVal := odds.CrsOdds[preciseKey]
 			if oVal <= 0 {
-				oVal = math.Min(100.0, 0.89/math.Max(0.001, cell.Prob))
+				oValBase := 0.0
+				for _, cellB := range baseMatrix {
+					if cellB.HomeScore == cell.HomeScore && cellB.AwayScore == cell.AwayScore {
+						oValBase = 0.89 / math.Max(0.001, cellB.Prob)
+						break
+					}
+				}
+				if oValBase <= 0 {
+					oValBase = 0.89 / math.Max(0.001, cell.Prob)
+				}
+				oVal = math.Min(100.0, oValBase)
 			}
 			ev := cell.Prob*oVal - 1.0
 
@@ -180,6 +206,16 @@ func (s *LotteryService) GenerateFivePlaysAdvice(match models.Match, report *mod
 			}
 		}
 
+		baseTtgProbs := make([]float64, 8)
+		for _, cell := range baseMatrix {
+			tot := cell.HomeScore + cell.AwayScore
+			if tot >= 7 {
+				baseTtgProbs[7] += cell.Prob
+			} else {
+				baseTtgProbs[tot] += cell.Prob
+			}
+		}
+
 		var safeOpt PlayOption
 		var aggOpt PlayOption
 		var maxProb, maxEV float64
@@ -190,7 +226,7 @@ func (s *LotteryService) GenerateFivePlaysAdvice(match models.Match, report *mod
 			apiCode := fmt.Sprintf("s%d", g)
 			oVal := odds.TtgOdds[apiCode]
 			if oVal <= 0 {
-				oVal = math.Min(100.0, 0.89/math.Max(0.001, prob))
+				oVal = math.Min(100.0, 0.89/math.Max(0.001, baseTtgProbs[g]))
 			}
 			ev := prob*oVal - 1.0
 			name := fmt.Sprintf("%d球", g)
@@ -254,6 +290,46 @@ func (s *LotteryService) GenerateFivePlaysAdvice(match models.Match, report *mod
 			}
 		}
 
+		baseHafuProbs := make(map[string]float64)
+		for _, op := range options {
+			baseHafuProbs[op] = 0.0
+		}
+		lhHalfBase := baseParams.LambdaHome * 0.5
+		laHalfBase := baseParams.LambdaAway * 0.5
+		lhSecondBase := baseParams.LambdaHome * 0.5
+		laSecondBase := baseParams.LambdaAway * 0.5
+
+		for hHome := 0; hHome <= 4; hHome++ {
+			for hAway := 0; hAway <= 4; hAway++ {
+				pHalf := s.dcService.ComputePoissonProb(lhHalfBase, hHome) * s.dcService.ComputePoissonProb(laHalfBase, hAway)
+				for sHome := 0; sHome <= 4; sHome++ {
+					for sAway := 0; sAway <= 4; sAway++ {
+						pSec := s.dcService.ComputePoissonProb(lhSecondBase, sHome) * s.dcService.ComputePoissonProb(laSecondBase, sAway)
+						pJoint := pHalf * pSec
+						var halfState string
+						if hHome > hAway {
+							halfState = "胜"
+						} else if hHome == hAway {
+							halfState = "平"
+						} else {
+							halfState = "负"
+						}
+						fHome := hHome + sHome
+						fAway := hAway + sAway
+						var fullState string
+						if fHome > fAway {
+							fullState = "胜"
+						} else if fHome == fAway {
+							fullState = "平"
+						} else {
+							fullState = "负"
+						}
+						baseHafuProbs[halfState+fullState] += pJoint
+					}
+				}
+			}
+		}
+
 		hafuKeys := map[string]string{
 			"胜胜": "hh", "胜平": "hd", "胜负": "ha",
 			"平胜": "dh", "平平": "dd", "平负": "da",
@@ -269,7 +345,7 @@ func (s *LotteryService) GenerateFivePlaysAdvice(match models.Match, report *mod
 			apiCode := hafuKeys[op]
 			oVal := odds.HafuOdds[apiCode]
 			if oVal <= 0 {
-				oVal = math.Min(100.0, 0.89/math.Max(0.001, prob))
+				oVal = math.Min(100.0, 0.89/math.Max(0.001, baseHafuProbs[op]))
 			}
 			ev := prob*oVal - 1.0
 
@@ -288,4 +364,3 @@ func (s *LotteryService) GenerateFivePlaysAdvice(match models.Match, report *mod
 
 	return advices
 }
-

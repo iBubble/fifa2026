@@ -87,6 +87,25 @@ func main() {
 	{
 		// 赛事列表与赛程，并在每次加载时自动触发未复盘已完赛场次的异步复盘
 		api.GET("/matches", func(c *gin.Context) {
+			// 判断是否已有竞彩比赛，执行动态抓取与同步
+			hasSporttery := false
+			initialMatches, errInit := db.GetMatchesByTournament("fifa_2026")
+			if errInit == nil {
+				for _, m := range initialMatches {
+					if strings.HasPrefix(m.ID, "sporttery_") {
+						hasSporttery = true
+						break
+					}
+				}
+			}
+
+			if !hasSporttery {
+				log.Println("[Server] 检测到数据库尚未缓存竞彩数据，执行同步拉取...")
+				sportteryService.FetchAllOdds()
+			} else {
+				go sportteryService.FetchAllOdds()
+			}
+
 			matches, err := db.GetMatchesByTournament("fifa_2026")
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

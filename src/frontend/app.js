@@ -641,76 +641,63 @@ async function renderLotteryPanel(recommendData = null) {
   if (recommendData) {
     // 渲染五大核心玩法量化建议
     if (recommendData.fivePlays && recommendData.fivePlays.length > 0) {
+      // 1. 生成 5 个 Tab 切换栏
       html += `
-        <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px;">
-          <strong style="color: var(--neon-green); font-size: 11px; display: block; border-left: 2px solid var(--neon-green); padding-left: 6px;">
+        <div style="margin-bottom: 4px;">
+          <strong style="color: var(--neon-green); font-size: 11px; display: block; border-left: 2px solid var(--neon-green); padding-left: 6px; margin-bottom: 8px;">
             📊 官方五大玩法量化精算明细
           </strong>
+          
+          <div class="lottery-tabs" style="display: flex; gap: 3px; margin-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 6px;">
+            <button class="lottery-tab-btn active" data-tab="had" style="flex: 1; padding: 5px 1px; font-size: 11.5px; background: rgba(0,255,136,0.1); border: 1px solid var(--neon-green); border-radius: 4px; color: var(--neon-green); cursor: pointer; transition: all 0.2s; outline: none; font-weight: 600;">胜平负</button>
+            <button class="lottery-tab-btn" data-tab="hhad" style="flex: 1; padding: 5px 1px; font-size: 11.5px; background: rgba(255,255,255,0.02); border: 1px solid var(--panel-border); border-radius: 4px; color: var(--text-muted); cursor: pointer; transition: all 0.2s; outline: none; font-weight: 600;">让球</button>
+            <button class="lottery-tab-btn" data-tab="crs" style="flex: 1; padding: 5px 1px; font-size: 11.5px; background: rgba(255,255,255,0.02); border: 1px solid var(--panel-border); border-radius: 4px; color: var(--text-muted); cursor: pointer; transition: all 0.2s; outline: none; font-weight: 600;">比分</button>
+            <button class="lottery-tab-btn" data-tab="ttg" style="flex: 1; padding: 5px 1px; font-size: 11.5px; background: rgba(255,255,255,0.02); border: 1px solid var(--panel-border); border-radius: 4px; color: var(--text-muted); cursor: pointer; transition: all 0.2s; outline: none; font-weight: 600;">总进球</button>
+            <button class="lottery-tab-btn" data-tab="hafu" style="flex: 1; padding: 5px 1px; font-size: 11.5px; background: rgba(255,255,255,0.02); border: 1px solid var(--panel-border); border-radius: 4px; color: var(--text-muted); cursor: pointer; transition: all 0.2s; outline: none; font-weight: 600;">半全场</button>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 8px;">
       `;
 
+      // 2. 生成玩法卡片，默认除首个外隐藏
       recommendData.fivePlays.forEach(play => {
-        const safeEvText = play.safe.ev >= 0 ? `+${(play.safe.ev * 100).toFixed(1)}%` : `${(play.safe.ev * 100).toFixed(1)}%`;
-        const aggEvText = play.aggressive.ev >= 0 ? `+${(play.aggressive.ev * 100).toFixed(1)}%` : `${(play.aggressive.ev * 100).toFixed(1)}%`;
-        
-        const safeEvColor = play.safe.ev >= 0 ? "var(--neon-green)" : "#ff4a4a";
-        const aggEvColor = play.aggressive.ev >= 0 ? "var(--neon-green)" : "#ff4a4a";
+        const cardDisplay = play.playCode === "had" ? "block" : "none";
 
         html += `
-          <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 6px; padding: 8px; font-size: 11px;">
-            <div style="font-weight: 700; color: #fff; margin-bottom: 6px; display: flex; align-items: center; justify-content: space-between;">
+          <div class="lottery-play-card" id="play-card-${play.playCode}" style="display: ${cardDisplay}; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 6px; padding: 8px; font-size: 12.5px;">
+            <div style="font-weight: 700; color: #fff; margin-bottom: 6px; display: flex; align-items: center; justify-content: space-between; font-size: 13.5px;">
               <span>🎫 ${play.playName}</span>
             </div>
             
-            <div style="display: flex; flex-direction: column; gap: 4px;">
+            <div style="display: flex; flex-direction: column; gap: 5px;">
               <!-- 稳妥型 -->
               <div style="display: flex; justify-content: space-between; align-items: center;">
                 <span style="color: var(--text-muted); font-size: 10px; display: flex; align-items: center; gap: 4px;">
                   <span style="background: rgba(0, 255, 136, 0.15); color: var(--neon-green); padding: 1px 4px; border-radius: 3px; font-size: 9px; font-weight: bold;">稳妥型</span>
                 </span>
-                <span style="color: #fff; font-weight: 600;">${play.safe.option} <span style="color: var(--neon-green);">@${play.safe.odds.toFixed(2)}</span></span>
+                <span style="color: #fff; font-size: 13.5px; font-weight: 800;">${play.safe.option} <span style="color: var(--neon-green);">@${play.safe.odds.toFixed(2)}</span></span>
               </div>
-              <div style="display: flex; justify-content: space-between; color: var(--text-muted); font-size: 9px; padding-left: 4px; margin-bottom: 2px;">
+              <div style="color: var(--text-muted); font-size: 11.5px; padding-left: 4px; margin-bottom: 2px;">
                 <span>几率: <strong style="color: #fff;">${(play.safe.prob * 100).toFixed(1)}%</strong></span>
-                <span>收益率: <strong style="color: ${safeEvColor};">${safeEvText}</strong></span>
               </div>
               
               <!-- 激进型 -->
               <div style="display: flex; justify-content: space-between; align-items: center;">
                 <span style="color: var(--text-muted); font-size: 10px; display: flex; align-items: center; gap: 4px;">
-                  <span style="background: rgba(136, 0, 255, 0.15); color: var(--neon-purple); padding: 1px 4px; border-radius: 3px; font-size: 9px; font-weight: bold;">激进型</span>
+                  <span style="background: rgba(136, 0, 255, 0.15); color: #e2b3ff; padding: 1px 4px; border-radius: 3px; font-size: 9px; font-weight: bold;">激进型</span>
                 </span>
-                <span style="color: #fff; font-weight: 600;">${play.aggressive.option} <span style="color: var(--neon-green);">@${play.aggressive.odds.toFixed(2)}</span></span>
+                <span style="color: #fff; font-size: 13.5px; font-weight: 800;">${play.aggressive.option} <span style="color: var(--neon-green);">@${play.aggressive.odds.toFixed(2)}</span></span>
               </div>
-              <div style="display: flex; justify-content: space-between; color: var(--text-muted); font-size: 9px; padding-left: 4px;">
+              <div style="color: var(--text-muted); font-size: 11.5px; padding-left: 4px;">
                 <span>几率: <strong style="color: #fff;">${(play.aggressive.prob * 100).toFixed(1)}%</strong></span>
-                <span>收益率: <strong style="color: ${aggEvColor};">${aggEvText}</strong></span>
               </div>
             </div>
           </div>
         `;
       });
-      html += `</div>`;
-    }
-
-    // 单场风控拦截警告（保留以实现完整安全屏障）
-    if (recommendData.single && recommendData.single.status === "EXCLUDED") {
       html += `
-        <div style="border-left: 2px solid red; padding-left: 6px; margin-bottom: 8px; color: #ff4a4a;">
-          <strong>🚨 单场风控过滤警告</strong><br>
-          ${recommendData.single.reason}
+          </div>
         </div>
       `;
-    }
-
-    // 2串1 时序对冲混合过关建议
-    if (recommendData.parlay) {
-      html += `
-        <div style="border-left: 2px solid var(--neon-purple); padding-left: 6px; margin-top: 8px; border-top: 1px solid var(--panel-border); padding-top: 6px; margin-bottom: 8px;">
-          <strong style="color: var(--neon-purple); font-size:12px;">🔗 2串1 时序对冲混合过关建议</strong><br>
-          <span style="font-size:10px; color: var(--text-muted); line-height: 1.4; display:block; margin-top:2px;">${recommendData.parlay.reason}</span>
-        </div>
-      `;
-    }
   } else {
     html += `<div style="margin-bottom: 12px;">● 请在左侧选择比赛，系统将自动生成五大玩法最佳量化投注建议...</div>`;
   }
@@ -726,7 +713,7 @@ async function renderLotteryPanel(recommendData = null) {
       const aggColor = sum.totalAggProfit >= 0 ? "var(--neon-green)" : "#ff4a4a";
 
       html += `
-        <div style="border-top: 1px dashed rgba(255,255,255,0.1); margin: 12px 0 8px 0; padding-top: 10px;">
+        <div style="border-top: 1px dashed rgba(255,255,255,0.1); margin: 6px 0 4px 0; padding-top: 6px;">
           <h4 style="color: white; font-size: 13px; font-weight: 800; margin-bottom: 6px; display: flex; align-items: center; gap: 4px;">
             📊 体彩实战收益历史复盘
           </h4>
@@ -779,6 +766,32 @@ async function renderLotteryPanel(recommendData = null) {
   }
 
   resultDom.innerHTML = html;
+
+  // 3. 动态绑定五大玩法 Tab 切换交互事件
+  const tabBtns = resultDom.querySelectorAll(".lottery-tab-btn");
+  tabBtns.forEach(btn => {
+    btn.onclick = () => {
+      tabBtns.forEach(b => {
+        b.classList.remove("active");
+        b.style.background = "rgba(255,255,255,0.02)";
+        b.style.borderColor = "var(--panel-border)";
+        b.style.color = "var(--text-muted)";
+      });
+      btn.classList.add("active");
+      btn.style.background = "rgba(0,255,136,0.1)";
+      btn.style.borderColor = "var(--neon-green)";
+      btn.style.color = "var(--neon-green)";
+      
+      const targetTab = btn.dataset.tab;
+      resultDom.querySelectorAll(".lottery-play-card").forEach(card => {
+        if (card.id === `play-card-${targetTab}`) {
+          card.style.display = "block";
+        } else {
+          card.style.display = "none";
+        }
+      });
+    };
+  });
 }
 
 // 绑定体彩量化建议按钮事件

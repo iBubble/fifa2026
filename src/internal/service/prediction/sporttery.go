@@ -2,6 +2,9 @@ package prediction
 
 import (
 	"encoding/json"
+	"fifa2026/src/internal/db"
+	"fifa2026/src/internal/models"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -129,6 +132,12 @@ func (s *SportteryService) executeFetch() {
 				SubMatchList []struct {
 					HomeTeamAbbName string `json:"homeTeamAbbName"`
 					AwayTeamAbbName string `json:"awayTeamAbbName"`
+					MatchId         int    `json:"matchId"`
+					MatchDate       string `json:"matchDate"`
+					MatchTime       string `json:"matchTime"`
+					LeagueAllName   string `json:"leagueAllName"`
+					HomeTeamAbbEnName string `json:"homeTeamAbbEnName"`
+					AwayTeamAbbEnName string `json:"awayTeamAbbEnName"`
 					Had             struct {
 						H string `json:"h"`
 						D string `json:"d"`
@@ -207,6 +216,45 @@ func (s *SportteryService) executeFetch() {
 				HafuOdds:     hafuOdds,
 				IsAvailable:  h > 0.0,
 			}
+
+			// 同步当前竞彩在售比赛到本地 SQLite matches 表中
+			if m.MatchId > 0 {
+				matchID := fmt.Sprintf("sporttery_%d", m.MatchId)
+				scheduledStr := m.MatchDate + " " + m.MatchTime
+				var scheduledAt time.Time
+				loc, errLoc := time.LoadLocation("Asia/Shanghai")
+				if errLoc == nil {
+					scheduledAt, _ = time.ParseInLocation("2006-01-02 15:04:05", scheduledStr, loc)
+				} else {
+					scheduledAt, _ = time.Parse("2006-01-02 15:04:05", scheduledStr)
+				}
+
+				homeEn := getNormalizedTeamEnName(m.HomeTeamAbbName, m.HomeTeamAbbEnName)
+				awayEn := getNormalizedTeamEnName(m.AwayTeamAbbName, m.AwayTeamAbbEnName)
+
+				matchModel := models.Match{
+					ID:           matchID,
+					TournamentID: "fifa_2026",
+					HomeTeam:     homeEn,
+					AwayTeam:     awayEn,
+					Group:        "Lottery",
+					ScheduledAt:  scheduledAt,
+					Status:       "NS",
+					HomeScore:    0,
+					AwayScore:    0,
+					Venue:        m.LeagueAllName,
+				}
+
+				// 检查数据库中是否已存在该比赛
+				if existing, errExist := db.GetMatch(matchID); errExist == nil {
+					// 已存在比赛，继承已完赛的状态及比分，或者由 live_sync 服务已经推进的实时状态
+					matchModel.Status = existing.Status
+					matchModel.HomeScore = existing.HomeScore
+					matchModel.AwayScore = existing.AwayScore
+				}
+
+				_ = db.SaveMatch(matchModel)
+			}
 		}
 	}
 
@@ -261,4 +309,36 @@ func matchTeam(localEnName, officialCnName string) bool {
 	cleanLocal := strings.ReplaceAll(strings.ReplaceAll(localCn, "队", ""), " ", "")
 	cleanOfficial := strings.ReplaceAll(strings.ReplaceAll(officialCnName, "队", ""), " ", "")
 	return cleanLocal == cleanOfficial || strings.Contains(cleanOfficial, cleanLocal) || strings.Contains(cleanLocal, cleanOfficial)
+}
+
+var cnToEnDict = map[string]string{
+	"巴西": "Brazil", "阿根廷": "Argentina", "法国": "France", "德国": "Germany",
+	"西班牙": "Spain", "英格兰": "England", "意大利": "Italy", "荷兰": "Netherlands",
+	"葡萄牙": "Portugal", "克罗地亚": "Croatia", "日本": "Japan", "美国": "USA",
+	"墨西哥": "Mexico", "厄瓜多尔": "Ecuador", "南非": "South Africa",
+	"委内瑞拉": "Venezuela", "牙买加": "Jamaica", "伊朗": "Iran", "威尔士": "Wales",
+	"沙特": "Saudi Arabia", "沙特阿拉伯": "Saudi Arabia", "波兰": "Poland", "澳大利亚": "Australia",
+	"丹麦": "Denmark", "突尼斯": "Tunisia", "哥斯达黎加": "Costa Rica",
+	"比利时": "Belgium", "加拿大": "Canada", "摩洛哥": "Morocco",
+	"塞尔维亚": "Serbia", "瑞士": "Switzerland", "喀麦隆": "Cameroon",
+	"加纳": "Ghana", "Uruguay": "乌拉圭", "韩国": "South Korea",
+	"哥伦比亚": "Colombia", "阿尔及利亚": "Algeria", "智利": "Chile",
+	"尼日利亚": "Nigeria", "苏格兰": "Scotland", "匈牙利": "Hungary",
+	"巴拿马": "Panama", "玻利维亚": "Bolivia", "秘鲁": "Peru",
+	"捷克": "Czech Republic", "波黑": "Bosnia and Herzegovina",
+	"巴拉圭": "Paraguay", "卡塔尔": "Qatar", "海地": "Haiti", "土耳其": "Turkey",
+}
+
+func getNormalizedTeamEnName(cnName, enAbbName string) string {
+	cleanCn := strings.ReplaceAll(strings.ReplaceAll(cnName, "队", ""), " ", "")
+	for cn, en := range cnToEnDict {
+		cleanDictCn := strings.ReplaceAll(strings.ReplaceAll(cn, "队", ""), " ", "")
+		if cleanCn == cleanDictCn || strings.Contains(cleanCn, cleanDictCn) || strings.Contains(cleanDictCn, cleanCn) {
+			return en
+		}
+	}
+	if enAbbName != "" {
+		return enAbbName
+	}
+	return cnName
 }
