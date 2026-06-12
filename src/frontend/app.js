@@ -698,6 +698,7 @@ async function renderLotteryPanel(recommendData = null) {
           </div>
         </div>
       `;
+    }
   } else {
     html += `<div style="margin-bottom: 12px;">● 请在左侧选择比赛，系统将自动生成五大玩法最佳量化投注建议...</div>`;
   }
