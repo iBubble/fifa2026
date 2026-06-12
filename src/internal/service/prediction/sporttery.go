@@ -99,9 +99,11 @@ func (s *SportteryService) FetchAllOdds() {
 		return
 	}
 
-	// 内存写入时重新加锁
+	// 内存写入时重新加锁，采用增量覆盖方式，保留已下架赛事的历史真实赔率
 	s.mu.Lock()
-	s.cachedOdds = make(map[string]OfficialOdds)
+	if s.cachedOdds == nil {
+		s.cachedOdds = make(map[string]OfficialOdds)
+	}
 	for _, day := range res.Value.MatchInfoList {
 		for _, m := range day.SubMatchList {
 			key := m.HomeTeamAbbName + "_" + m.AwayTeamAbbName

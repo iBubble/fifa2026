@@ -180,6 +180,11 @@ func (s *LiveSyncService) SyncMatches() {
 				finalStatus = "Live"
 			}
 
+			// 完赛时间兜底修正：如果已经开始且开赛超过 105 分钟，状态必须升级为已完赛 (FT)
+			if finalStatus == "Live" && time.Now().After(m.ScheduledAt.Add(105*time.Minute)) {
+				finalStatus = "FT"
+			}
+
 			// 若合并后的比分或状态发生变更，执行更新并广播
 			if m.HomeScore != maxHome || m.AwayScore != maxAway || m.Status != finalStatus {
 				m.HomeScore = maxHome
@@ -315,7 +320,7 @@ func fetchBaiduMatchResults() map[string]RealtimeMatch {
 
 				var status string
 				statusText := strings.TrimSpace(item.MatchStatusText)
-				if statusText == "已完赛" || statusText == "完赛" || statusText == "FT" {
+				if statusText == "已完赛" || statusText == "已结束" || statusText == "完赛" || statusText == "结束" || statusText == "FT" {
 					status = "FT"
 				} else if statusText == "未开赛" || statusText == "VS" || statusText == "" {
 					status = "NS"
