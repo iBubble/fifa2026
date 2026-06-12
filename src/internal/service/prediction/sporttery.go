@@ -342,3 +342,62 @@ func getNormalizedTeamEnName(cnName, enAbbName string) string {
 	}
 	return cnName
 }
+
+// applyOddsShiftsToProbs 根据博彩巨头的赔率偏移，微调胜平负的基础几率，使推荐更灵敏地反映巨头大单资金偏向
+func applyOddsShiftsToProbs(homeTeam, awayTeam string, pHome, pDraw, pAway float64) (float64, float64, float64) {
+	tracker := &OddsTrackerService{}
+	shifts := tracker.GetOddsShifts(homeTeam, awayTeam)
+	var shiftH, shiftD, shiftA float64
+	for _, s := range shifts {
+		if s.Bookmaker == "Bet365" && s.Outcome == "主胜" {
+			shiftH = s.ShiftPct
+		} else if s.Bookmaker == "Pinnacle (平博)" && s.Outcome == "平局" {
+			shiftD = s.ShiftPct
+		} else if s.Bookmaker == "William Hill" && s.Outcome == "客胜" {
+			shiftA = s.ShiftPct
+		}
+	}
+
+	// 降水（负值）代表资金看好、几率微升；升水（正值）代表资金撤出，几率微降
+	// 影响因子设为 0.005 (0.5%) 以保持合理的偏置修正，防过度倾斜
+	pH := pHome * (1.0 - 0.005*shiftH)
+	pD := pDraw * (1.0 - 0.005*shiftD)
+	pA := pAway * (1.0 - 0.005*shiftA)
+
+	// 归一化
+	sum := pH + pD + pA
+	if sum > 0 {
+		pH = pH / sum
+		pD = pD / sum
+		pA = pA / sum
+	}
+	return pH, pD, pA
+}
+
+// applyShiftsToMatrix 将比分概率矩阵依据赔率偏移进行调整
+func applyShiftsToMatrix(homeTeam, awayTeam string, matrix []models.ScoreProbability) []models.ScoreProbability {
+	pHomeOrig, pDrawOrig, pAwayOrig := 0.0, 0.0, 0.0
+	for _, cell := range matrix {
+		if cell.HomeScore > cell.AwayScore {
+			pHomeOrig += cell.Prob
+		} else if cell.HomeScore == cell.AwayScore {
+			pDrawOrig += cell.Prob
+		} else {
+			pAwayOrig += cell.Prob
+		}
+	}
+
+	pH, pD, pA := applyOddsShiftsToProbs(homeTeam, awayTeam, pHomeOrig, pDrawOrig, pAwayOrig)
+
+	for i := range matrix {
+		cell := &matrix[i]
+		if cell.HomeScore > cell.AwayScore && pHomeOrig > 0 {
+			cell.Prob = cell.Prob * (pH / pHomeOrig)
+		} else if cell.HomeScore == cell.AwayScore && pDrawOrig > 0 {
+			cell.Prob = cell.Prob * (pD / pDrawOrig)
+		} else if cell.HomeScore < cell.AwayScore && pAwayOrig > 0 {
+			cell.Prob = cell.Prob * (pA / pAwayOrig)
+		}
+	}
+	return matrix
+}

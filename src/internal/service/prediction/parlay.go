@@ -104,6 +104,18 @@ func (s *ParlayService) RecommendParlay(matchIds []string, parlayMode string, pa
 		params := s.dcService.CalculateParams(m.HomeTeam, m.AwayTeam)
 		matrix, over25, under25 := s.dcService.GenerateProbabilityMatrix(params)
 
+		// 融入博彩巨头实时赔率偏移对比分概率及大小球概率的调整
+		matrix = applyShiftsToMatrix(m.HomeTeam, m.AwayTeam, matrix)
+		over25 = 0.0
+		under25 = 0.0
+		for _, cell := range matrix {
+			if float64(cell.HomeScore+cell.AwayScore) > 2.5 {
+				over25 += cell.Prob
+			} else {
+				under25 += cell.Prob
+			}
+		}
+
 		odds := s.sportteryService.GetMatchOdds(m.HomeTeam, m.AwayTeam)
 		if !odds.IsAvailable {
 			eloHome := s.eloService.GetElo(m.HomeTeam)

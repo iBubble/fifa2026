@@ -34,6 +34,9 @@ func (s *LotteryService) GenerateFivePlaysAdvice(match models.Match, report *mod
 		la = params.LambdaAway
 	}
 
+	// 融入博彩巨头实时赔率偏移对比分概率矩阵的调整
+	matrix = applyShiftsToMatrix(match.HomeTeam, match.AwayTeam, matrix)
+
 	// 基础 Dixon-Coles 概率与参数，用于生成更具波动且逼真的仿真官方赔率（模拟在资讯偏差之前的初始赔率）
 	baseParams := s.dcService.CalculateParams(match.HomeTeam, match.AwayTeam)
 	baseMatrix, _, _ := s.dcService.GenerateProbabilityMatrix(baseParams)
