@@ -702,8 +702,11 @@ func (s *ParlayService) getBestSingleChoice(matchID string, playCode string) (st
 		if !odds.IsAvailable {
 			oH, oD, oA = 0.89/pHome, 0.89/pDraw, 0.89/pAway
 		}
-		// 校验：如果官方已在售其他玩法，但当前胜平负未售，设置赔率为 0.0 阻止购买
+		// 校验：如果官方已在售其他玩法，但当前常规胜平负未售，智能降级切换至已开售的让球玩法以保证混合串关组合
 		if odds.IsAvailable && oH <= 0.0 {
+			if odds.HhadHomeOdds > 0.0 {
+				return s.getBestSingleChoice(matchID, "hhad")
+			}
 			return "", 0.0, 0.0, nil
 		}
 		evH := pHome*oH - 1.0
@@ -737,8 +740,11 @@ func (s *ParlayService) getBestSingleChoice(matchID string, playCode string) (st
 		if !odds.IsAvailable && oRH <= 0 {
 			oRH, oRD, oRA = 0.89/pRHome, 0.89/pRDraw, 0.89/pRAway
 		}
-		// 校验：如果官方已开售其他玩法，但当前让球胜平负未开售，设置赔率为 0.0 阻止购买
+		// 校验：如果官方已开售其他玩法，但当前让球胜平负未开售，智能升级切换至已开售的常规胜平负玩法以保证混合串关组合
 		if odds.IsAvailable && oRH <= 0.0 {
+			if odds.HomeOdds > 0.0 {
+				return s.getBestSingleChoice(matchID, "had")
+			}
 			return "", 0.0, 0.0, nil
 		}
 		evRH := pRHome*oRH - 1.0

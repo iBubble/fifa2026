@@ -148,9 +148,93 @@ func (s *LotteryService) GenerateSingleAdvice(match models.Match, oddsHome, odds
 			advice.OfficialOdds = &official
 			return advice
 		} else {
-			// 常规和让球均未开售，无法购买
+			// 常规和让球均未开售，我们检查比分（CRS）和总进球（TTG）是否开售以进行次优推荐
+			if len(official.CrsOdds) > 0 {
+				var bestCrs string
+				var maxProb float64
+				var bestOdds float64
+
+				for code, oVal := range official.CrsOdds {
+					if oVal <= 0.0 {
+						continue
+					}
+					var pVal float64
+					for _, cell := range matrix {
+						cellCode := getPreciseCrsKey(cell.HomeScore, cell.AwayScore)
+						if cellCode == code {
+							pVal = cell.Prob
+							break
+						}
+					}
+					if pVal > maxProb {
+						maxProb = pVal
+						bestCrs = getCrsDisplayName(code)
+						bestOdds = oVal
+					}
+				}
+
+				if bestCrs != "" && bestOdds > 0.0 {
+					advice.PrimaryBet = "比分 " + bestCrs
+					advice.PrimaryOdds = bestOdds
+					advice.PrimaryStake = 1.0
+					advice.Status = "RECOMMENDED"
+					advice.Reason = fmt.Sprintf("【体彩降级】官方常规与让球未开售，系统智能切换至比分玩法。主推【比分 %s @%.2f】（几率 %.1f%%）。", 
+						bestCrs, bestOdds, maxProb*100)
+					advice.OfficialOdds = &official
+					return advice
+				}
+			}
+
+			if len(official.TtgOdds) > 0 {
+				var bestTtg string
+				var maxProb float64
+				var bestOdds float64
+
+				ttgProbs := make([]float64, 8)
+				for _, cell := range matrix {
+					tot := cell.HomeScore + cell.AwayScore
+					if tot >= 7 {
+						ttgProbs[7] += cell.Prob
+					} else {
+						ttgProbs[tot] += cell.Prob
+					}
+				}
+
+				for code, oVal := range official.TtgOdds {
+					if oVal <= 0.0 {
+						continue
+					}
+					var g int
+					_, errScan := fmt.Sscanf(code, "s%d", &g)
+					if errScan == nil && g >= 0 && g <= 7 {
+						pVal := ttgProbs[g]
+						if pVal > maxProb {
+							maxProb = pVal
+							if g == 7 {
+								bestTtg = "7+球"
+							} else {
+								bestTtg = fmt.Sprintf("%d球", g)
+							}
+							bestOdds = oVal
+						}
+					}
+				}
+
+				if bestTtg != "" && bestOdds > 0.0 {
+					advice.PrimaryBet = "总进球 " + bestTtg
+					advice.PrimaryOdds = bestOdds
+					advice.PrimaryStake = 1.0
+					advice.Status = "RECOMMENDED"
+					advice.Reason = fmt.Sprintf("【体彩降级】官方常规与让球未开售，系统智能切换至总进球数。主推【%s @%.2f】（几率 %.1f%%）。", 
+						bestTtg, bestOdds, maxProb*100)
+					advice.OfficialOdds = &official
+					return advice
+				}
+			}
+
+			// 如果所有玩法均未开售，才真正标记为未开盘
 			advice.Status = "EXCLUDED"
-			advice.Reason = "【体彩未开盘】该赛事常规胜平负与让球胜平负目前均未开售，无法提供投注方案组合。"
+			advice.Reason = "【体彩未开盘】该赛事常规、让球、比分及总进球玩法目前均未开售，无法提供投注推荐。"
 			advice.OfficialOdds = &official
 			return advice
 		}
