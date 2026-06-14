@@ -699,12 +699,10 @@ func (s *ParlayService) getBestSingleChoice(matchID string, playCode string) (st
 			}
 			return "", 0.0, 0.0, nil
 		}
-		evH := pHome*oH - 1.0
-		evD := pDraw*oD - 1.0
-		evA := pAway*oA - 1.0
-		if evH >= evD && evH >= evA {
+		// 串关切换为选择成功率最高（概率最大）的单场选项
+		if pHome >= pDraw && pHome >= pAway {
 			optName, optOdds, optProb = "主胜", oH, pHome
-		} else if evD >= evH && evD >= evA {
+		} else if pDraw >= pHome && pDraw >= pAway {
 			optName, optOdds, optProb = "平局", oD, pDraw
 		} else {
 			optName, optOdds, optProb = "客胜", oA, pAway
@@ -737,12 +735,10 @@ func (s *ParlayService) getBestSingleChoice(matchID string, playCode string) (st
 			}
 			return "", 0.0, 0.0, nil
 		}
-		evRH := pRHome*oRH - 1.0
-		evRD := pRDraw*oRD - 1.0
-		evRA := pRAway*oRA - 1.0
-		if evRH >= evRD && evRH >= evRA {
+		// 串关切换为选择成功率最高（概率最大）的单场选项
+		if pRHome >= pRDraw && pRHome >= pRAway {
 			optName, optOdds, optProb = fmt.Sprintf("让胜(%d)", gLine), oRH, pRHome
-		} else if evRD >= evRH && evRD >= evRA {
+		} else if pRDraw >= pRHome && pRDraw >= pRAway {
 			optName, optOdds, optProb = fmt.Sprintf("让平(%d)", gLine), oRD, pRDraw
 		} else {
 			optName, optOdds, optProb = fmt.Sprintf("让负(%d)", gLine), oRA, pRAway
@@ -806,11 +802,14 @@ func (s *ParlayService) getBestSingleChoice(matchID string, playCode string) (st
 		var bestHafuProb float64
 		var bestHafuOdds float64
 
+		// 串关切换为选择成功率最高（概率最大）的单场选项
 		for op, prob := range hafuProbs {
 			apiCode := hafuKeys[op]
 			oVal := odds.HafuOdds[apiCode]
-			ev := prob*oVal - 1.0
-			if ev > (bestHafuProb*bestHafuOdds - 1.0) || bestHafu == "" {
+			if oVal <= 0.0 {
+				continue
+			}
+			if prob > bestHafuProb || bestHafu == "" {
 				bestHafu, bestHafuProb, bestHafuOdds = op, prob, oVal
 			}
 		}
@@ -835,12 +834,15 @@ func (s *ParlayService) getBestSingleChoice(matchID string, playCode string) (st
 		var bestTtgProb float64
 		var bestTtgOdds float64
 
+		// 串关切换为选择成功率最高（概率最大）的单场选项
 		for g := 0; g <= 7; g++ {
 			prob := ttgProbs[g]
 			apiCode := fmt.Sprintf("s%d", g)
 			oVal := odds.TtgOdds[apiCode]
-			ev := prob*oVal - 1.0
-			if ev > (bestTtgProb*bestTtgOdds - 1.0) || bestTtg == "" {
+			if oVal <= 0.0 {
+				continue
+			}
+			if prob > bestTtgProb || bestTtg == "" {
 				bestTtg = fmt.Sprintf("%d球", g)
 				if g == 7 {
 					bestTtg = "7+球"
@@ -874,11 +876,14 @@ func (s *ParlayService) getBestSingleChoice(matchID string, playCode string) (st
 			"s00s04", "s01s04", "s02s04", "s00s05", "s01s05", "s02s05", "s1sa",
 		}
 
+		// 串关切换为选择成功率最高（概率最大）的单场选项
 		for _, code := range officialCrsCodes {
 			prob := aggProbs[code]
 			oVal := odds.CrsOdds[code]
-			ev := prob*oVal - 1.0
-			if ev > (bestCrsProb*bestCrsOdds - 1.0) || bestCrs == "" {
+			if oVal <= 0.0 {
+				continue
+			}
+			if prob > bestCrsProb || bestCrs == "" {
 				bestCrs, bestCrsProb, bestCrsOdds = getCrsDisplayName(code), prob, oVal
 			}
 		}
