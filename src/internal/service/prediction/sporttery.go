@@ -255,6 +255,8 @@ func (s *SportteryService) GetMatchOdds(homeTeam, awayTeam string, scheduledAt t
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	log.Printf("[Sporttery] 🔍 开始匹配比赛: 本地主队=%s, 客队=%s, 赛时=%s. 缓存条数=%d", homeTeam, awayTeam, scheduledAt.Format("2006-01-02 15:04:05"), len(s.cachedOdds))
+
 	for key, odds := range s.cachedOdds {
 		parts := strings.Split(key, "_")
 		if len(parts) != 2 {
@@ -262,17 +264,23 @@ func (s *SportteryService) GetMatchOdds(homeTeam, awayTeam string, scheduledAt t
 		}
 		officialHome, officialAway := parts[0], parts[1]
 
-		if matchTeam(homeTeam, officialHome) && matchTeam(awayTeam, officialAway) {
-			// 第二重校验：开赛时间差在 24 小时以内
+		homeMatch := matchTeam(homeTeam, officialHome)
+		awayMatch := matchTeam(awayTeam, officialAway)
+		
+		log.Printf("[Sporttery]   比对缓存 key=%s: 主队匹配=%t, 客队匹配=%t", key, homeMatch, awayMatch)
+
+		if homeMatch && awayMatch {
 			timeDiff := odds.MatchTime.Sub(scheduledAt)
 			if timeDiff < 0 {
 				timeDiff = -timeDiff
 			}
+			log.Printf("[Sporttery]   队名成功匹配！官方时间=%s, 本地时间=%s, 时间差=%s", odds.MatchTime.Format("2006-01-02 15:04:05"), scheduledAt.Format("2006-01-02 15:04:05"), timeDiff)
 			if timeDiff <= 120*time.Hour {
 				return odds
 			}
 		}
 	}
+	log.Printf("[Sporttery] ❌ 未匹配到任何官方赔率: %s vs %s", homeTeam, awayTeam)
 	return OfficialOdds{IsAvailable: false}
 }
 
@@ -363,17 +371,20 @@ func applyOddsShiftsToProbs(homeTeam, awayTeam string, pHome, pDraw, pAway float
 
 // checkOddsCircuitBreaker 熔断器：校验赔率合法性、抽水率 Margin 和赔率突变偏离度
 func checkOddsCircuitBreaker(newH, newD, newA float64, oldH, oldD, oldA float64) bool {
-	// 1. 基本合法性校验：体彩非售或异常时赔率可能为 0 或小于 1.0 等
+	// 如果常规胜平负全都为 0.0，说明是合规的常规未售，此时不应该触发熔断
+	if newH <= 0.0 && newD <= 0.0 && newA <= 0.0 {
+		return false
+	}
+
+	// 1. 基本合法性校验：如果部分为 0 或小于 1.01，则是异常数据，触发熔断
 	if newH <= 1.01 || newD <= 1.01 || newA <= 1.01 {
 		return true // 熔断
 	}
 
 	// 2. 抽水率 Margin 校验
-	// Margin = 1.0 - 1.0 / (1.0/H + 1.0/D + 1.0/A)
 	invSum := 1.0/newH + 1.0/newD + 1.0/newA
 	margin := 1.0 - 1.0/invSum
 	if margin < -0.02 || margin > 0.30 {
-		// 抽水率异常（小于 -2% 或大于 30%），触发熔断。体彩正常抽水一般在 5% 到 15% 之间
 		return true
 	}
 
@@ -383,12 +394,11 @@ func checkOddsCircuitBreaker(newH, newD, newA float64, oldH, oldD, oldA float64)
 		diffD := math.Abs(newD-oldD) / oldD
 		diffA := math.Abs(newA-oldA) / oldA
 		if diffH > 0.50 || diffD > 0.50 || diffA > 0.50 {
-			// 赔率变动超过 50%，可能是数据录入错误或接口异常，熔断保护
 			return true
 		}
 	}
 
-	return false // 未触发熔断
+	return false
 }
 
 // applyShiftsToMatrix 将比分概率矩阵依据赔率偏移进行调整
