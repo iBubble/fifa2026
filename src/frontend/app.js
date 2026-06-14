@@ -1286,7 +1286,7 @@ document.getElementById("generate-parlay-btn").onclick = async () => {
     const schemesList = document.getElementById("modal-schemes-list");
     schemesList.innerHTML = "";
 
-    const activeParlays = (data.parlays || []).filter(p => p.comboOdds > 0 && p.winsCount > 0);
+    const activeParlays = data.parlays || [];
 
     if (activeParlays.length === 0) {
       let exclHtml = "";
@@ -1330,11 +1330,12 @@ document.getElementById("generate-parlay-btn").onclick = async () => {
     document.getElementById("copy-parlay-summary-btn").style.opacity = "1";
     document.getElementById("copy-parlay-summary-btn").style.cursor = "pointer";
 
-    // 寻找概率最高的一套方案作为“主推”
+    // 寻找概率最高且正常开售的一套方案作为“主推”
     let maxProb = -1;
-    let bestIndex = 0;
+    let bestIndex = -1;
     activeParlays.forEach((p, idx) => {
-      if (p.comboProb > maxProb) {
+      const isAvailable = p.comboOdds > 0 && p.winsCount > 0;
+      if (isAvailable && p.comboProb > maxProb) {
         maxProb = p.comboProb;
         bestIndex = idx;
       }
@@ -1342,8 +1343,70 @@ document.getElementById("generate-parlay-btn").onclick = async () => {
 
     activeParlays.forEach((p, idx) => {
       const isBest = idx === bestIndex;
-      const cardClass = isBest ? "scheme-card best-pick" : "scheme-card";
-      const badgeText = isBest ? "🔥 胜率主推" : "📊 玩法方案";
+      const isAvailable = p.comboOdds > 0 && p.winsCount > 0;
+
+      let cardClass = "scheme-card";
+      let badgeText = "📊 玩法方案";
+      if (isBest) {
+        cardClass = "scheme-card best-pick";
+        badgeText = "🔥 胜率主推";
+      } else if (!isAvailable) {
+        cardClass = "scheme-card unavailable-pick";
+        badgeText = "🚫 暂不可投";
+      }
+
+      // 计算环形图圆周 2 * PI * r = 2 * 3.14159 * 38 = 238.76
+      const radius = 38;
+      const circ = 2 * Math.PI * radius;
+      const offset = circ - (p.comboProb * circ);
+
+      if (!isAvailable) {
+        let matchingDetail = "部分赛事该玩法未开售，场数不足。";
+        if (data.excluded && data.excluded.length > 0) {
+          const ex = data.excluded.find(e => e.matchId === p.parlayType || e.homeTeam === p.parlayType);
+          if (ex) {
+            matchingDetail = ex.awayTeam || ex.reason || "本组赛事中仅有部分场次开售该玩法，不足以组成所选过关方式。";
+          }
+        }
+
+        schemesList.innerHTML += `
+          <div class="${cardClass}" style="opacity: 0.65; filter: grayscale(80%);">
+            <div class="scheme-header">
+              <span style="font-size:13px; font-weight:800; color:white;">${p.parlayType}</span>
+              <span class="scheme-badge" style="background:#ff4a4a; color:white;">${badgeText}</span>
+            </div>
+            
+            <div class="scheme-prob-ring">
+              <svg class="prob-circle-svg">
+                <circle class="prob-circle-bg" cx="45" cy="45" r="${radius}"></circle>
+                <circle class="prob-circle-val" cx="45" cy="45" r="${radius}" 
+                  style="stroke-dasharray: ${circ}; stroke-dashoffset: ${circ}; stroke: #666;"></circle>
+              </svg>
+              <span class="prob-text" style="color:var(--text-muted);">--</span>
+            </div>
+
+            <div class="scheme-meta">
+              <div class="scheme-payout-row">
+                <span style="color:var(--text-muted);">过关总赔率</span>
+                <strong style="color:var(--text-muted);">--</strong>
+              </div>
+              <div class="scheme-payout-row">
+                <span style="color:var(--text-muted);">总投注方案</span>
+                <strong style="color:var(--text-muted);">--</strong>
+              </div>
+              <div class="scheme-payout-row">
+                <span style="color:var(--text-muted);">建议配资比例</span>
+                <strong style="color:var(--text-muted);">0.0%</strong>
+              </div>
+            </div>
+
+            <div class="scheme-detail" style="border-top: 1px solid rgba(255,255,255,0.05); margin-top: 10px; padding-top: 8px; font-size: 10px; color: #ff9a9a; text-align: left; line-height: 1.4; max-height: 60px; overflow-y: auto;">
+              ${matchingDetail}
+            </div>
+          </div>
+        `;
+        return;
+      }
 
       // 提取本玩法下串关单场明细（借助之前在 Excluded 里面转存的信息）
       let detailDesc = "单场选择暂缺";
@@ -1354,10 +1417,7 @@ document.getElementById("generate-parlay-btn").onclick = async () => {
         }
       }
 
-      // 计算环形图圆周 2 * PI * r = 2 * 3.14159 * 38 = 238.76
-      const radius = 38;
-      const circ = 2 * Math.PI * radius;
-      const offset = circ - (p.comboProb * circ);
+
 
       const roiColor = p.totalEv >= 0 ? "var(--neon-green)" : "#ff4a4a";
       const roiSign = p.totalEv >= 0 ? "+" : "";
