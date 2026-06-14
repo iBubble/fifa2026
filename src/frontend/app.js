@@ -786,6 +786,14 @@ async function renderLotteryPanel(recommendData = null) {
       recommendData.fivePlays.forEach(play => {
         const cardDisplay = play.playCode === "had" ? "block" : "none";
 
+        const isSafeUnsold = play.safe.odds <= 0 || play.safe.option === "未开售";
+        const safeOptionText = isSafeUnsold ? `<span style="color: var(--text-muted); font-style: italic;">未开售</span>` : `${play.safe.option} <span style="color: var(--neon-green);">@${play.safe.odds.toFixed(2)}</span>`;
+        const safeProbText = isSafeUnsold ? `0.0%` : `${(play.safe.prob * 100).toFixed(1)}%`;
+
+        const isAggressiveUnsold = play.aggressive.odds <= 0 || play.aggressive.option === "未开售";
+        const aggressiveOptionText = isAggressiveUnsold ? `<span style="color: var(--text-muted); font-style: italic;">未开售</span>` : `${play.aggressive.option} <span style="color: var(--neon-green);">@${play.aggressive.odds.toFixed(2)}</span>`;
+        const aggressiveProbText = isAggressiveUnsold ? `0.0%` : `${(play.aggressive.prob * 100).toFixed(1)}%`;
+
         html += `
           <div class="lottery-play-card" id="play-card-${play.playCode}" style="display: ${cardDisplay}; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 6px; padding: 8px; font-size: 12.5px;">
             <div style="font-weight: 700; color: #fff; margin-bottom: 6px; display: flex; align-items: center; justify-content: space-between; font-size: 13.5px;">
@@ -798,10 +806,10 @@ async function renderLotteryPanel(recommendData = null) {
                 <span style="color: var(--text-muted); font-size: 10px; display: flex; align-items: center; gap: 4px;">
                   <span style="background: rgba(0, 255, 136, 0.15); color: var(--neon-green); padding: 1px 4px; border-radius: 3px; font-size: 9px; font-weight: bold;">稳妥型</span>
                 </span>
-                <span style="color: #fff; font-size: 13.5px; font-weight: 800;">${play.safe.option} <span style="color: var(--neon-green);">@${play.safe.odds.toFixed(2)}</span></span>
+                <span style="color: #fff; font-size: 13.5px; font-weight: 800;">${safeOptionText}</span>
               </div>
               <div style="color: var(--text-muted); font-size: 11.5px; padding-left: 4px; margin-bottom: 2px;">
-                <span>几率: <strong style="color: #fff;">${(play.safe.prob * 100).toFixed(1)}%</strong></span>
+                <span>几率: <strong style="color: #fff;">${safeProbText}</strong></span>
               </div>
               
               <!-- 激进型 -->
@@ -809,10 +817,10 @@ async function renderLotteryPanel(recommendData = null) {
                 <span style="color: var(--text-muted); font-size: 10px; display: flex; align-items: center; gap: 4px;">
                   <span style="background: rgba(136, 0, 255, 0.15); color: #e2b3ff; padding: 1px 4px; border-radius: 3px; font-size: 9px; font-weight: bold;">激进型</span>
                 </span>
-                <span style="color: #fff; font-size: 13.5px; font-weight: 800;">${play.aggressive.option} <span style="color: var(--neon-green);">@${play.aggressive.odds.toFixed(2)}</span></span>
+                <span style="color: #fff; font-size: 13.5px; font-weight: 800;">${aggressiveOptionText}</span>
               </div>
               <div style="color: var(--text-muted); font-size: 11.5px; padding-left: 4px;">
-                <span>几率: <strong style="color: #fff;">${(play.aggressive.prob * 100).toFixed(1)}%</strong></span>
+                <span>几率: <strong style="color: #fff;">${aggressiveProbText}</strong></span>
               </div>
             </div>
           </div>
@@ -1278,7 +1286,9 @@ document.getElementById("generate-parlay-btn").onclick = async () => {
     const schemesList = document.getElementById("modal-schemes-list");
     schemesList.innerHTML = "";
 
-    if (!data.parlays || data.parlays.length === 0) {
+    const activeParlays = (data.parlays || []).filter(p => p.comboOdds > 0 && p.winsCount > 0);
+
+    if (activeParlays.length === 0) {
       let exclHtml = "";
       if (data.excluded && data.excluded.length > 0) {
         data.excluded.forEach(ex => {
@@ -1299,13 +1309,13 @@ document.getElementById("generate-parlay-btn").onclick = async () => {
           <span style="font-size: 28px; margin-bottom: 8px;">🛡️</span>
           <h3 style="color: #ff4a4a; margin-bottom: 6px; font-size: 13px; font-weight:700;">智能量化风控防御系统已拦截</h3>
           <p style="font-size:11px; color: var(--text-muted); max-width: 480px; line-height: 1.5; margin-bottom: 12px; padding: 0 10px;">
-            当前所勾选的比赛存在高危偏置属性（如天气突变、情报利空、均势平局或历史天敌克制等），已被防御机制排除。剩余未被排出的有效场次不足 2 场，故无法生成过关推荐方案：
+            当前所勾选的比赛存在高危偏置属性，或玩法均未开售导致无有效投注组合，故无法生成过关推荐方案：
           </p>
           <div style="width: 100%; text-align: left; max-height: 140px; overflow-y: auto; padding: 0 10px; box-sizing: border-box;">
             ${exclHtml || '<div style="color:var(--text-muted); text-align:center; font-size:11px;">暂无排除明细</div>'}
           </div>
           <p style="font-size:11px; color: var(--neon-purple); margin-top: 12px; font-weight:600;">
-            💡 操作提示: 请重新选择其他中低风险的未开赛场次，再次发起精算。
+            💡 操作提示: 请重新选择其他已开售且中低风险的未完赛场次，再次发起精算。
           </p>
         </div>
       `;
@@ -1323,14 +1333,14 @@ document.getElementById("generate-parlay-btn").onclick = async () => {
     // 寻找概率最高的一套方案作为“主推”
     let maxProb = -1;
     let bestIndex = 0;
-    data.parlays.forEach((p, idx) => {
+    activeParlays.forEach((p, idx) => {
       if (p.comboProb > maxProb) {
         maxProb = p.comboProb;
         bestIndex = idx;
       }
     });
 
-    data.parlays.forEach((p, idx) => {
+    activeParlays.forEach((p, idx) => {
       const isBest = idx === bestIndex;
       const cardClass = isBest ? "scheme-card best-pick" : "scheme-card";
       const badgeText = isBest ? "🔥 胜率主推" : "📊 玩法方案";

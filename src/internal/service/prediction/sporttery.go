@@ -237,7 +237,7 @@ func (s *SportteryService) executeFetch() {
 				CrsOdds:      crsOdds,
 				TtgOdds:      ttgOdds,
 				HafuOdds:     hafuOdds,
-				IsAvailable:  h > 0.0 && !isCircuitBroken,
+				IsAvailable:  (h > 0.0 || hh > 0.0 || len(crsOdds) > 0) && !isCircuitBroken,
 				MatchTime:    matchTime,
 			}
 
