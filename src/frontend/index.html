@@ -95,7 +95,7 @@
 
     <!-- 中列: 预测面板与蒙特卡洛推演 -->
     <div class="center-col">
-      <div class="glass-panel" style="flex: 2; display: flex; flex-direction: column; gap: 10px;">
+      <div class="glass-panel" id="prediction-panel" style="flex: 2; display: flex; flex-direction: column; gap: 10px;">
         <h2 id="current-match-title" style="font-size: 26px; font-weight: 800; text-align: center; color: white; margin-bottom: 5px; text-shadow: 0 0 12px rgba(0, 255, 136, 0.4); letter-spacing: 1px;">请在左侧选择一场比赛</h2>
         <div id="match-h2h-rank-bar" style="font-size: 11px; text-align: center; color: var(--text-muted); margin-top: 5px; margin-bottom: 12px; display: none; background: rgba(255,255,255,0.03); border: 1px solid var(--panel-border); padding: 4px 10px; border-radius: 6px; justify-content: center; gap: 20px; align-items: center; letter-spacing: 0.5px; font-weight: 600;"></div>
         <h3>单场深度预测 & 大模型偏置修正</h3>
@@ -108,6 +108,41 @@
         
         <div id="prediction-result" style="display: none; font-size: 12px; color: var(--text-muted);">
           <!-- 动态渲染比分概率和大模型报告 -->
+        </div>
+      </div>
+
+      <!-- 智能对话区域 -->
+      <div id="ai-chat-section" style="display: none; margin-top: 10px; transition: all 0.3s ease;">
+        <!-- 触发按钮容器 -->
+        <div id="ai-chat-collapsed-trigger" style="display: flex; justify-content: center;">
+          <button id="ai-chat-toggle-btn" class="ai-chat-toggle-btn">💬 AI 智能对话</button>
+        </div>
+        
+        <!-- 对话框容器，默认为隐藏状态 -->
+        <div id="ai-chat-container" class="glass-panel ai-chat-window-container" style="display: none; flex-direction: column; height: 410px; padding: 12px; gap: 8px;">
+          <!-- 头部 -->
+          <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 6px;">
+            <div style="display: flex; align-items: center; gap: 6px; font-weight: 800; color: var(--neon-purple); font-size: 13px;">
+              <span style="font-size: 14px;">🤖</span> AI 智能决策助手
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <button id="ai-chat-clear-btn" title="清除历史记录" style="background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 11px; transition: all 0.2s; padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.1);" onmouseover="this.style.color='var(--neon-green)'; this.style.borderColor='var(--neon-green)'" onmouseout="this.style.color='var(--text-muted)'; this.style.borderColor='rgba(255,255,255,0.1)'">🗑️ 清除</button>
+              <button id="ai-chat-close-btn" style="background: none; border: none; color: var(--text-muted); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: color 0.2s; padding: 4px;" onmouseover="this.style.color='#ff4a4a'" onmouseout="this.style.color='var(--text-muted)'"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: block;"><path d="M14 6h-4V2M2 10h4v4" /></svg></button>
+            </div>
+          </div>
+          
+          <!-- 聊天记录区 -->
+          <div id="ai-chat-history" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; font-size: 11px; padding-right: 4px;">
+            <div style="background: rgba(136,0,255,0.06); border-left: 2px solid var(--neon-purple); padding: 6px 10px; border-radius: 4px; color: var(--text-main); line-height: 1.4; align-self: flex-start; max-width: 85%;">
+              你好！我是全能智能决策与通用精算助手。你可以向我追问关于当前比赛的量化精算、让球风控等细节，也可以向我咨询任何其他足球联赛、科学常识、全球天气或技术编程等通用问题。
+            </div>
+          </div>
+          
+          <!-- 底部输入发送区 -->
+          <div style="display: flex; gap: 8px; align-items: center; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 6px;">
+            <input type="text" id="ai-chat-input" placeholder="追问比赛细节，或向通用助手咨询任何问题..." style="flex: 1; height: 28px; background: rgba(0,0,0,0.2); border: 1px solid var(--panel-border); border-radius: 6px; color: white; padding: 0 8px; font-size: 11px; outline: none;">
+            <button id="ai-chat-send-btn" style="width: 50px; height: 28px; background: linear-gradient(135deg, var(--neon-purple), var(--neon-green)); border: none; border-radius: 6px; color: white; font-weight: 700; cursor: pointer; font-size: 11px; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 8px rgba(0, 255, 136, 0.15);">发送</button>
+          </div>
         </div>
       </div>
 

@@ -106,6 +106,8 @@ func main() {
 			} else {
 				go sportteryService.FetchAllOdds()
 			}
+			// 每次拉取比赛列表时，异步触发一次实时比分抓取，保证比分的实时性
+			go liveSyncService.SyncMatches()
 
 			matches, err := db.GetMatchesByTournament("fifa_2026")
 			if err != nil {
@@ -382,6 +384,125 @@ func main() {
 			_ = db.SavePredictionReport(report)
 
 			c.JSON(http.StatusOK, report)
+		})
+
+		// 智能对话接口，针对当前比赛及勾选比赛列表向大模型发起深度问答与工具调度
+		api.POST("/chat", func(c *gin.Context) {
+			var req struct {
+				MatchID         string               `json:"matchId"`
+				Message         string               `json:"message"`
+				Predictions     interface{}          `json:"predictions"`
+				CheckedMatchIDs []string             `json:"checkedMatchIds"`
+				History         []models.ChatMessage `json:"history"`
+			}
+			if err := c.ShouldBindJSON(&req); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
+
+			match, err := db.GetMatch(req.MatchID)
+			if err != nil {
+				c.JSON(http.StatusNotFound, gin.H{"error": "未找到指定比赛"})
+				return
+			}
+
+			// 1. 将 predictions 序列化为 JSON 字符串作为 AI 问答上下文
+			predictionsBytes, _ := json.Marshal(req.Predictions)
+			predictionsStr := string(predictionsBytes)
+
+			// 2. 组装已勾选的比赛列表数据上下文
+			var sbChecked strings.Builder
+			if len(req.CheckedMatchIDs) > 0 {
+				sbChecked.WriteString("已勾选比赛列表:\n")
+				for _, cmID := range req.CheckedMatchIDs {
+					cm, errCm := db.GetMatch(cmID)
+					if errCm == nil {
+						cOdds := sportteryService.GetMatchOdds(cm.HomeTeam, cm.AwayTeam, cm.ScheduledAt)
+						predStr := "暂无预测数据"
+						if rep, errRep := db.GetPredictionReport(cmID); errRep == nil && len(rep.ScoreMatrix) > 0 {
+							var homeP, drawP, awayP float64
+							for _, cell := range rep.ScoreMatrix {
+								if cell.HomeScore > cell.AwayScore {
+									homeP += cell.Prob
+								} else if cell.HomeScore == cell.AwayScore {
+									drawP += cell.Prob
+								} else {
+									awayP += cell.Prob
+								}
+							}
+							predStr = fmt.Sprintf("主胜概率:%.1f%%, 平局概率:%.1f%%, 客胜概率:%.1f%%",
+								homeP*100, drawP*100, awayP*100)
+						}
+						sbChecked.WriteString(fmt.Sprintf("- 比赛: %s vs %s, 状态: %s, 竞彩赔率: 主胜%.2f/平局%.2f/客胜%.2f, 泊松预测: %s\n",
+							cm.HomeTeam, cm.AwayTeam, cm.Status, cOdds.HomeOdds, cOdds.DrawOdds, cOdds.AwayOdds, predStr))
+					}
+				}
+			} else {
+				sbChecked.WriteString("暂无勾选比赛")
+			}
+			checkedMatchesCtx := sbChecked.String()
+
+			// 3. 调用首轮 Agent 意图调度
+			reply, toolCallJSON, err := ollamaService.ChatAgentDispatcher(c.Request.Context(), match, req.Message, predictionsStr, checkedMatchesCtx, req.History)
+			if err != nil {
+				log.Printf("[Chat] ⚠️ AI 智能体首轮调度失败: %v", err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+
+			// 4. 若大模型命中了工具，执行对应的 Go 后端逻辑
+			if toolCallJSON != "" {
+				var call struct {
+					Tool  string `json:"tool"`
+					Query string `json:"query"`
+				}
+				if errJson := json.Unmarshal([]byte(toolCallJSON), &call); errJson == nil {
+					observation := ""
+					log.Printf("[ChatAgent] 🚀 命中工具调用: Tool=%s, Query=%s", call.Tool, call.Query)
+
+					isWebSearch := false
+					if call.Tool == "web_search" {
+						isWebSearch = true
+					}
+
+					switch call.Tool {
+					case "web_search":
+						obs, errSearch := ai.WebSearch(call.Query)
+						if errSearch == nil {
+							observation = obs
+						} else {
+							observation = "全网搜索失败: " + errSearch.Error()
+						}
+					case "local_search":
+						obsList, errLocal := db.FuzzySearchLocalData(call.Query)
+						if errLocal == nil {
+							observation = strings.Join(obsList, "\n")
+						} else {
+							observation = "本地搜索失败: " + errLocal.Error()
+						}
+					default:
+						observation = "未识别的工具名称"
+					}
+
+					// 把观测到的数据二次喂回大模型生成最终的文本解答（沙盒只读模式）
+					finalReply, errObs := ollamaService.ChatWithObservation(c.Request.Context(), match, req.Message, predictionsStr, checkedMatchesCtx, call.Tool, observation, req.History)
+					if errObs != nil {
+						log.Printf("[Chat] ⚠️ AI 智能体二次生成失败: %v", errObs)
+						c.JSON(http.StatusInternalServerError, gin.H{"error": errObs.Error()})
+						return
+					}
+					if isWebSearch {
+						finalReply = fmt.Sprintf("> 🧠 **FIFA 2026 智能决策引擎思考中**...\n> 🔍 **全网事实检索**：已针对 “%s” 进行全网实时搜索以校准事实数据。\n\n%s", call.Query, finalReply)
+					} else if call.Tool == "local_search" {
+						finalReply = fmt.Sprintf("> 🧠 **FIFA 2026 智能决策引擎思考中**...\n> 📂 **本地数据检索**：已针对 “%s” 检索本地历史数据库以校准偏置事实。\n\n%s", call.Query, finalReply)
+					}
+					reply = finalReply
+				} else {
+					log.Printf("[Chat] ⚠️ 无法解析大模型工具JSON: %s", toolCallJSON)
+				}
+			}
+
+			c.JSON(http.StatusOK, gin.H{"reply": reply})
 		})
 
 		// 全量同步各项数据接口 (主动触发数据补充)

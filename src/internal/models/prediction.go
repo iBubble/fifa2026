@@ -78,3 +78,10 @@ type H2HRecord struct {
 	AvgAwayGoals float64          `json:"avgAwayGoals"`
 	Matches      []H2HMatchDetail `json:"matches"` // 交手明细列表
 }
+
+// ChatMessage 代表对话历史中的单条消息
+type ChatMessage struct {
+	Role    string `json:"role"`    // "user" 或 "assistant"
+	Content string `json:"content"` // 消息内容
+}
+

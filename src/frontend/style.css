@@ -403,5 +403,62 @@ h3 {
   transition: all 0.3s;
 }
 
+/* AI 智能对话触发按钮样式 */
+.ai-chat-toggle-btn {
+  background: rgba(20, 27, 45, 0.7);
+  border: 1.5px solid rgba(136, 0, 255, 0.4);
+  border-radius: 20px;
+  padding: 6px 24px;
+  color: var(--text-main);
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2), 0 0 4px rgba(136, 0, 255, 0.1);
+  letter-spacing: 0.5px;
+  outline: none;
+}
+
+.ai-chat-toggle-btn:hover {
+  border-color: var(--neon-purple);
+  box-shadow: 0 4px 16px rgba(136, 0, 255, 0.3), 0 0 10px rgba(0, 255, 136, 0.2);
+  transform: translateY(-1px);
+  color: #fff;
+}
+
+.ai-chat-toggle-btn:active {
+  transform: translateY(1px);
+}
+
+/* AI 智能对话窗口样式与发光动画 */
+.ai-chat-window-container {
+  border: 1px solid rgba(136, 0, 255, 0.25) !important;
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37), 0 0 12px rgba(136, 0, 255, 0.1) !important;
+  transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.ai-chat-window-container:hover {
+  border-color: rgba(136, 0, 255, 0.4) !important;
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.45), 0 0 16px rgba(136, 0, 255, 0.2) !important;
+}
+
+/* 上方 CoT 面板折叠动画 */
+.cot-collapsed {
+  max-height: 0 !important;
+  padding-top: 0 !important;
+  margin-top: 0 !important;
+  opacity: 0 !important;
+  border-top-color: transparent !important;
+  pointer-events: none;
+}
+
+/* 智能对话框展开时，上方预测卡片缩水，取消 flex 分摊比例实现自适应最小高度包覆 */
+#prediction-panel.collapsed-layout {
+  flex: none !important;
+}
+
+
 
 

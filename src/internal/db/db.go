@@ -232,3 +232,107 @@ func createTables() error {
 
 	return nil
 }
+
+// FuzzySearchLocalData 跨表本地数据库模糊检索方法
+func FuzzySearchLocalData(query string) ([]string, error) {
+	if DB == nil {
+		return nil, fmt.Errorf("数据库连接未初始化")
+	}
+
+	var results []string
+	likePattern := "%" + query + "%"
+
+	// 1. 检索比赛记录
+	rows, err := DB.Query(`SELECT home_team, away_team, scheduled_at, status, home_score, away_score, venue 
+		FROM matches 
+		WHERE home_team LIKE ? OR away_team LIKE ? OR venue LIKE ? 
+		LIMIT 5`, likePattern, likePattern, likePattern)
+	if err == nil {
+		defer rows.Close()
+		results = append(results, "--- 匹配的比赛记录 (Matches) ---")
+		found := false
+		for rows.Next() {
+			found = true
+			var home, away, scheduled, status, venue string
+			var homeScore, awayScore int
+			if err := rows.Scan(&home, &away, &scheduled, &status, &homeScore, &awayScore, &venue); err == nil {
+				results = append(results, fmt.Sprintf("赛事: %s VS %s | 时间: %s | 状态: %s | 比分: %d:%d | 场地: %s",
+					home, away, scheduled, status, homeScore, awayScore, venue))
+			}
+		}
+		if !found {
+			results = append(results, "无匹配的比赛记录")
+		}
+	}
+
+	// 2. 检索突发新闻资讯
+	rowsNews, err := DB.Query(`SELECT title, summary, source_site, publish_time 
+		FROM news_articles 
+		WHERE title LIKE ? OR summary LIKE ? 
+		LIMIT 5`, likePattern, likePattern)
+	if err == nil {
+		defer rowsNews.Close()
+		results = append(results, "\n--- 匹配的新闻战术资讯 (News) ---")
+		found := false
+		for rowsNews.Next() {
+			found = true
+			var title, summary, site, pubTime string
+			if err := rowsNews.Scan(&title, &summary, &site, &pubTime); err == nil {
+				results = append(results, fmt.Sprintf("标题: %s | 摘要: %s | 来源: %s (%s)",
+					title, summary, site, pubTime))
+			}
+		}
+		if !found {
+			results = append(results, "无匹配的新闻资讯")
+		}
+	}
+
+	// 3. 检索大模型复盘反思历史
+	rowsReports, err := DB.Query(`SELECT r.match_id, m.home_team, m.away_team, r.brier_score, r.tactics_review 
+		FROM backtest_reports r 
+		LEFT JOIN matches m ON r.match_id = m.id 
+		WHERE r.tactics_review LIKE ? OR m.home_team LIKE ? OR m.away_team LIKE ? 
+		LIMIT 3`, likePattern, likePattern, likePattern)
+	if err == nil {
+		defer rowsReports.Close()
+		results = append(results, "\n--- 匹配的赛后量化复盘与反思 (Reviews) ---")
+		found := false
+		for rowsReports.Next() {
+			found = true
+			var matchId, home, away, review string
+			var brier float64
+			if err := rowsReports.Scan(&matchId, &home, &away, &brier, &review); err == nil {
+				results = append(results, fmt.Sprintf("对战: %s VS %s | Brier Score: %.4f | 反思总结: %s",
+					home, away, brier, review))
+			}
+		}
+		if !found {
+			results = append(results, "无匹配的复盘记录")
+		}
+	}
+
+	// 4. 检索账本与投注
+	rowsBets, err := DB.Query(`SELECT home_team, away_team, market, outcome, odds, stake, result, pnl 
+		FROM bets 
+		WHERE home_team LIKE ? OR away_team LIKE ? OR market LIKE ? 
+		LIMIT 5`, likePattern, likePattern, likePattern)
+	if err == nil {
+		defer rowsBets.Close()
+		results = append(results, "\n--- 匹配的投注账本账单 (Bets) ---")
+		found := false
+		for rowsBets.Next() {
+			found = true
+			var home, away, market, outcome, result string
+			var odds, stake, pnl float64
+			if err := rowsBets.Scan(&home, &away, &market, &outcome, &odds, &stake, &result, &pnl); err == nil {
+				results = append(results, fmt.Sprintf("单注: %s VS %s (%s) | 投注: %s @%.2f | 金额: %.1f | 状态: %s | PnL: %.1f",
+					home, away, market, outcome, odds, stake, result, pnl))
+			}
+		}
+		if !found {
+			results = append(results, "无匹配的投注记录")
+		}
+	}
+
+	return results, nil
+}

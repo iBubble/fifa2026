@@ -18,7 +18,7 @@ func TestNewOllamaService_TimeoutParsing(t *testing.T) {
 		os.Unsetenv("OLLAMA_REVIEW_TIMEOUT")
 	}()
 
-	s := NewOllamaService("http://localhost:11434", "qwen2.5")
+	s := NewOllamaService("http://localhost:11434", "qwen3.6:35b-q4")
 	if s.predictTimeout != 8*time.Second {
 		t.Errorf("expected predictTimeout 8s, got %v", s.predictTimeout)
 	}
@@ -37,7 +37,7 @@ func TestOllamaService_TimeoutTriggered(t *testing.T) {
 	defer ts.Close()
 
 	// 1. 测试前台预测超时
-	s := NewOllamaService(ts.URL, "qwen2.5")
+	s := NewOllamaService(ts.URL, "qwen3.6:35b-q4")
 	s.predictTimeout = 10 * time.Millisecond // 设置超短的超时，必定触发超时
 
 	match := models.Match{

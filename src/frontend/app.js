@@ -184,6 +184,38 @@ async function selectMatch(matchID, element) {
   // 异步加载官方竞彩赔率并回填
   await loadOfficialOdds(matchID);
   
+  // 展示 AI 智能对话触发按钮区域，并根据当前窗口状态重置或保留聊天记录
+  const chatSection = document.getElementById("ai-chat-section");
+  if (chatSection) {
+    chatSection.style.display = "block";
+    if (isAIChatOpen) {
+      const historyDom = document.getElementById("ai-chat-history");
+      if (historyDom) {
+        const matchInfo = matchesMap[currentMatchID];
+        const homeCn = matchInfo ? translateTeamNameText(matchInfo.homeTeam) : "主队";
+        const awayCn = matchInfo ? translateTeamNameText(matchInfo.awayTeam) : "客队";
+        if (historyDom.children.length <= 1) {
+          historyDom.innerHTML = `
+            <div style="background: rgba(136,0,255,0.06); border-left: 2px solid var(--neon-purple); padding: 6px 10px; border-radius: 4px; color: var(--text-main); line-height: 1.4; align-self: flex-start; max-width: 85%;">
+              你好！我是量化精算AI助手。已为你锁定 <strong>${homeCn} vs ${awayCn}</strong> 场次。你可以向我追问关于这场比赛的战术变数偏置、让球风控或赔率套利等细节。
+            </div>
+          `;
+        } else {
+          const switchHtml = `
+            <div style="background: rgba(255,255,255,0.03); border: 1px dashed rgba(255,255,255,0.1); padding: 4px 8px; border-radius: 4px; color: var(--text-muted); font-size: 10px; align-self: center; text-align: center; width: calc(100% - 20px); margin: 4px 0;">
+              📅 已切换关注场次为：<strong>${homeCn} vs ${awayCn}</strong>
+            </div>
+          `;
+          historyDom.insertAdjacentHTML("beforeend", switchHtml);
+          historyDom.scrollTop = historyDom.scrollHeight;
+          localStorage.setItem("ai_chat_history", historyDom.innerHTML);
+        }
+      }
+    } else {
+      resetAIChatWindow();
+    }
+  }
+
   // 切换比赛时重置倒计时并立刻启动全自动量化流水线
   countdownSeconds = 600;
   triggerAutoCalculation();
@@ -359,7 +391,7 @@ function renderPredictionResult(report) {
     </div>
 
     <!-- 辩论 CoT 展示面板 -->
-    <div style="border-top: 1px dashed var(--panel-border); padding-top: 8px; margin-top: 4px;">
+    <div id="prediction-cot-panel" class="${isAIChatOpen ? 'cot-collapsed' : ''}" style="border-top: 1px dashed var(--panel-border); padding-top: 8px; margin-top: 4px; transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1); overflow: hidden; max-height: 500px;">
       <h3 style="border-left-color: var(--neon-purple); font-size: 13.5px; margin-bottom: 6px; font-weight: 800;">🧠 双 Agent 客观反驳决策过程 (CoT)</h3>
       ${CoTHtml}
     </div>
@@ -461,6 +493,9 @@ document.addEventListener("DOMContentLoaded", () => {
       updateParlayOptions(chks.length);
     });
   });
+
+  // 初始化智能对话组件相关的交互事件
+  initAIChat();
 });
 
 // 全自动倒计时精算流
@@ -2092,4 +2127,238 @@ window.addEventListener("DOMContentLoaded", () => {
     }, 2500); // 等待2.5秒以使赛程拉取完毕
   }
 });
+
+// ==================== 智能对话组件逻辑开始 ====================
+let isAIChatOpen = false;
+
+// 重置并初始化当前比赛的 AI 智能对话框
+function resetAIChatWindow() {
+  isAIChatOpen = false;
+  const cot = document.getElementById("prediction-cot-panel");
+  if (cot) cot.classList.remove("cot-collapsed");
+  const predPanel = document.getElementById("prediction-panel");
+  if (predPanel) predPanel.classList.remove("collapsed-layout");
+  const collapsedTrigger = document.getElementById("ai-chat-collapsed-trigger");
+  if (collapsedTrigger) collapsedTrigger.style.display = "flex";
+  const containerDom = document.getElementById("ai-chat-container");
+  if (containerDom) containerDom.style.display = "none";
+
+  const historyDom = document.getElementById("ai-chat-history");
+  if (historyDom) {
+    const localHist = localStorage.getItem("ai_chat_history");
+    if (localHist) {
+      historyDom.innerHTML = localHist;
+    } else {
+      const matchInfo = matchesMap[currentMatchID];
+      const homeCn = matchInfo ? translateTeamNameText(matchInfo.homeTeam) : "主队";
+      const awayCn = matchInfo ? translateTeamNameText(matchInfo.awayTeam) : "客队";
+      historyDom.innerHTML = `
+        <div style="background: rgba(136,0,255,0.06); border-left: 2px solid var(--neon-purple); padding: 6px 10px; border-radius: 4px; color: var(--text-main); line-height: 1.4; align-self: flex-start; max-width: 85%;">
+          你好！我是全能智能决策与通用精算助手。已为你锁定 <strong>${homeCn} vs ${awayCn}</strong> 场次。你可以向我追问关于这场比赛的量化精算、让球风控等细节，也可以向我咨询任何其他足球联赛、科学常识、全球天气或技术编程等通用问题。
+        </div>
+      `;
+    }
+  }
+  const inputDom = document.getElementById("ai-chat-input");
+  if (inputDom) {
+    inputDom.value = "";
+  }
+}
+
+// 绑定智能对话组件相关的交互事件
+function initAIChat() {
+  const toggleBtn = document.getElementById("ai-chat-toggle-btn");
+  const closeBtn = document.getElementById("ai-chat-close-btn");
+  const clearBtn = document.getElementById("ai-chat-clear-btn");
+  const sendBtn = document.getElementById("ai-chat-send-btn");
+  const inputDom = document.getElementById("ai-chat-input");
+  const collapsedTrigger = document.getElementById("ai-chat-collapsed-trigger");
+  const containerDom = document.getElementById("ai-chat-container");
+  const historyDom = document.getElementById("ai-chat-history");
+
+  if (toggleBtn) {
+    toggleBtn.onclick = () => {
+      isAIChatOpen = true;
+      const cot = document.getElementById("prediction-cot-panel");
+      if (cot) cot.classList.add("cot-collapsed");
+      const predPanel = document.getElementById("prediction-panel");
+      if (predPanel) predPanel.classList.add("collapsed-layout");
+      if (collapsedTrigger) collapsedTrigger.style.display = "none";
+      if (containerDom) containerDom.style.display = "flex";
+      // 聚焦输入框，并防止页面自动向下滚动
+      if (inputDom) inputDom.focus({ preventScroll: true });
+      if (historyDom) historyDom.scrollTop = historyDom.scrollHeight;
+    };
+  }
+
+  if (closeBtn) {
+    closeBtn.onclick = () => {
+      isAIChatOpen = false;
+      const cot = document.getElementById("prediction-cot-panel");
+      if (cot) cot.classList.remove("cot-collapsed");
+      const predPanel = document.getElementById("prediction-panel");
+      if (predPanel) predPanel.classList.remove("collapsed-layout");
+      if (collapsedTrigger) collapsedTrigger.style.display = "flex";
+      if (containerDom) containerDom.style.display = "none";
+    };
+  }
+
+  if (clearBtn) {
+    clearBtn.onclick = () => {
+      if (confirm("确定要清空所有对话记录吗？")) {
+        localStorage.removeItem("ai_chat_history");
+        localStorage.removeItem("ai_chat_history_json");
+        const matchInfo = matchesMap[currentMatchID];
+        const homeCn = matchInfo ? translateTeamNameText(matchInfo.homeTeam) : "主队";
+        const awayCn = matchInfo ? translateTeamNameText(matchInfo.awayTeam) : "客队";
+        if (historyDom) {
+          historyDom.innerHTML = `
+            <div style="background: rgba(136,0,255,0.06); border-left: 2px solid var(--neon-purple); padding: 6px 10px; border-radius: 4px; color: var(--text-main); line-height: 1.4; align-self: flex-start; max-width: 85%;">
+              你好！我是全能智能决策与通用精算助手。已为你锁定 <strong>${homeCn} vs ${awayCn}</strong> 场次。你可以向我追问关于这场比赛的量化精算、让球风控等细节，也可以向我咨询任何其他足球联赛、科学常识、全球天气或技术编程等通用问题。
+            </div>
+          `;
+        }
+      }
+    };
+  }
+
+  if (sendBtn) {
+    sendBtn.onclick = () => {
+      handleSendChatMessage();
+    };
+  }
+
+  if (inputDom) {
+    inputDom.onkeydown = (e) => {
+      if (e.key === "Enter") {
+        handleSendChatMessage();
+      }
+    };
+  }
+}
+
+// 处理发送消息
+async function handleSendChatMessage() {
+  const inputDom = document.getElementById("ai-chat-input");
+  const message = inputDom ? inputDom.value.trim() : "";
+  if (!message) return;
+
+  appendChatBubble("user", message);
+  if (inputDom) inputDom.value = "";
+
+  // 根据用户消息类型显示不同的动感 Loading 提示
+  const isLotteryQuery = message.includes("怎么买") || message.includes("推荐买") || message.includes("预算") || message.includes("串一") || message.includes("方案") || message.includes("串");
+  const isWeatherQuery = message.includes("天气") || message.includes("气温") || message.includes("下雨") || message.includes("海拔") || message.includes("温度");
+  
+  let loadingText = "正在思考...";
+  if (isLotteryQuery) {
+    loadingText = "正在进行过关方案精算...";
+  } else if (isWeatherQuery) {
+    loadingText = "正在检索相关气象与环境数据...";
+  } else {
+    loadingText = "正在深度推理与组织回答中...";
+  }
+  const loadingId = appendChatBubble("ai-loading", loadingText);
+
+  try {
+    const checkedChks = document.querySelectorAll(".match-select-chk:checked");
+    const checkedMatchIds = Array.from(checkedChks).map(chk => chk.getAttribute("data-match-id") || chk.value);
+
+    // 获取并裁剪历史记录，限制只发送最近的 6 条消息（3 轮对话）
+    let chatHistory = [];
+    try {
+      chatHistory = JSON.parse(localStorage.getItem("ai_chat_history_json") || "[]");
+    } catch (e) {
+      chatHistory = [];
+    }
+    if (chatHistory.length > 6) {
+      chatHistory = chatHistory.slice(-6);
+    }
+
+    const res = await fetch(`${API_BASE}/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        matchId: currentMatchID,
+        message: message,
+        predictions: currentPredictions,
+        checkedMatchIds: checkedMatchIds,
+        history: chatHistory
+      })
+    });
+    
+    // 移除 Loading 气泡
+    removeChatBubble(loadingId);
+
+    if (res.ok) {
+      const data = await res.json();
+      appendChatBubble("ai", data.reply || "未返回分析。");
+    } else {
+      appendChatBubble("ai", "服务器返回错误，请稍后再试。");
+    }
+  } catch (err) {
+    removeChatBubble(loadingId);
+    appendChatBubble("ai", "无法连接到AI服务器，错误: " + err.message);
+  }
+}
+
+// 追加对话气泡
+function appendChatBubble(sender, text) {
+  const historyDom = document.getElementById("ai-chat-history");
+  if (!historyDom) return "";
+
+  const bubbleId = "chat-bubble-" + Date.now() + "-" + Math.random().toString(36).substr(2, 5);
+  let bg = "rgba(0,255,136,0.04)";
+  let border = "1px solid rgba(0,255,136,0.15)";
+  let title = "🔍 您";
+  let titleColor = "var(--neon-green)";
+
+  if (sender === "ai") {
+    bg = "rgba(136,0,255,0.04)";
+    border = "1px solid rgba(136,0,255,0.15)";
+    title = "🤖 AI 决策助手";
+    titleColor = "var(--neon-purple)";
+  } else if (sender === "ai-loading") {
+    bg = "rgba(255,255,255,0.02)";
+    border = "1px dashed rgba(255,255,255,0.1)";
+    title = "🤖 AI 决策助手";
+    titleColor = "var(--text-muted)";
+  }
+
+  let alignSelf = "flex-start";
+  if (sender === "user") {
+    alignSelf = "flex-end";
+  }
+
+  const html = `
+    <div id="${bubbleId}" style="background: ${bg}; border: ${border}; padding: 6px 10px; border-radius: 6px; display: flex; flex-direction: column; gap: 2px; align-self: ${alignSelf}; max-width: 85%;">
+      <span style="color: ${titleColor}; font-weight: 800; font-size: 10px;">${title}</span>
+      <p style="color: var(--text-main); margin: 0; line-height: 1.4; word-break: break-word;">${text}</p>
+    </div>
+  `;
+  historyDom.insertAdjacentHTML("beforeend", html);
+  historyDom.scrollTop = historyDom.scrollHeight;
+  if (sender === "user" || sender === "ai") {
+    localStorage.setItem("ai_chat_history", historyDom.innerHTML);
+
+    // 同步写入结构化历史以供后端进行多轮上下文理解
+    let jsonHistory = [];
+    try {
+      jsonHistory = JSON.parse(localStorage.getItem("ai_chat_history_json") || "[]");
+    } catch (e) {
+      jsonHistory = [];
+    }
+    const role = (sender === "user") ? "user" : "assistant";
+    jsonHistory.push({ role: role, content: text });
+    localStorage.setItem("ai_chat_history_json", JSON.stringify(jsonHistory));
+  }
+  return bubbleId;
+}
+
+// 移除对话气泡 (主要是移除 Loading)
+function removeChatBubble(bubbleId) {
+  const bubble = document.getElementById(bubbleId);
+  if (bubble) bubble.remove();
+}
+// ==================== 智能对话组件逻辑结束 ====================
 

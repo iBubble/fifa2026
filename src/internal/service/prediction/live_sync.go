@@ -78,32 +78,38 @@ func (s *LiveSyncService) broadcast(msg string) {
 	}
 }
 
-// StartSyncLoop 开启常驻后台轮询协程 (依据是否有 Live 比赛动态调节周期: 60秒 / 10分钟，冷启动为空时 5秒)
+// StartSyncLoop 开启常驻后台轮询协程 (依据是否有 Live 或临近开赛比赛动态调节周期，最大休眠3分钟)
 func (s *LiveSyncService) StartSyncLoop() {
 	go func() {
 		for {
 			s.SyncMatches()
 
 			hasLive := false
+			hasUpcomingOrRecent := false
 			matches, err := db.GetMatchesByTournament("fifa_2026")
 			
 			var delay time.Duration
 			if err != nil || len(matches) == 0 {
 				delay = 5 * time.Second
 			} else {
+				now := time.Now()
 				for _, m := range matches {
 					if m.Status == "Live" {
 						hasLive = true
 						break
 					}
+					// 距离开赛在 -15分钟 到 120分钟 之间且未完赛，说明正在开赛或即将开赛
+					if m.Status == "NS" && now.After(m.ScheduledAt.Add(-15*time.Minute)) && now.Before(m.ScheduledAt.Add(120*time.Minute)) {
+						hasUpcomingOrRecent = true
+					}
 				}
-				if hasLive {
+				if hasLive || hasUpcomingOrRecent {
 					delay = 60 * time.Second
 				} else {
-					delay = 10 * time.Minute
+					delay = 3 * time.Minute
 				}
 			}
-			log.Printf("[LiveSync] ⏳ 下一次比分同步休眠延时: %v (hasLive: %t, matches: %d)", delay, hasLive, len(matches))
+			log.Printf("[LiveSync] ⏳ 下一次比分同步休眠延时: %v (hasLive: %t, hasUpcoming: %t, matches: %d)", delay, hasLive, hasUpcomingOrRecent, len(matches))
 			time.Sleep(delay)
 		}
 	}()
