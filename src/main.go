@@ -56,6 +56,7 @@ func main() {
 	parlayService := prediction.NewParlayService(dcService, sportteryService, eloService, shinService)
 
 	newsService := news.NewNewsService("")
+	weatherService := prediction.NewWeatherService()
 	oddsTrackerService := prediction.NewOddsTrackerService()
 	liveSyncService := prediction.NewLiveSyncService(dcService, backtestService, ollamaService)
 	liveSyncService.StartSyncLoop()
@@ -231,15 +232,43 @@ func main() {
 				return
 			}
 
-			// 获取初始定量参数
-			params := dcService.CalculateParams(match.HomeTeam, match.AwayTeam)
+			// 获取初始定量参数（基于场馆所在物理东道主国家判定主场优势）
+			params := dcService.CalculateParamsWithVenue(match.HomeTeam, match.AwayTeam, match.Venue)
 			refined := params
 			llmRefined := false
 			var tactics, poster string
+			var proponentOpinion, critiqueAnalysis, consensusReason string
 
 			if req.UseLLM {
+				// 1. 获取最近 3 场已完赛的复盘误差与心得，作为 Feedback Calibration 的前向反馈
+				feedbackStr := ""
+				reps, errReps := db.GetBacktestReports()
+				if errReps == nil && len(reps) > 0 {
+					limit := 3
+					if len(reps) < limit {
+						limit = len(reps)
+					}
+					var sbFeedback strings.Builder
+					sbFeedback.WriteString("【最近完赛模型预测误差校准反馈】:\n")
+					for idx := len(reps) - 1; idx >= len(reps)-limit; idx-- {
+						r := reps[idx]
+						mInfo, errM := db.GetMatch(r.MatchID)
+						if errM == nil {
+							sbFeedback.WriteString(fmt.Sprintf("- 比赛: %s vs %s, 赛果: %d:%d, 预测 Brier Score: %.4f, 反思: %s\n",
+								mInfo.HomeTeam, mInfo.AwayTeam, mInfo.HomeScore, mInfo.AwayScore, r.BrierScore, r.TacticsReview))
+						}
+					}
+					feedbackStr = sbFeedback.String()
+				}
+
+				// 2. 获取天气与海拔摘要
+				weatherSummary := weatherService.BuildWeatherSummary(match.HomeTeam, match.AwayTeam, match.Venue, match.ScheduledAt)
+
+				// 3. 拼装完整的 LLM 提示词定性背景
+				qualitativeInfo := fmt.Sprintf("%s\n\n%s\n\n%s", req.Info, weatherSummary, feedbackStr)
+
 				diff := eloService.GetElo(match.HomeTeam) - eloService.GetElo(match.AwayTeam)
-				offsets, err := ollamaService.RefineParams(match, diff, params, req.Info)
+				offsets, err := ollamaService.RefineParams(match, diff, params, qualitativeInfo)
 				if err == nil {
 					refined.LambdaHome = params.LambdaHome + offsets.LambdaHomeOffset
 					refined.LambdaAway = params.LambdaAway + offsets.LambdaAwayOffset
@@ -247,16 +276,19 @@ func main() {
 					llmRefined = true
 					tactics = offsets.TacticsAnalysis
 					poster = offsets.PosterPrompt
+					proponentOpinion = offsets.ProponentOpinion
+					critiqueAnalysis = offsets.CritiqueAnalysis
+					consensusReason = offsets.ConsensusReason
 				} else {
 					log.Printf("[Predict] ⚠️ Ollama 大模型偏置微调失效，触发降级: %v", err)
 				}
 			}
 
-			// 计算比分概率矩阵与大小球概率
+			// 计算比分概率矩阵与大小球概率（纠偏平滑后）
 			matrix, over25, under25 := dcService.GenerateProbabilityMatrix(refined)
 
 			// 获取当前比赛的赔率 (若官方未开售，以两队实力 Elo 逆向推演仿真赔率兜底)
-			odds := sportteryService.GetMatchOdds(match.HomeTeam, match.AwayTeam)
+			odds := sportteryService.GetMatchOdds(match.HomeTeam, match.AwayTeam, match.ScheduledAt)
 			if !odds.IsAvailable {
 				eloHome := eloService.GetElo(match.HomeTeam)
 				eloAway := eloService.GetElo(match.AwayTeam)
@@ -305,14 +337,9 @@ func main() {
 					}
 				}
 
-				// 博彩市场赔率共识权重与模型实力预测权重（基于历史直接对战频次自适应调整）
-				weightMarket := 0.40
-				weightModel := 0.60
-				if h2hRecord != nil && h2hRecord.TotalMatches >= 5 {
-					// 历史交战频繁，微观风格克制系数极度可信，将已融入H2H的模型权重提升至80%，降低大盘赔率依赖
-					weightMarket = 0.20
-					weightModel = 0.80
-				}
+				// 降低博彩市场商业赔率的加权权重，回归模型算法主导，以防范低赔热门陷阱对精度的毒害
+				weightMarket := 0.15
+				weightModel := 0.85
 
 				finalHome := weightMarket*probs[0] + weightModel*sumDCHome
 				finalDraw := weightMarket*probs[1] + weightModel*sumDCDraw
@@ -348,23 +375,64 @@ func main() {
 				under25 = newUnder25
 			}
 
+			// 计算纯定量 Dixon-Coles 原始数学比分矩阵及大小球概率（左半部分）
+			origMatrix, origOver25, origUnder25 := dcService.GenerateProbabilityMatrix(params)
+
 			report := models.PredictionReport{
-				MatchID:         req.MatchID,
-				OriginalParams:  params,
-				RefinedParams:   refined,
-				LLMRefined:      llmRefined,
-				ScoreMatrix:     matrix,
-				Over2_5Prob:     over25,
-				Under2_5Prob:    under25,
-				TacticsAnalysis: tactics,
-				PosterPrompt:    poster,
-				H2H:             h2hRecord,
-				HomeRank:        homeRank,
-				AwayRank:        awayRank,
+				MatchID:              req.MatchID,
+				OriginalParams:       params,
+				RefinedParams:        refined,
+				LLMRefined:           llmRefined,
+				ScoreMatrix:          matrix,
+				Over2_5Prob:          over25,
+				Under2_5Prob:         under25,
+				TacticsAnalysis:      tactics,
+				PosterPrompt:         poster,
+				ProponentOpinion:     proponentOpinion,
+				CritiqueAnalysis:     critiqueAnalysis,
+				ConsensusReason:      consensusReason,
+				OriginalScoreMatrix:  origMatrix,
+				OriginalOver2_5Prob:  origOver25,
+				OriginalUnder2_5Prob: origUnder25,
+				H2H:                  h2hRecord,
+				HomeRank:             homeRank,
+				AwayRank:             awayRank,
 			}
 			_ = db.SavePredictionReport(report)
 
 			c.JSON(http.StatusOK, report)
+		})
+
+		// 全量同步各项数据接口 (主动触发数据补充)
+		api.POST("/sync/all", func(c *gin.Context) {
+			log.Println("[SyncAll] 🚀 主动触发全量数据同步流程...")
+
+			// 1. worldcup26.ir 比分与进球人同步
+			wcSync := prediction.NewWorldCup26SyncService()
+			syncedMatches, errWc := wcSync.SyncFinishedMatches()
+			if errWc != nil {
+				log.Printf("[SyncAll] ⚠️ worldcup26.ir 同步失败: %v", errWc)
+			}
+
+			// 2. 新闻智能抓取
+			articles, errNews := newsService.FetchAndCacheRealNews()
+			if errNews != nil {
+				log.Printf("[SyncAll] ⚠️ 新闻抓取失败: %v", errNews)
+			}
+
+			// 3. 赔率自动更新
+			go sportteryService.FetchAllOdds()
+
+			// 4. 并发拉取百度/LiveScore/CCTV 比分
+			liveSyncService.SyncMatches()
+
+			c.JSON(http.StatusOK, gin.H{
+				"status":                    "success",
+				"message":                   "全量数据同步任务已触发/执行完成",
+				"worldcup26_synced_matches": syncedMatches,
+				"news_articles_fetched":     len(articles),
+				"timestamp":                 time.Now().Format(time.RFC3339),
+			})
 		})
 
 		// 混合过关智能体彩推荐接口
@@ -586,7 +654,7 @@ func main() {
 			if len(req.MatchIDs) >= 2 {
 				m2, err := db.GetMatch(req.MatchIDs[1])
 				if err == nil {
-					pAdv := lotteryService.GenerateParlayAdvice(m1, m2, oddsH, oddsA)
+					pAdv := lotteryService.GenerateParlayAdvice(m1, m2, oddsH, oddsA, req.PredictReport)
 					parlayAdvice = &pAdv
 				}
 			}
@@ -698,7 +766,7 @@ func main() {
 				c.JSON(http.StatusNotFound, gin.H{"error": "比赛未找到"})
 				return
 			}
-			odds := sportteryService.GetMatchOdds(match.HomeTeam, match.AwayTeam)
+			odds := sportteryService.GetMatchOdds(match.HomeTeam, match.AwayTeam, match.ScheduledAt)
 			// 如果官方未开售，根据双方 Elo 实力推导仿真赔率，杜绝界面空白和数据幻觉
 			if !odds.IsAvailable {
 				eloHome := eloService.GetElo(match.HomeTeam)

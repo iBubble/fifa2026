@@ -135,45 +135,61 @@ func (s *LiveSyncService) SyncMatches() {
 
 	now := time.Now()
 	for _, m := range matches {
-		if m.Status == "FT" {
+		// 修正比分锁死 Bug：即使状态为 FT，如果开赛在 24 小时内，仍然允许请求外部源并更新/纠正比分
+		if m.Status == "FT" && now.Sub(m.ScheduledAt) > 24*time.Hour {
 			continue
 		}
 
-		key := m.HomeTeam + "_" + m.AwayTeam
+		key := NormalizeTeam(m.HomeTeam) + "_" + NormalizeTeam(m.AwayTeam)
 		
-		// 收集各个源中当前比赛的数据
-		var candidates []RealtimeMatch
-		if r, exists := baiduData[key]; exists {
-			candidates = append(candidates, r)
-		}
-		if r, exists := liveScoreData[key]; exists {
-			candidates = append(candidates, r)
-		}
+		var finalMatch RealtimeMatch
+		hasResult := false
+
+		// 共识与优先级机制：
+		// 1. CCTV 拥有最高优先级，若存在 CCTV 结果则直接采用
+		// 2. 若 CCTV 缺失，则合并百度与 LiveScore 的比分及状态（比分取二者最大值，状态优先级 FT > Live > NS）
 		if r, exists := cctvData[key]; exists {
-			candidates = append(candidates, r)
+			finalMatch = r
+			hasResult = true
+		} else {
+			var subs []RealtimeMatch
+			if r, exists := liveScoreData[key]; exists {
+				subs = append(subs, r)
+			}
+			if r, exists := baiduData[key]; exists {
+				subs = append(subs, r)
+			}
+
+			if len(subs) > 0 {
+				maxHome := 0
+				maxAway := 0
+				finalStatus := "NS"
+				for _, sub := range subs {
+					if sub.HomeScore > maxHome {
+						maxHome = sub.HomeScore
+					}
+					if sub.AwayScore > maxAway {
+						maxAway = sub.AwayScore
+					}
+					if sub.Status == "FT" {
+						finalStatus = "FT"
+					} else if sub.Status == "Live" && finalStatus != "FT" {
+						finalStatus = "Live"
+					}
+				}
+				finalMatch = RealtimeMatch{
+					HomeScore: maxHome,
+					AwayScore: maxAway,
+					Status:    finalStatus,
+				}
+				hasResult = true
+			}
 		}
 
-		if len(candidates) > 0 {
-			// 共识机制：
-			// 1. 比分取所有源中最大值（防止数据更新滞后漏掉进球）
-			// 2. 状态优先级：FT > Live > NS
-			maxHome := 0
-			maxAway := 0
-			finalStatus := "NS"
-			
-			for _, cand := range candidates {
-				if cand.HomeScore > maxHome {
-					maxHome = cand.HomeScore
-				}
-				if cand.AwayScore > maxAway {
-					maxAway = cand.AwayScore
-				}
-				if cand.Status == "FT" {
-					finalStatus = "FT"
-				} else if cand.Status == "Live" && finalStatus != "FT" {
-					finalStatus = "Live"
-				}
-			}
+		if hasResult {
+			maxHome := finalMatch.HomeScore
+			maxAway := finalMatch.AwayScore
+			finalStatus := finalMatch.Status
 
 			// 兜底状态修正：有比分产生时，状态绝不可能是未开赛 (NS)
 			if finalStatus == "NS" && (maxHome > 0 || maxAway > 0) {
@@ -192,33 +208,115 @@ func (s *LiveSyncService) SyncMatches() {
 				m.Status = finalStatus
 				_ = db.SaveMatch(m)
 				s.broadcast("match_update")
-				log.Printf("[LiveSync] ⚽ 多源共识比分变更 %s vs %s: (%d:%d) [%s] (合并了 %d 个源数据)", 
-					m.HomeTeam, m.AwayTeam, m.HomeScore, m.AwayScore, m.Status, len(candidates))
+				log.Printf("[LiveSync] ⚽ 优先级共识比分变更 %s vs %s: (%d:%d) [%s] (CCTV优先)", 
+					m.HomeTeam, m.AwayTeam, m.HomeScore, m.AwayScore, m.Status)
 			}
 		} else {
-			// 若全部数据源均拉取失败/无该比赛，则按照时间进行本地降级流转（比分保持 0:0，防幻觉）
+			// 若全部数据源均拉取失败/无该比赛，则按照时间进行本地降级流转（比分保持旧值，防幻觉）
 			if now.After(m.ScheduledAt) {
 				elapsed := now.Sub(m.ScheduledAt)
 				if elapsed < 105*time.Minute {
 					if m.Status != "Live" {
 						m.Status = "Live"
-						m.HomeScore = 0
-						m.AwayScore = 0
 						_ = db.SaveMatch(m)
 						s.broadcast("match_update")
-						log.Printf("[LiveSync] ⚽ 比赛 %s vs %s 状态自动晋级为 Live (0:0)", m.HomeTeam, m.AwayTeam)
+						log.Printf("[LiveSync] ⚽ 比赛 %s vs %s 状态自动晋级为 Live", m.HomeTeam, m.AwayTeam)
 					}
 				} else {
 					if m.Status != "FT" {
 						m.Status = "FT"
 						_ = db.SaveMatch(m)
 						s.broadcast("match_update")
-						log.Printf("[LiveSync] ⚽ 比赛 %s vs %s 已到时间且无外部比分，状态转为 FT (0:0)", m.HomeTeam, m.AwayTeam)
+						log.Printf("[LiveSync] ⚽ 比赛 %s vs %s 已到时间且无外部比分，状态转为 FT", m.HomeTeam, m.AwayTeam)
 					}
 				}
 			}
 		}
 	}
+}
+
+// Global team normalized dictionary mapping various names to standard db team names (48 nations in 2026 World Cup)
+var teamDictionary = map[string]string{
+	// Group A
+	"墨西哥": "Mexico", "Mexico": "Mexico",
+	"南非": "South Africa", "South Africa": "South Africa",
+	"韩国": "South Korea", "South Korea": "South Korea",
+	"捷克": "Czech Republic", "Czech Republic": "Czech Republic",
+	
+	// Group B
+	"加拿大": "Canada", "Canada": "Canada",
+	"波黑": "Bosnia and Herzegovina", "Bosnia and Herzegovina": "Bosnia and Herzegovina",
+	"卡塔尔": "Qatar", "Qatar": "Qatar",
+	"瑞士": "Switzerland", "Switzerland": "Switzerland",
+
+	// Group C
+	"巴西": "Brazil", "Brazil": "Brazil",
+	"摩洛哥": "Morocco", "Morocco": "Morocco",
+	"海地": "Haiti", "Haiti": "Haiti",
+	"苏格兰": "Scotland", "Scotland": "Scotland",
+
+	// Group D
+	"美国": "United States", "USA": "United States", "United States": "United States",
+	"巴拉圭": "Paraguay", "Paraguay": "Paraguay",
+	"澳大利亚": "Australia", "Australia": "Australia",
+	"土耳其": "Turkey", "Turkey": "Turkey",
+
+	// Group E
+	"德国": "Germany", "Germany": "Germany",
+	"库拉索": "Curaçao", "Curacao": "Curaçao", "Curaçao": "Curaçao",
+	"科特迪瓦": "Ivory Coast", "Ivory Coast": "Ivory Coast",
+	"厄瓜多尔": "Ecuador", "Ecuador": "Ecuador",
+
+	// Group F
+	"荷兰": "Netherlands", "Netherlands": "Netherlands",
+	"日本": "Japan", "Japan": "Japan",
+	"瑞典": "Sweden", "Sweden": "Sweden",
+	"突尼斯": "Tunisia", "Tunisia": "Tunisia",
+
+	// Group G
+	"比利时": "Belgium", "Belgium": "Belgium",
+	"埃及": "Egypt", "Egypt": "Egypt",
+	"伊朗": "Iran", "Iran": "Iran",
+	"新西兰": "New Zealand", "New Zealand": "New Zealand",
+
+	// Group H
+	"西班牙": "Spain", "Spain": "Spain",
+	"佛得角": "Cape Verde", "Cape Verde": "Cape Verde",
+	"沙特阿拉伯": "Saudi Arabia", "Saudi Arabia": "Saudi Arabia", "沙特": "Saudi Arabia",
+	"乌拉圭": "Uruguay", "Uruguay": "Uruguay",
+
+	// Group I
+	"法国": "France", "France": "France",
+	"塞内加尔": "Senegal", "Senegal": "Senegal",
+	"伊拉克": "Iraq", "Iraq": "Iraq",
+	"挪威": "Norway", "Norway": "Norway",
+
+	// Group J
+	"阿根廷": "Argentina", "Argentina": "Argentina",
+	"阿尔及利亚": "Algeria", "Algeria": "Algeria",
+	"奥地利": "Austria", "Austria": "Austria",
+	"约旦": "Jordan", "Jordan": "Jordan",
+
+	// Group K
+	"葡萄牙": "Portugal", "Portugal": "Portugal",
+	"民主刚果": "Democratic Republic of the Congo", "DR Congo": "Democratic Republic of the Congo", "Democratic Republic of the Congo": "Democratic Republic of the Congo", "刚果民主共和国": "Democratic Republic of the Congo", "刚果（金）": "Democratic Republic of the Congo",
+	"乌兹别克斯坦": "Uzbekistan", "Uzbekistan": "Uzbekistan",
+	"哥伦比亚": "Colombia", "Colombia": "Colombia",
+
+	// Group L
+	"英格兰": "England", "England": "England",
+	"克罗地亚": "Croatia", "Croatia": "Croatia",
+	"加纳": "Ghana", "Ghana": "Ghana",
+	"巴拿马": "Panama", "Panama": "Panama",
+}
+
+// NormalizeTeam 将抓取到的各种简称、中英文别名映射归一化为数据库标准全称
+func NormalizeTeam(name string) string {
+	name = strings.TrimSpace(name)
+	if std, ok := teamDictionary[name]; ok {
+		return std
+	}
+	return name
 }
 
 // fetchBaiduMatchResults 从百度体育世界杯赛程页面异步拉取明文渲染 JSON，解析实时比分和状态
@@ -287,30 +385,11 @@ func fetchBaiduMatchResults() map[string]RealtimeMatch {
 		return results
 	}
 
-	teamCnToEn := map[string]string{
-		"墨西哥":   "Mexico",
-		"南非":     "South Africa",
-		"韩国":     "South Korea",
-		"捷克":     "Czech Republic",
-		"加拿大":   "Canada",
-		"波黑":     "Bosnia and Herzegovina",
-		"美国":     "USA",
-		"巴拉圭":   "Paraguay",
-		"卡塔尔":   "Qatar",
-		"瑞士":     "Switzerland",
-		"巴西":     "Brazil",
-		"摩洛哥":   "Morocco",
-		"海地":     "Haiti",
-		"苏格兰":   "Scotland",
-		"澳大利亚": "Australia",
-		"土耳其":   "Turkey",
-	}
-
 	for _, tab := range resData.Data.TabsList {
 		for _, day := range tab.All.Data {
 			for _, item := range day.List {
-				homeEn := teamCnToEn[item.LeftLogo.Name]
-				awayEn := teamCnToEn[item.RightLogo.Name]
+				homeEn := NormalizeTeam(item.LeftLogo.Name)
+				awayEn := NormalizeTeam(item.RightLogo.Name)
 				if homeEn == "" || awayEn == "" {
 					continue
 				}
@@ -345,7 +424,6 @@ func fetchBaiduMatchResults() map[string]RealtimeMatch {
 func fetchLiveScoreMatchResults() map[string]RealtimeMatch {
 	results := make(map[string]RealtimeMatch)
 	now := time.Now()
-	// 查询昨日、今日、明日的数据，以应对时区和比赛日的重合性
 	dates := []string{
 		now.AddDate(0, 0, -1).Format("20060102"),
 		now.Format("20060102"),
@@ -353,13 +431,6 @@ func fetchLiveScoreMatchResults() map[string]RealtimeMatch {
 	}
 
 	client := &http.Client{Timeout: 4 * time.Second}
-	teamEnMap := map[string]string{
-		"United States": "USA",
-		"USA":           "USA",
-		"South Korea":    "South Korea",
-		"South Africa":   "South Africa",
-		"Czech Republic": "Czech Republic",
-	}
 
 	type LiveScoreResponse struct {
 		Stages []struct {
@@ -413,15 +484,8 @@ func fetchLiveScoreMatchResults() map[string]RealtimeMatch {
 					if len(event.T1) == 0 || len(event.T2) == 0 {
 						continue
 					}
-					homeNm := event.T1[0].Nm
-					awayNm := event.T2[0].Nm
-
-					if mapHome, ok := teamEnMap[homeNm]; ok {
-						homeNm = mapHome
-					}
-					if mapAway, ok := teamEnMap[awayNm]; ok {
-						awayNm = mapAway
-					}
+					homeNm := NormalizeTeam(event.T1[0].Nm)
+					awayNm := NormalizeTeam(event.T2[0].Nm)
 
 					hScore := 0
 					aScore := 0
@@ -507,28 +571,9 @@ func fetchCCTVMatchResults() map[string]RealtimeMatch {
 		return results
 	}
 
-	teamCnToEn := map[string]string{
-		"墨西哥":   "Mexico",
-		"南非":     "South Africa",
-		"韩国":     "South Korea",
-		"捷克":     "Czech Republic",
-		"加拿大":   "Canada",
-		"波黑":     "Bosnia and Herzegovina",
-		"美国":     "USA",
-		"巴拉圭":   "Paraguay",
-		"卡塔尔":   "Qatar",
-		"瑞士":     "Switzerland",
-		"巴西":     "Brazil",
-		"摩洛哥":   "Morocco",
-		"海地":     "Haiti",
-		"苏格兰":   "Scotland",
-		"澳大利亚": "Australia",
-		"土耳其":   "Turkey",
-	}
-
 	for _, m := range data.Data.List {
-		homeEn := teamCnToEn[m.HomeName]
-		awayEn := teamCnToEn[m.AwayName]
+		homeEn := NormalizeTeam(m.HomeName)
+		awayEn := NormalizeTeam(m.AwayName)
 		if homeEn == "" || awayEn == "" {
 			continue
 		}
@@ -553,4 +598,5 @@ func fetchCCTVMatchResults() map[string]RealtimeMatch {
 
 	return results
 }
+
 

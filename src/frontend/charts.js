@@ -34,6 +34,7 @@ function initSimulationChart() {
     },
     yAxis: {
       type: 'category',
+      inverse: true,
       data: ['巴西', '法国', '西班牙', '阿根廷', '德国', '英格兰', '葡萄牙', '荷兰'],
       axisLine: { show: false },
       axisTick: { show: false }
@@ -68,8 +69,8 @@ function initSimulationChart() {
 function updateSimulationChart(results) {
   if (!simulationChart) return;
   
-  // 只截取前 8 名显示，以保证图表美观
-  const topResults = results.slice(0, 8).reverse();
+  // 只截取前 10 名显示，利用 yAxis.inverse 自动居于图表最上方
+  const topResults = results.slice(0, 10);
   
   const yData = topResults.map(r => translateTeamNameText(r.teamName));
   const xData = topResults.map(r => parseFloat(r.winnerProb.toFixed(2)));
@@ -94,6 +95,7 @@ const countryCodes = {
   "Croatia": "hr",
   "Japan": "jp",
   "USA": "us",
+  "United States": "us",
   "Mexico": "mx",
   "Ecuador": "ec",
   "Venezuela": "ve",
@@ -130,7 +132,20 @@ const countryCodes = {
   "Paraguay": "py",
   "Qatar": "qa",
   "Haiti": "ht",
-  "Turkey": "tr"
+  "Turkey": "tr",
+  "Curaçao": "cw",
+  "Ivory Coast": "ci",
+  "Sweden": "se",
+  "Egypt": "eg",
+  "New Zealand": "nz",
+  "Cape Verde": "cv",
+  "Senegal": "sn",
+  "Iraq": "iq",
+  "Norway": "no",
+  "Austria": "at",
+  "Jordan": "jo",
+  "Democratic Republic of the Congo": "cd",
+  "Uzbekistan": "uz"
 };
 
 // 获取团队国旗的 HTML 标签，用于跨平台 (如 Windows) 的优雅降级渲染
@@ -155,6 +170,7 @@ function translateTeamNameText(enName) {
     "Croatia": "克罗地亚",
     "Japan": "日本",
     "USA": "美国",
+    "United States": "美国",
     "Mexico": "墨西哥",
     "Ecuador": "厄瓜多尔",
     "Venezuela": "委内瑞拉",
@@ -191,7 +207,20 @@ function translateTeamNameText(enName) {
     "Paraguay": "巴拉圭",
     "Qatar": "卡塔尔",
     "Haiti": "海地",
-    "Turkey": "土耳其"
+    "Turkey": "土耳其",
+    "Curaçao": "库拉索",
+    "Ivory Coast": "科特迪瓦",
+    "Sweden": "瑞典",
+    "Egypt": "埃及",
+    "New Zealand": "新西兰",
+    "Cape Verde": "佛得角",
+    "Senegal": "塞内加尔",
+    "Iraq": "伊拉克",
+    "Norway": "挪威",
+    "Austria": "奥地利",
+    "Jordan": "约旦",
+    "Democratic Republic of the Congo": "民主刚果",
+    "Uzbekistan": "乌兹别克斯坦"
   };
   return dict[enName] || enName;
 }
@@ -233,7 +262,7 @@ function initBacktestChart() {
       top: '15px',
       left: '3%',
       right: '4%',
-      bottom: '3%',
+      bottom: '30px',
       containLabel: true
     },
     xAxis: {

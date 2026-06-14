@@ -99,3 +99,42 @@ func scanLotteryPlans(rows *sql.Rows) ([]models.LotteryPlan, error) {
 	}
 	return plans, nil
 }
+
+// GetSavedLotteryPlans 获取所有已保存的方案（无论是否结算）
+func GetSavedLotteryPlans() ([]models.LotteryPlan, error) {
+	query := `SELECT id, plan_type, match_ids, risk_level, odds_h, odds_d, odds_a,
+		primary_bet, primary_odds, primary_amt, hedge_bet, hedge_odds, hedge_amt,
+		parlay_type, parlay_mode, parlay_options, desc_str, wins_count, cost,
+		single_ticket_payout, combo_odds, combo_prob, total_ev, kelly_stake, tickets_json,
+		is_settled, safe_profit, safe_return, agg_profit, agg_return, created_at
+		FROM lottery_plans ORDER BY id DESC`
+
+	rows, err := DB.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	return scanLotteryPlans(rows)
+}
+
+// DeleteLotteryPlans 根据 ID 列表删除已保存的方案
+func DeleteLotteryPlans(ids []int64) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	query := "DELETE FROM lottery_plans WHERE id IN ("
+	args := make([]interface{}, len(ids))
+	for i, id := range ids {
+		if i > 0 {
+			query += ","
+		}
+		query += "?"
+		args[i] = id
+	}
+	query += ")"
+
+	_, err := DB.Exec(query, args...)
+	return err
+}
+

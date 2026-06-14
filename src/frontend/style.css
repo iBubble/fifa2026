@@ -326,6 +326,8 @@ h3 {
   padding: 6px;
   border-radius: 6px;
   word-break: break-all;
+  max-height: 120px;
+  overflow-y: auto;
 }
 
 .modal-footer {
@@ -377,6 +379,28 @@ h3 {
 
 #lottery-settle-btn:active {
   transform: translateY(1px);
+}
+
+/* 逆势高 EV 霓虹呼吸闪烁发光样式 */
+@keyframes evGlowPulse {
+  0% { 
+    box-shadow: 0 0 6px rgba(136, 0, 255, 0.45); 
+    border-color: rgba(136, 0, 255, 0.6); 
+  }
+  50% { 
+    box-shadow: 0 0 16px rgba(136, 0, 255, 0.9); 
+    border-color: var(--neon-purple); 
+    background: rgba(136, 0, 255, 0.22) !important;
+  }
+  100% { 
+    box-shadow: 0 0 6px rgba(136, 0, 255, 0.45); 
+    border-color: rgba(136, 0, 255, 0.6); 
+  }
+}
+
+.ev-neon-glow {
+  animation: evGlowPulse 2.2s infinite ease-in-out;
+  transition: all 0.3s;
 }
 
 

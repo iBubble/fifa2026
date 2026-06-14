@@ -128,6 +128,12 @@ func createTables() error {
 			tactics_analysis TEXT NOT NULL,
 			poster_prompt TEXT NOT NULL,
 			score_matrix_json TEXT NOT NULL,
+			proponent_opinion TEXT NOT NULL DEFAULT '',
+			critique_analysis TEXT NOT NULL DEFAULT '',
+			consensus_reason TEXT NOT NULL DEFAULT '',
+			original_score_matrix_json TEXT NOT NULL DEFAULT '[]',
+			original_over_2_5_prob REAL NOT NULL DEFAULT 0.0,
+			original_under_2_5_prob REAL NOT NULL DEFAULT 0.0,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			FOREIGN KEY (match_id) REFERENCES matches(id)
 		);`,
@@ -182,6 +188,21 @@ func createTables() error {
 			agg_return REAL DEFAULT 0.0,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		);`,
+
+		// 48 支参赛队中英文权威映射表
+		`CREATE TABLE IF NOT EXISTS team_translations (
+			en_name TEXT PRIMARY KEY,
+			cn_name TEXT NOT NULL,
+			flag_code TEXT NOT NULL DEFAULT '',
+			initial_elo REAL NOT NULL DEFAULT 1500.0,
+			avg_goals_scored REAL NOT NULL DEFAULT 1.35,
+			avg_goals_conceded REAL NOT NULL DEFAULT 1.20,
+			clean_sheet_rate REAL NOT NULL DEFAULT 0.25,
+			api_team_id INTEGER NOT NULL DEFAULT 0,
+			aliases TEXT NOT NULL DEFAULT '[]',
+			fifa_ranking INTEGER NOT NULL DEFAULT 0,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		);`,
 	}
 
 	for _, query := range queries {
@@ -189,5 +210,17 @@ func createTables() error {
 			return err
 		}
 	}
+
+	// 平滑升级：若已存在的表没有 fifa_ranking 字段，自动添加
+	_, _ = DB.Exec("ALTER TABLE team_translations ADD COLUMN fifa_ranking INTEGER NOT NULL DEFAULT 0")
+
+	// 平滑升级：若已存在的表没有双 Agent 辩论及双矩阵比对字段，自动添加
+	_, _ = DB.Exec("ALTER TABLE prediction_reports ADD COLUMN proponent_opinion TEXT NOT NULL DEFAULT ''")
+	_, _ = DB.Exec("ALTER TABLE prediction_reports ADD COLUMN critique_analysis TEXT NOT NULL DEFAULT ''")
+	_, _ = DB.Exec("ALTER TABLE prediction_reports ADD COLUMN consensus_reason TEXT NOT NULL DEFAULT ''")
+	_, _ = DB.Exec("ALTER TABLE prediction_reports ADD COLUMN original_score_matrix_json TEXT NOT NULL DEFAULT '[]'")
+	_, _ = DB.Exec("ALTER TABLE prediction_reports ADD COLUMN original_over_2_5_prob REAL NOT NULL DEFAULT 0.0")
+	_, _ = DB.Exec("ALTER TABLE prediction_reports ADD COLUMN original_under_2_5_prob REAL NOT NULL DEFAULT 0.0")
+
 	return nil
 }

@@ -52,7 +52,10 @@ func GetMatchesByTournament(tournamentID string) ([]models.Match, error) {
 		if err != nil {
 			return nil, err
 		}
-		m.ScheduledAt, _ = time.Parse("2006-01-02 15:04:05-07:00", scheduledStr)
+		m.ScheduledAt, _ = time.Parse("2006-01-02 15:04:05 -0700 -0700", scheduledStr)
+		if m.ScheduledAt.IsZero() {
+			m.ScheduledAt, _ = time.Parse("2006-01-02 15:04:05-07:00", scheduledStr)
+		}
 		if m.ScheduledAt.IsZero() {
 			m.ScheduledAt, _ = time.Parse(time.RFC3339, scheduledStr)
 		}
@@ -72,9 +75,79 @@ func GetMatch(matchID string) (models.Match, error) {
 	if err != nil {
 		return models.Match{}, err
 	}
-	m.ScheduledAt, _ = time.Parse("2006-01-02 15:04:05-07:00", scheduledStr)
+	m.ScheduledAt, _ = time.Parse("2006-01-02 15:04:05 -0700 -0700", scheduledStr)
+	if m.ScheduledAt.IsZero() {
+		m.ScheduledAt, _ = time.Parse("2006-01-02 15:04:05-07:00", scheduledStr)
+	}
 	if m.ScheduledAt.IsZero() {
 		m.ScheduledAt, _ = time.Parse(time.RFC3339, scheduledStr)
 	}
 	return m, nil
+}
+
+// GetMatchesByTeam 获取指定球队在指定赛事中的所有比赛
+func GetMatchesByTeam(tournamentID, teamName string) ([]models.Match, error) {
+	query := `SELECT id, tournament_id, home_team, away_team, match_group, scheduled_at, status, home_score, away_score, venue
+		FROM matches WHERE tournament_id = ? AND (home_team = ? OR away_team = ?) ORDER BY scheduled_at ASC`
+	rows, err := DB.Query(query, tournamentID, teamName, teamName)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var matches []models.Match
+	for rows.Next() {
+		var m models.Match
+		var scheduledStr string
+		err := rows.Scan(&m.ID, &m.TournamentID, &m.HomeTeam, &m.AwayTeam, &m.Group, &scheduledStr, &m.Status, &m.HomeScore, &m.AwayScore, &m.Venue)
+		if err != nil {
+			return nil, err
+		}
+		m.ScheduledAt, _ = time.Parse("2006-01-02 15:04:05 -0700 -0700", scheduledStr)
+		if m.ScheduledAt.IsZero() {
+			m.ScheduledAt, _ = time.Parse("2006-01-02 15:04:05-07:00", scheduledStr)
+		}
+		if m.ScheduledAt.IsZero() {
+			m.ScheduledAt, _ = time.Parse(time.RFC3339, scheduledStr)
+		}
+		matches = append(matches, m)
+	}
+	return matches, nil
+}
+
+// GetMatchesByGroup 获取指定小组的所有比赛
+func GetMatchesByGroup(tournamentID, group string) ([]models.Match, error) {
+	query := `SELECT id, tournament_id, home_team, away_team, match_group, scheduled_at, status, home_score, away_score, venue
+		FROM matches WHERE tournament_id = ? AND match_group = ? ORDER BY scheduled_at ASC`
+	rows, err := DB.Query(query, tournamentID, group)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var matches []models.Match
+	for rows.Next() {
+		var m models.Match
+		var scheduledStr string
+		err := rows.Scan(&m.ID, &m.TournamentID, &m.HomeTeam, &m.AwayTeam, &m.Group, &scheduledStr, &m.Status, &m.HomeScore, &m.AwayScore, &m.Venue)
+		if err != nil {
+			return nil, err
+		}
+		m.ScheduledAt, _ = time.Parse("2006-01-02 15:04:05 -0700 -0700", scheduledStr)
+		if m.ScheduledAt.IsZero() {
+			m.ScheduledAt, _ = time.Parse("2006-01-02 15:04:05-07:00", scheduledStr)
+		}
+		if m.ScheduledAt.IsZero() {
+			m.ScheduledAt, _ = time.Parse(time.RFC3339, scheduledStr)
+		}
+		matches = append(matches, m)
+	}
+	return matches, nil
+}
+
+// UpdateMatchScore 仅更新比赛的比分和状态（赛程保护：不修改时间/主客队/场馆）
+func UpdateMatchScore(matchID string, homeScore, awayScore int, status string) error {
+	_, err := DB.Exec(`UPDATE matches SET home_score = ?, away_score = ?, status = ? WHERE id = ?`,
+		homeScore, awayScore, status, matchID)
+	return err
 }

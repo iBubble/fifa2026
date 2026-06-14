@@ -2,15 +2,78 @@
   "tournamentId": "fifa_2026",
   "name": "2026 FIFA World Cup",
   "groups": {
-    "A": ["Mexico", "South Africa", "Venezuela", "Jamaica"],
-    "B": ["England", "USA", "Iran", "Wales"],
-    "C": ["Argentina", "Saudi Arabia", "Poland"],
-    "D": ["France", "Australia", "Denmark", "Tunisia", "Turkey"],
-    "E": ["Spain", "Costa Rica", "Germany", "Japan"],
-    "F": ["Belgium", "Canada", "Morocco", "Croatia", "Bosnia and Herzegovina"],
-    "G": ["Brazil", "Serbia", "Switzerland", "Cameroon", "Qatar"],
-    "H": ["Portugal", "Ghana", "Uruguay", "South Korea", "Czech Republic"],
-    "K": ["Haiti", "Scotland", "Hungary"]
+    "A": [
+      "Mexico",
+      "South Africa",
+      "South Korea",
+      "Czech Republic"
+    ],
+    "B": [
+      "Canada",
+      "Bosnia and Herzegovina",
+      "Qatar",
+      "Switzerland"
+    ],
+    "C": [
+      "Brazil",
+      "Morocco",
+      "Haiti",
+      "Scotland"
+    ],
+    "D": [
+      "United States",
+      "Paraguay",
+      "Australia",
+      "Turkey"
+    ],
+    "E": [
+      "Germany",
+      "Curaçao",
+      "Ivory Coast",
+      "Ecuador"
+    ],
+    "F": [
+      "Netherlands",
+      "Japan",
+      "Sweden",
+      "Tunisia"
+    ],
+    "G": [
+      "Belgium",
+      "Egypt",
+      "Iran",
+      "New Zealand"
+    ],
+    "H": [
+      "Spain",
+      "Cape Verde",
+      "Saudi Arabia",
+      "Uruguay"
+    ],
+    "I": [
+      "France",
+      "Senegal",
+      "Iraq",
+      "Norway"
+    ],
+    "J": [
+      "Argentina",
+      "Algeria",
+      "Austria",
+      "Jordan"
+    ],
+    "K": [
+      "Portugal",
+      "Democratic Republic of the Congo",
+      "Uzbekistan",
+      "Colombia"
+    ],
+    "L": [
+      "England",
+      "Croatia",
+      "Ghana",
+      "Panama"
+    ]
   },
   "matches": [
     {
@@ -18,72 +81,936 @@
       "homeTeam": "Mexico",
       "awayTeam": "South Africa",
       "group": "A",
-      "scheduledAt": "2026-06-11T19:00:00Z",
-      "status": "NS",
+      "scheduledAt": "2026-06-12T03:00:00+08:00",
+      "status": "FT",
       "venue": "Estadio Azteca"
     },
     {
       "id": "wc2026_m2",
       "homeTeam": "South Korea",
       "awayTeam": "Czech Republic",
-      "group": "H",
-      "scheduledAt": "2026-06-12T02:00:00Z",
-      "status": "NS",
-      "venue": "Seoul World Cup Stadium"
+      "group": "A",
+      "scheduledAt": "2026-06-12T10:00:00+08:00",
+      "status": "FT",
+      "venue": "Estadio Akron"
     },
     {
       "id": "wc2026_m3",
       "homeTeam": "Canada",
       "awayTeam": "Bosnia and Herzegovina",
-      "group": "F",
-      "scheduledAt": "2026-06-12T19:00:00Z",
-      "status": "NS",
-      "venue": "BC Place"
+      "group": "B",
+      "scheduledAt": "2026-06-13T03:00:00+08:00",
+      "status": "FT",
+      "venue": "BMO Field"
     },
     {
       "id": "wc2026_m4",
-      "homeTeam": "USA",
+      "homeTeam": "United States",
       "awayTeam": "Paraguay",
-      "group": "L",
-      "scheduledAt": "2026-06-13T01:00:00Z",
-      "status": "NS",
+      "group": "D",
+      "scheduledAt": "2026-06-13T09:00:00+08:00",
+      "status": "FT",
       "venue": "SoFi Stadium"
     },
     {
       "id": "wc2026_m5",
-      "homeTeam": "Qatar",
-      "awayTeam": "Switzerland",
-      "group": "G",
-      "scheduledAt": "2026-06-13T19:00:00Z",
+      "homeTeam": "Haiti",
+      "awayTeam": "Scotland",
+      "group": "C",
+      "scheduledAt": "2026-06-14T09:00:00+08:00",
       "status": "NS",
-      "venue": "Lusail Stadium"
+      "venue": "Gillette Stadium"
     },
     {
       "id": "wc2026_m6",
-      "homeTeam": "Brazil",
-      "awayTeam": "Morocco",
-      "group": "F",
-      "scheduledAt": "2026-06-13T22:00:00Z",
+      "homeTeam": "Australia",
+      "awayTeam": "Turkey",
+      "group": "D",
+      "scheduledAt": "2026-06-14T12:00:00+08:00",
       "status": "NS",
-      "venue": "Maracana"
+      "venue": "BC Place"
     },
     {
       "id": "wc2026_m7",
-      "homeTeam": "Haiti",
-      "awayTeam": "Scotland",
-      "group": "K",
-      "scheduledAt": "2026-06-14T01:00:00Z",
+      "homeTeam": "Brazil",
+      "awayTeam": "Morocco",
+      "group": "C",
+      "scheduledAt": "2026-06-14T06:00:00+08:00",
       "status": "NS",
       "venue": "MetLife Stadium"
     },
     {
       "id": "wc2026_m8",
-      "homeTeam": "Australia",
-      "awayTeam": "Turkey",
-      "group": "D",
-      "scheduledAt": "2026-06-14T04:00:00Z",
+      "homeTeam": "Qatar",
+      "awayTeam": "Switzerland",
+      "group": "B",
+      "scheduledAt": "2026-06-14T03:00:00+08:00",
+      "status": "NS",
+      "venue": "Levi's Stadium"
+    },
+    {
+      "id": "wc2026_m9",
+      "homeTeam": "Ivory Coast",
+      "awayTeam": "Ecuador",
+      "group": "E",
+      "scheduledAt": "2026-06-15T07:00:00+08:00",
+      "status": "NS",
+      "venue": "Lincoln Financial Field"
+    },
+    {
+      "id": "wc2026_m10",
+      "homeTeam": "Germany",
+      "awayTeam": "Curaçao",
+      "group": "E",
+      "scheduledAt": "2026-06-15T01:00:00+08:00",
+      "status": "NS",
+      "venue": "NRG Stadium"
+    },
+    {
+      "id": "wc2026_m11",
+      "homeTeam": "Netherlands",
+      "awayTeam": "Japan",
+      "group": "F",
+      "scheduledAt": "2026-06-15T04:00:00+08:00",
+      "status": "NS",
+      "venue": "AT&T Stadium"
+    },
+    {
+      "id": "wc2026_m12",
+      "homeTeam": "Sweden",
+      "awayTeam": "Tunisia",
+      "group": "F",
+      "scheduledAt": "2026-06-15T10:00:00+08:00",
+      "status": "NS",
+      "venue": "Estadio BBVA"
+    },
+    {
+      "id": "wc2026_m13",
+      "homeTeam": "Saudi Arabia",
+      "awayTeam": "Uruguay",
+      "group": "H",
+      "scheduledAt": "2026-06-16T06:00:00+08:00",
+      "status": "NS",
+      "venue": "Hard Rock Stadium"
+    },
+    {
+      "id": "wc2026_m14",
+      "homeTeam": "Spain",
+      "awayTeam": "Cape Verde",
+      "group": "H",
+      "scheduledAt": "2026-06-16T00:00:00+08:00",
       "status": "NS",
       "venue": "Mercedes-Benz Stadium"
+    },
+    {
+      "id": "wc2026_m15",
+      "homeTeam": "Iran",
+      "awayTeam": "New Zealand",
+      "group": "G",
+      "scheduledAt": "2026-06-16T09:00:00+08:00",
+      "status": "NS",
+      "venue": "SoFi Stadium"
+    },
+    {
+      "id": "wc2026_m16",
+      "homeTeam": "Belgium",
+      "awayTeam": "Egypt",
+      "group": "G",
+      "scheduledAt": "2026-06-16T03:00:00+08:00",
+      "status": "NS",
+      "venue": "Lumen Field"
+    },
+    {
+      "id": "wc2026_m17",
+      "homeTeam": "France",
+      "awayTeam": "Senegal",
+      "group": "I",
+      "scheduledAt": "2026-06-17T03:00:00+08:00",
+      "status": "NS",
+      "venue": "MetLife Stadium"
+    },
+    {
+      "id": "wc2026_m18",
+      "homeTeam": "Iraq",
+      "awayTeam": "Norway",
+      "group": "I",
+      "scheduledAt": "2026-06-17T06:00:00+08:00",
+      "status": "NS",
+      "venue": "Gillette Stadium"
+    },
+    {
+      "id": "wc2026_m19",
+      "homeTeam": "Argentina",
+      "awayTeam": "Algeria",
+      "group": "J",
+      "scheduledAt": "2026-06-17T09:00:00+08:00",
+      "status": "NS",
+      "venue": "GEHA Field at Arrowhead Stadium"
+    },
+    {
+      "id": "wc2026_m20",
+      "homeTeam": "Austria",
+      "awayTeam": "Jordan",
+      "group": "J",
+      "scheduledAt": "2026-06-17T12:00:00+08:00",
+      "status": "NS",
+      "venue": "Levi's Stadium"
+    },
+    {
+      "id": "wc2026_m21",
+      "homeTeam": "Ghana",
+      "awayTeam": "Panama",
+      "group": "L",
+      "scheduledAt": "2026-06-18T07:00:00+08:00",
+      "status": "NS",
+      "venue": "BMO Field"
+    },
+    {
+      "id": "wc2026_m22",
+      "homeTeam": "England",
+      "awayTeam": "Croatia",
+      "group": "L",
+      "scheduledAt": "2026-06-18T04:00:00+08:00",
+      "status": "NS",
+      "venue": "AT&T Stadium"
+    },
+    {
+      "id": "wc2026_m23",
+      "homeTeam": "Portugal",
+      "awayTeam": "Democratic Republic of the Congo",
+      "group": "K",
+      "scheduledAt": "2026-06-18T01:00:00+08:00",
+      "status": "NS",
+      "venue": "NRG Stadium"
+    },
+    {
+      "id": "wc2026_m24",
+      "homeTeam": "Uzbekistan",
+      "awayTeam": "Colombia",
+      "group": "K",
+      "scheduledAt": "2026-06-18T10:00:00+08:00",
+      "status": "NS",
+      "venue": "Estadio Azteca"
+    },
+    {
+      "id": "wc2026_m25",
+      "homeTeam": "Czech Republic",
+      "awayTeam": "South Africa",
+      "group": "A",
+      "scheduledAt": "2026-06-19T00:00:00+08:00",
+      "status": "NS",
+      "venue": "Mercedes-Benz Stadium"
+    },
+    {
+      "id": "wc2026_m26",
+      "homeTeam": "Switzerland",
+      "awayTeam": "Bosnia and Herzegovina",
+      "group": "B",
+      "scheduledAt": "2026-06-19T03:00:00+08:00",
+      "status": "NS",
+      "venue": "SoFi Stadium"
+    },
+    {
+      "id": "wc2026_m27",
+      "homeTeam": "Canada",
+      "awayTeam": "Qatar",
+      "group": "B",
+      "scheduledAt": "2026-06-19T06:00:00+08:00",
+      "status": "NS",
+      "venue": "BC Place"
+    },
+    {
+      "id": "wc2026_m28",
+      "homeTeam": "Mexico",
+      "awayTeam": "South Korea",
+      "group": "A",
+      "scheduledAt": "2026-06-19T09:00:00+08:00",
+      "status": "NS",
+      "venue": "Estadio Akron"
+    },
+    {
+      "id": "wc2026_m29",
+      "homeTeam": "Brazil",
+      "awayTeam": "Haiti",
+      "group": "C",
+      "scheduledAt": "2026-06-20T08:30:00+08:00",
+      "status": "NS",
+      "venue": "Lincoln Financial Field"
+    },
+    {
+      "id": "wc2026_m30",
+      "homeTeam": "Scotland",
+      "awayTeam": "Morocco",
+      "group": "C",
+      "scheduledAt": "2026-06-20T06:00:00+08:00",
+      "status": "NS",
+      "venue": "Gillette Stadium"
+    },
+    {
+      "id": "wc2026_m31",
+      "homeTeam": "Turkey",
+      "awayTeam": "Paraguay",
+      "group": "D",
+      "scheduledAt": "2026-06-20T11:00:00+08:00",
+      "status": "NS",
+      "venue": "Levi's Stadium"
+    },
+    {
+      "id": "wc2026_m32",
+      "homeTeam": "United States",
+      "awayTeam": "Australia",
+      "group": "D",
+      "scheduledAt": "2026-06-20T03:00:00+08:00",
+      "status": "NS",
+      "venue": "Lumen Field"
+    },
+    {
+      "id": "wc2026_m33",
+      "homeTeam": "Germany",
+      "awayTeam": "Ivory Coast",
+      "group": "E",
+      "scheduledAt": "2026-06-21T04:00:00+08:00",
+      "status": "NS",
+      "venue": "BMO Field"
+    },
+    {
+      "id": "wc2026_m34",
+      "homeTeam": "Ecuador",
+      "awayTeam": "Curaçao",
+      "group": "E",
+      "scheduledAt": "2026-06-21T08:00:00+08:00",
+      "status": "NS",
+      "venue": "GEHA Field at Arrowhead Stadium"
+    },
+    {
+      "id": "wc2026_m35",
+      "homeTeam": "Netherlands",
+      "awayTeam": "Sweden",
+      "group": "F",
+      "scheduledAt": "2026-06-21T01:00:00+08:00",
+      "status": "NS",
+      "venue": "NRG Stadium"
+    },
+    {
+      "id": "wc2026_m36",
+      "homeTeam": "Tunisia",
+      "awayTeam": "Japan",
+      "group": "F",
+      "scheduledAt": "2026-06-21T12:00:00+08:00",
+      "status": "NS",
+      "venue": "Estadio BBVA"
+    },
+    {
+      "id": "wc2026_m37",
+      "homeTeam": "Uruguay",
+      "awayTeam": "Cape Verde",
+      "group": "H",
+      "scheduledAt": "2026-06-22T06:00:00+08:00",
+      "status": "NS",
+      "venue": "Hard Rock Stadium"
+    },
+    {
+      "id": "wc2026_m38",
+      "homeTeam": "Spain",
+      "awayTeam": "Saudi Arabia",
+      "group": "H",
+      "scheduledAt": "2026-06-22T00:00:00+08:00",
+      "status": "NS",
+      "venue": "Mercedes-Benz Stadium"
+    },
+    {
+      "id": "wc2026_m39",
+      "homeTeam": "Belgium",
+      "awayTeam": "Iran",
+      "group": "G",
+      "scheduledAt": "2026-06-22T03:00:00+08:00",
+      "status": "NS",
+      "venue": "SoFi Stadium"
+    },
+    {
+      "id": "wc2026_m40",
+      "homeTeam": "New Zealand",
+      "awayTeam": "Egypt",
+      "group": "G",
+      "scheduledAt": "2026-06-22T09:00:00+08:00",
+      "status": "NS",
+      "venue": "BC Place"
+    },
+    {
+      "id": "wc2026_m41",
+      "homeTeam": "Norway",
+      "awayTeam": "Senegal",
+      "group": "I",
+      "scheduledAt": "2026-06-23T08:00:00+08:00",
+      "status": "NS",
+      "venue": "MetLife Stadium"
+    },
+    {
+      "id": "wc2026_m42",
+      "homeTeam": "France",
+      "awayTeam": "Iraq",
+      "group": "I",
+      "scheduledAt": "2026-06-23T05:00:00+08:00",
+      "status": "NS",
+      "venue": "Lincoln Financial Field"
+    },
+    {
+      "id": "wc2026_m43",
+      "homeTeam": "Argentina",
+      "awayTeam": "Austria",
+      "group": "J",
+      "scheduledAt": "2026-06-23T01:00:00+08:00",
+      "status": "NS",
+      "venue": "AT&T Stadium"
+    },
+    {
+      "id": "wc2026_m44",
+      "homeTeam": "Jordan",
+      "awayTeam": "Algeria",
+      "group": "J",
+      "scheduledAt": "2026-06-23T11:00:00+08:00",
+      "status": "NS",
+      "venue": "Levi's Stadium"
+    },
+    {
+      "id": "wc2026_m45",
+      "homeTeam": "England",
+      "awayTeam": "Ghana",
+      "group": "L",
+      "scheduledAt": "2026-06-24T04:00:00+08:00",
+      "status": "NS",
+      "venue": "Gillette Stadium"
+    },
+    {
+      "id": "wc2026_m46",
+      "homeTeam": "Panama",
+      "awayTeam": "Croatia",
+      "group": "L",
+      "scheduledAt": "2026-06-24T07:00:00+08:00",
+      "status": "NS",
+      "venue": "BMO Field"
+    },
+    {
+      "id": "wc2026_m47",
+      "homeTeam": "Portugal",
+      "awayTeam": "Uzbekistan",
+      "group": "K",
+      "scheduledAt": "2026-06-24T01:00:00+08:00",
+      "status": "NS",
+      "venue": "NRG Stadium"
+    },
+    {
+      "id": "wc2026_m48",
+      "homeTeam": "Colombia",
+      "awayTeam": "Democratic Republic of the Congo",
+      "group": "K",
+      "scheduledAt": "2026-06-24T10:00:00+08:00",
+      "status": "NS",
+      "venue": "Estadio Akron"
+    },
+    {
+      "id": "wc2026_m49",
+      "homeTeam": "Scotland",
+      "awayTeam": "Brazil",
+      "group": "C",
+      "scheduledAt": "2026-06-25T06:00:00+08:00",
+      "status": "NS",
+      "venue": "Hard Rock Stadium"
+    },
+    {
+      "id": "wc2026_m50",
+      "homeTeam": "Morocco",
+      "awayTeam": "Haiti",
+      "group": "C",
+      "scheduledAt": "2026-06-25T06:00:00+08:00",
+      "status": "NS",
+      "venue": "Mercedes-Benz Stadium"
+    },
+    {
+      "id": "wc2026_m51",
+      "homeTeam": "Switzerland",
+      "awayTeam": "Canada",
+      "group": "B",
+      "scheduledAt": "2026-06-25T03:00:00+08:00",
+      "status": "NS",
+      "venue": "BC Place"
+    },
+    {
+      "id": "wc2026_m52",
+      "homeTeam": "Bosnia and Herzegovina",
+      "awayTeam": "Qatar",
+      "group": "B",
+      "scheduledAt": "2026-06-25T03:00:00+08:00",
+      "status": "NS",
+      "venue": "Lumen Field"
+    },
+    {
+      "id": "wc2026_m53",
+      "homeTeam": "Czech Republic",
+      "awayTeam": "Mexico",
+      "group": "A",
+      "scheduledAt": "2026-06-25T09:00:00+08:00",
+      "status": "NS",
+      "venue": "Estadio Azteca"
+    },
+    {
+      "id": "wc2026_m54",
+      "homeTeam": "South Africa",
+      "awayTeam": "South Korea",
+      "group": "A",
+      "scheduledAt": "2026-06-25T09:00:00+08:00",
+      "status": "NS",
+      "venue": "Estadio BBVA"
+    },
+    {
+      "id": "wc2026_m55",
+      "homeTeam": "Curaçao",
+      "awayTeam": "Ivory Coast",
+      "group": "E",
+      "scheduledAt": "2026-06-26T04:00:00+08:00",
+      "status": "NS",
+      "venue": "Lincoln Financial Field"
+    },
+    {
+      "id": "wc2026_m56",
+      "homeTeam": "Ecuador",
+      "awayTeam": "Germany",
+      "group": "E",
+      "scheduledAt": "2026-06-26T04:00:00+08:00",
+      "status": "NS",
+      "venue": "MetLife Stadium"
+    },
+    {
+      "id": "wc2026_m57",
+      "homeTeam": "Japan",
+      "awayTeam": "Sweden",
+      "group": "F",
+      "scheduledAt": "2026-06-26T07:00:00+08:00",
+      "status": "NS",
+      "venue": "AT&T Stadium"
+    },
+    {
+      "id": "wc2026_m58",
+      "homeTeam": "Tunisia",
+      "awayTeam": "Netherlands",
+      "group": "F",
+      "scheduledAt": "2026-06-26T07:00:00+08:00",
+      "status": "NS",
+      "venue": "GEHA Field at Arrowhead Stadium"
+    },
+    {
+      "id": "wc2026_m59",
+      "homeTeam": "Turkey",
+      "awayTeam": "United States",
+      "group": "D",
+      "scheduledAt": "2026-06-26T10:00:00+08:00",
+      "status": "NS",
+      "venue": "SoFi Stadium"
+    },
+    {
+      "id": "wc2026_m60",
+      "homeTeam": "Paraguay",
+      "awayTeam": "Australia",
+      "group": "D",
+      "scheduledAt": "2026-06-26T10:00:00+08:00",
+      "status": "NS",
+      "venue": "Levi's Stadium"
+    },
+    {
+      "id": "wc2026_m61",
+      "homeTeam": "Norway",
+      "awayTeam": "France",
+      "group": "I",
+      "scheduledAt": "2026-06-27T03:00:00+08:00",
+      "status": "NS",
+      "venue": "Gillette Stadium"
+    },
+    {
+      "id": "wc2026_m62",
+      "homeTeam": "Senegal",
+      "awayTeam": "Iraq",
+      "group": "I",
+      "scheduledAt": "2026-06-27T03:00:00+08:00",
+      "status": "NS",
+      "venue": "BMO Field"
+    },
+    {
+      "id": "wc2026_m63",
+      "homeTeam": "Egypt",
+      "awayTeam": "Iran",
+      "group": "G",
+      "scheduledAt": "2026-06-27T11:00:00+08:00",
+      "status": "NS",
+      "venue": "Lumen Field"
+    },
+    {
+      "id": "wc2026_m64",
+      "homeTeam": "New Zealand",
+      "awayTeam": "Belgium",
+      "group": "G",
+      "scheduledAt": "2026-06-27T11:00:00+08:00",
+      "status": "NS",
+      "venue": "BC Place"
+    },
+    {
+      "id": "wc2026_m65",
+      "homeTeam": "Cape Verde",
+      "awayTeam": "Saudi Arabia",
+      "group": "H",
+      "scheduledAt": "2026-06-27T08:00:00+08:00",
+      "status": "NS",
+      "venue": "NRG Stadium"
+    },
+    {
+      "id": "wc2026_m66",
+      "homeTeam": "Uruguay",
+      "awayTeam": "Spain",
+      "group": "H",
+      "scheduledAt": "2026-06-27T08:00:00+08:00",
+      "status": "NS",
+      "venue": "Estadio Akron"
+    },
+    {
+      "id": "wc2026_m67",
+      "homeTeam": "Panama",
+      "awayTeam": "England",
+      "group": "L",
+      "scheduledAt": "2026-06-28T05:00:00+08:00",
+      "status": "NS",
+      "venue": "MetLife Stadium"
+    },
+    {
+      "id": "wc2026_m68",
+      "homeTeam": "Croatia",
+      "awayTeam": "Ghana",
+      "group": "L",
+      "scheduledAt": "2026-06-28T05:00:00+08:00",
+      "status": "NS",
+      "venue": "Lincoln Financial Field"
+    },
+    {
+      "id": "wc2026_m69",
+      "homeTeam": "Algeria",
+      "awayTeam": "Austria",
+      "group": "J",
+      "scheduledAt": "2026-06-28T10:00:00+08:00",
+      "status": "NS",
+      "venue": "GEHA Field at Arrowhead Stadium"
+    },
+    {
+      "id": "wc2026_m70",
+      "homeTeam": "Jordan",
+      "awayTeam": "Argentina",
+      "group": "J",
+      "scheduledAt": "2026-06-28T10:00:00+08:00",
+      "status": "NS",
+      "venue": "AT&T Stadium"
+    },
+    {
+      "id": "wc2026_m71",
+      "homeTeam": "Colombia",
+      "awayTeam": "Portugal",
+      "group": "K",
+      "scheduledAt": "2026-06-28T07:30:00+08:00",
+      "status": "NS",
+      "venue": "Hard Rock Stadium"
+    },
+    {
+      "id": "wc2026_m72",
+      "homeTeam": "Democratic Republic of the Congo",
+      "awayTeam": "Uzbekistan",
+      "group": "K",
+      "scheduledAt": "2026-06-28T07:30:00+08:00",
+      "status": "NS",
+      "venue": "Mercedes-Benz Stadium"
+    },
+    {
+      "id": "wc2026_m73",
+      "homeTeam": "0",
+      "awayTeam": "0",
+      "group": "R32",
+      "scheduledAt": "2026-06-29T03:00:00+08:00",
+      "status": "NS",
+      "venue": "SoFi Stadium"
+    },
+    {
+      "id": "wc2026_m74",
+      "homeTeam": "0",
+      "awayTeam": "0",
+      "group": "R32",
+      "scheduledAt": "2026-06-30T04:30:00+08:00",
+      "status": "NS",
+      "venue": "Gillette Stadium"
+    },
+    {
+      "id": "wc2026_m75",
+      "homeTeam": "0",
+      "awayTeam": "0",
+      "group": "R32",
+      "scheduledAt": "2026-06-30T09:00:00+08:00",
+      "status": "NS",
+      "venue": "Estadio BBVA"
+    },
+    {
+      "id": "wc2026_m76",
+      "homeTeam": "0",
+      "awayTeam": "0",
+      "group": "R32",
+      "scheduledAt": "2026-06-30T01:00:00+08:00",
+      "status": "NS",
+      "venue": "NRG Stadium"
+    },
+    {
+      "id": "wc2026_m77",
+      "homeTeam": "0",
+      "awayTeam": "0",
+      "group": "R32",
+      "scheduledAt": "2026-07-01T05:00:00+08:00",
+      "status": "NS",
+      "venue": "MetLife Stadium"
+    },
+    {
+      "id": "wc2026_m78",
+      "homeTeam": "0",
+      "awayTeam": "0",
+      "group": "R32",
+      "scheduledAt": "2026-07-01T01:00:00+08:00",
+      "status": "NS",
+      "venue": "AT&T Stadium"
+    },
+    {
+      "id": "wc2026_m79",
+      "homeTeam": "0",
+      "awayTeam": "0",
+      "group": "R32",
+      "scheduledAt": "2026-07-01T09:00:00+08:00",
+      "status": "NS",
+      "venue": "Estadio Azteca"
+    },
+    {
+      "id": "wc2026_m80",
+      "homeTeam": "0",
+      "awayTeam": "0",
+      "group": "R32",
+      "scheduledAt": "2026-07-02T00:00:00+08:00",
+      "status": "NS",
+      "venue": "Mercedes-Benz Stadium"
+    },
+    {
+      "id": "wc2026_m81",
+      "homeTeam": "0",
+      "awayTeam": "0",
+      "group": "R32",
+      "scheduledAt": "2026-07-02T08:00:00+08:00",
+      "status": "NS",
+      "venue": "Levi's Stadium"
+    },
+    {
+      "id": "wc2026_m82",
+      "homeTeam": "0",
+      "awayTeam": "0",
+      "group": "R32",
+      "scheduledAt": "2026-07-02T04:00:00+08:00",
+      "status": "NS",
+      "venue": "Lumen Field"
+    },
+    {
+      "id": "wc2026_m83",
+      "homeTeam": "0",
+      "awayTeam": "0",
+      "group": "R32",
+      "scheduledAt": "2026-07-03T07:00:00+08:00",
+      "status": "NS",
+      "venue": "BMO Field"
+    },
+    {
+      "id": "wc2026_m84",
+      "homeTeam": "0",
+      "awayTeam": "0",
+      "group": "R32",
+      "scheduledAt": "2026-07-03T03:00:00+08:00",
+      "status": "NS",
+      "venue": "SoFi Stadium"
+    },
+    {
+      "id": "wc2026_m85",
+      "homeTeam": "0",
+      "awayTeam": "0",
+      "group": "R32",
+      "scheduledAt": "2026-07-03T11:00:00+08:00",
+      "status": "NS",
+      "venue": "BC Place"
+    },
+    {
+      "id": "wc2026_m86",
+      "homeTeam": "0",
+      "awayTeam": "0",
+      "group": "R32",
+      "scheduledAt": "2026-07-04T06:00:00+08:00",
+      "status": "NS",
+      "venue": "Hard Rock Stadium"
+    },
+    {
+      "id": "wc2026_m87",
+      "homeTeam": "0",
+      "awayTeam": "0",
+      "group": "R32",
+      "scheduledAt": "2026-07-04T09:30:00+08:00",
+      "status": "NS",
+      "venue": "GEHA Field at Arrowhead Stadium"
+    },
+    {
+      "id": "wc2026_m88",
+      "homeTeam": "0",
+      "awayTeam": "0",
+      "group": "R32",
+      "scheduledAt": "2026-07-04T02:00:00+08:00",
+      "status": "NS",
+      "venue": "AT&T Stadium"
+    },
+    {
+      "id": "wc2026_m89",
+      "homeTeam": "0",
+      "awayTeam": "0",
+      "group": "R16",
+      "scheduledAt": "2026-07-05T05:00:00+08:00",
+      "status": "NS",
+      "venue": "Lincoln Financial Field"
+    },
+    {
+      "id": "wc2026_m90",
+      "homeTeam": "0",
+      "awayTeam": "0",
+      "group": "R16",
+      "scheduledAt": "2026-07-05T01:00:00+08:00",
+      "status": "NS",
+      "venue": "NRG Stadium"
+    },
+    {
+      "id": "wc2026_m91",
+      "homeTeam": "0",
+      "awayTeam": "0",
+      "group": "R16",
+      "scheduledAt": "2026-07-06T04:00:00+08:00",
+      "status": "NS",
+      "venue": "MetLife Stadium"
+    },
+    {
+      "id": "wc2026_m92",
+      "homeTeam": "0",
+      "awayTeam": "0",
+      "group": "R16",
+      "scheduledAt": "2026-07-06T08:00:00+08:00",
+      "status": "NS",
+      "venue": "Estadio Azteca"
+    },
+    {
+      "id": "wc2026_m93",
+      "homeTeam": "0",
+      "awayTeam": "0",
+      "group": "R16",
+      "scheduledAt": "2026-07-07T03:00:00+08:00",
+      "status": "NS",
+      "venue": "AT&T Stadium"
+    },
+    {
+      "id": "wc2026_m94",
+      "homeTeam": "0",
+      "awayTeam": "0",
+      "group": "R16",
+      "scheduledAt": "2026-07-07T08:00:00+08:00",
+      "status": "NS",
+      "venue": "Lumen Field"
+    },
+    {
+      "id": "wc2026_m95",
+      "homeTeam": "0",
+      "awayTeam": "0",
+      "group": "R16",
+      "scheduledAt": "2026-07-08T00:00:00+08:00",
+      "status": "NS",
+      "venue": "Mercedes-Benz Stadium"
+    },
+    {
+      "id": "wc2026_m96",
+      "homeTeam": "0",
+      "awayTeam": "0",
+      "group": "R16",
+      "scheduledAt": "2026-07-08T04:00:00+08:00",
+      "status": "NS",
+      "venue": "BC Place"
+    },
+    {
+      "id": "wc2026_m97",
+      "homeTeam": "0",
+      "awayTeam": "0",
+      "group": "QF",
+      "scheduledAt": "2026-07-10T04:00:00+08:00",
+      "status": "NS",
+      "venue": "Gillette Stadium"
+    },
+    {
+      "id": "wc2026_m98",
+      "homeTeam": "0",
+      "awayTeam": "0",
+      "group": "QF",
+      "scheduledAt": "2026-07-11T03:00:00+08:00",
+      "status": "NS",
+      "venue": "SoFi Stadium"
+    },
+    {
+      "id": "wc2026_m99",
+      "homeTeam": "0",
+      "awayTeam": "0",
+      "group": "QF",
+      "scheduledAt": "2026-07-12T05:00:00+08:00",
+      "status": "NS",
+      "venue": "Hard Rock Stadium"
+    },
+    {
+      "id": "wc2026_m100",
+      "homeTeam": "0",
+      "awayTeam": "0",
+      "group": "QF",
+      "scheduledAt": "2026-07-12T09:00:00+08:00",
+      "status": "NS",
+      "venue": "GEHA Field at Arrowhead Stadium"
+    },
+    {
+      "id": "wc2026_m101",
+      "homeTeam": "0",
+      "awayTeam": "0",
+      "group": "SF",
+      "scheduledAt": "2026-07-15T03:00:00+08:00",
+      "status": "NS",
+      "venue": "AT&T Stadium"
+    },
+    {
+      "id": "wc2026_m102",
+      "homeTeam": "0",
+      "awayTeam": "0",
+      "group": "SF",
+      "scheduledAt": "2026-07-16T03:00:00+08:00",
+      "status": "NS",
+      "venue": "Mercedes-Benz Stadium"
+    },
+    {
+      "id": "wc2026_m103",
+      "homeTeam": "0",
+      "awayTeam": "0",
+      "group": "3RD",
+      "scheduledAt": "2026-07-19T05:00:00+08:00",
+      "status": "NS",
+      "venue": "Hard Rock Stadium"
+    },
+    {
+      "id": "wc2026_m104",
+      "homeTeam": "0",
+      "awayTeam": "0",
+      "group": "FINAL",
+      "scheduledAt": "2026-07-20T03:00:00+08:00",
+      "status": "NS",
+      "venue": "MetLife Stadium"
     }
   ]
 }

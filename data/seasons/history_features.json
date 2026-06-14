@@ -88,7 +88,7 @@
       "cleanSheetRate": 0.28,
       "description": "蓝武士，战术纪律严明，整体协作极强，具有强大的冷门爆破属性。"
     },
-    "USA": {
+    "United States": {
       "initialElo": 1700,
       "titles": 0,
       "avgGoalsScored": 1.30,
@@ -215,6 +215,182 @@
       "avgGoalsConceded": 1.25,
       "cleanSheetRate": 0.28,
       "description": "星月军团，打法热情奔放，具备极强的爆发力和技术流组织。"
+    },
+    "Belgium": {
+      "initialElo": 1790,
+      "titles": 0,
+      "avgGoalsScored": 1.75,
+      "avgGoalsConceded": 1.05,
+      "cleanSheetRate": 0.35,
+      "description": "红魔军团，黄金一代虽已进入末期，但个人能力依旧出众。"
+    },
+    "Uruguay": {
+      "initialElo": 1760,
+      "titles": 2,
+      "avgGoalsScored": 1.55,
+      "avgGoalsConceded": 1.00,
+      "cleanSheetRate": 0.36,
+      "description": "南美双冠王，防守反击精髓传承，淘汰赛韧性极强。"
+    },
+    "Colombia": {
+      "initialElo": 1740,
+      "titles": 0,
+      "avgGoalsScored": 1.50,
+      "avgGoalsConceded": 1.10,
+      "cleanSheetRate": 0.33,
+      "description": "哥伦比亚咖啡军团，中场创造力极高，反击速度犀利。"
+    },
+    "Sweden": {
+      "initialElo": 1700,
+      "titles": 0,
+      "avgGoalsScored": 1.35,
+      "avgGoalsConceded": 1.15,
+      "cleanSheetRate": 0.30,
+      "description": "北欧铁骑，身体对抗强悍，定位球战术成熟。"
+    },
+    "Austria": {
+      "initialElo": 1690,
+      "titles": 0,
+      "avgGoalsScored": 1.35,
+      "avgGoalsConceded": 1.15,
+      "cleanSheetRate": 0.30,
+      "description": "中欧新锐，高压逼抢体系成熟，整体性极强。"
+    },
+    "Norway": {
+      "initialElo": 1680,
+      "titles": 0,
+      "avgGoalsScored": 1.30,
+      "avgGoalsConceded": 1.15,
+      "cleanSheetRate": 0.28,
+      "description": "北欧海盗，拥有世界级前锋，进攻终结能力突出。"
+    },
+    "Iran": {
+      "initialElo": 1660,
+      "titles": 0,
+      "avgGoalsScored": 1.20,
+      "avgGoalsConceded": 1.10,
+      "cleanSheetRate": 0.33,
+      "description": "波斯铁骑，亚洲最强防守之一，擅长低比分防守反击。"
+    },
+    "Senegal": {
+      "initialElo": 1660,
+      "titles": 0,
+      "avgGoalsScored": 1.20,
+      "avgGoalsConceded": 1.10,
+      "cleanSheetRate": 0.30,
+      "description": "非洲雄狮，身体素质极其出众，冲击力与速度兼备。"
+    },
+    "Ivory Coast": {
+      "initialElo": 1640,
+      "titles": 0,
+      "avgGoalsScored": 1.25,
+      "avgGoalsConceded": 1.20,
+      "cleanSheetRate": 0.28,
+      "description": "科特迪瓦大象军团，非洲杯冠军，技术与身体双重优势。"
+    },
+    "Egypt": {
+      "initialElo": 1630,
+      "titles": 0,
+      "avgGoalsScored": 1.15,
+      "avgGoalsConceded": 1.10,
+      "cleanSheetRate": 0.32,
+      "description": "法老军团，防守组织极其严密，拥有世界顶级前锋。"
+    },
+    "Saudi Arabia": {
+      "initialElo": 1620,
+      "titles": 0,
+      "avgGoalsScored": 1.15,
+      "avgGoalsConceded": 1.20,
+      "cleanSheetRate": 0.28,
+      "description": "绿鹰军团，爆冷能力强，2022年曾击败阿根廷。"
+    },
+    "Tunisia": {
+      "initialElo": 1620,
+      "titles": 0,
+      "avgGoalsScored": 1.10,
+      "avgGoalsConceded": 1.15,
+      "cleanSheetRate": 0.30,
+      "description": "迦太基之鹰，北非劲旅，战术纪律性好，防守硬朗。"
+    },
+    "Algeria": {
+      "initialElo": 1620,
+      "titles": 0,
+      "avgGoalsScored": 1.15,
+      "avgGoalsConceded": 1.15,
+      "cleanSheetRate": 0.30,
+      "description": "沙漠之狐，非洲杯冠军，进攻组织流畅，整体作战能力强。"
+    },
+    "Ghana": {
+      "initialElo": 1610,
+      "titles": 0,
+      "avgGoalsScored": 1.15,
+      "avgGoalsConceded": 1.25,
+      "cleanSheetRate": 0.24,
+      "description": "黑星军团，速度与冲击力极强，非洲传统劲旅。"
+    },
+    "Uzbekistan": {
+      "initialElo": 1580,
+      "titles": 0,
+      "avgGoalsScored": 1.10,
+      "avgGoalsConceded": 1.20,
+      "cleanSheetRate": 0.25,
+      "description": "中亚白狼，亚洲新兴力量，防守反击效率高。"
+    },
+    "Iraq": {
+      "initialElo": 1570,
+      "titles": 0,
+      "avgGoalsScored": 1.05,
+      "avgGoalsConceded": 1.30,
+      "cleanSheetRate": 0.22,
+      "description": "伊拉克雄狮，曾获亚洲杯冠军，斗志旺盛。"
+    },
+    "Jordan": {
+      "initialElo": 1560,
+      "titles": 0,
+      "avgGoalsScored": 1.00,
+      "avgGoalsConceded": 1.30,
+      "cleanSheetRate": 0.22,
+      "description": "约旦，亚洲杯亚军黑马，防守坚韧团队作战能力提升。"
+    },
+    "Panama": {
+      "initialElo": 1560,
+      "titles": 0,
+      "avgGoalsScored": 1.00,
+      "avgGoalsConceded": 1.35,
+      "cleanSheetRate": 0.22,
+      "description": "巴拿马运河军团，中北美力量型球队，定位球有威胁。"
+    },
+    "Democratic Republic of the Congo": {
+      "initialElo": 1540,
+      "titles": 0,
+      "avgGoalsScored": 1.00,
+      "avgGoalsConceded": 1.40,
+      "cleanSheetRate": 0.20,
+      "description": "刚果豹军团，非洲新生力量，速度与爆发力突出。"
+    },
+    "New Zealand": {
+      "initialElo": 1520,
+      "titles": 0,
+      "avgGoalsScored": 0.95,
+      "avgGoalsConceded": 1.55,
+      "cleanSheetRate": 0.18,
+      "description": "全白军团，大洋洲霸主，以顽强防守和团队拼搏著称。"
+    },
+    "Cape Verde": {
+      "initialElo": 1500,
+      "titles": 0,
+      "avgGoalsScored": 0.90,
+      "avgGoalsConceded": 1.40,
+      "cleanSheetRate": 0.18,
+      "description": "蓝鲨军团，非洲小国奇迹，首次参加世界杯决赛圈。"
+    },
+    "Curaçao": {
+      "initialElo": 1480,
+      "titles": 0,
+      "avgGoalsScored": 0.85,
+      "avgGoalsConceded": 1.80,
+      "cleanSheetRate": 0.12,
+      "description": "加勒比海蓝色军团，首次亮相世界杯，速度快但整体实力有限。"
     }
   }
 }

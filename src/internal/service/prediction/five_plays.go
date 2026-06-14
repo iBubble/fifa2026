@@ -28,7 +28,7 @@ func (s *LotteryService) GenerateFivePlaysAdvice(match models.Match, report *mod
 		lh = report.RefinedParams.LambdaHome
 		la = report.RefinedParams.LambdaAway
 	} else {
-		params := s.dcService.CalculateParams(match.HomeTeam, match.AwayTeam)
+		params := s.dcService.CalculateParamsWithVenue(match.HomeTeam, match.AwayTeam, match.Venue)
 		matrix, _, _ = s.dcService.GenerateProbabilityMatrix(params)
 		lh = params.LambdaHome
 		la = params.LambdaAway
@@ -38,10 +38,10 @@ func (s *LotteryService) GenerateFivePlaysAdvice(match models.Match, report *mod
 	matrix = applyShiftsToMatrix(match.HomeTeam, match.AwayTeam, matrix)
 
 	// 基础 Dixon-Coles 概率与参数，用于生成更具波动且逼真的仿真官方赔率（模拟在资讯偏差之前的初始赔率）
-	baseParams := s.dcService.CalculateParams(match.HomeTeam, match.AwayTeam)
+	baseParams := s.dcService.CalculateParamsWithVenue(match.HomeTeam, match.AwayTeam, match.Venue)
 	baseMatrix, _, _ := s.dcService.GenerateProbabilityMatrix(baseParams)
 
-	odds := s.sportteryService.GetMatchOdds(match.HomeTeam, match.AwayTeam)
+	odds := s.sportteryService.GetMatchOdds(match.HomeTeam, match.AwayTeam, match.ScheduledAt)
 	if !odds.IsAvailable {
 		pHomeBase, pDrawBase, pAwayBase := 0.0, 0.0, 0.0
 		for _, cell := range baseMatrix {
@@ -160,37 +160,53 @@ func (s *LotteryService) GenerateFivePlaysAdvice(match models.Match, report *mod
 	}
 	// 3. 比分 (crs)
 	{
+		aggProbs := make(map[string]float64)     // key: preciseKey
+		baseAggProbs := make(map[string]float64) // key: preciseKey
+
+		for _, cell := range matrix {
+			code := getPreciseCrsKey(cell.HomeScore, cell.AwayScore)
+			aggProbs[code] += cell.Prob
+		}
+
+		for _, cellB := range baseMatrix {
+			code := getPreciseCrsKey(cellB.HomeScore, cellB.AwayScore)
+			baseAggProbs[code] += cellB.Prob
+		}
+
 		var safeOpt PlayOption
 		var aggOpt PlayOption
 		var maxProb, maxEV float64
 		first := true
 
-		for _, cell := range matrix {
-			key := fmt.Sprintf("%d:%d", cell.HomeScore, cell.AwayScore)
-			preciseKey := getPreciseCrsKey(cell.HomeScore, cell.AwayScore)
-			oVal := odds.CrsOdds[preciseKey]
+		// 竞彩官方 31 个比分代码
+		officialCrsCodes := []string{
+			"s01s00", "s02s00", "s02s01", "s03s00", "s03s01", "s03s02",
+			"s04s00", "s04s01", "s04s02", "s05s00", "s05s01", "s05s02", "s1sh",
+			"s00s00", "s01s01", "s02s02", "s03s03", "s1sd",
+			"s00s01", "s00s02", "s01s02", "s00s03", "s01s03", "s02s03",
+			"s00s04", "s01s04", "s02s04", "s00s05", "s01s05", "s02s05", "s1sa",
+		}
+
+		for _, code := range officialCrsCodes {
+			prob := aggProbs[code]
+			oVal := odds.CrsOdds[code]
 			if oVal <= 0 {
-				oValBase := 0.0
-				for _, cellB := range baseMatrix {
-					if cellB.HomeScore == cell.HomeScore && cellB.AwayScore == cell.AwayScore {
-						oValBase = 0.89 / math.Max(0.001, cellB.Prob)
-						break
-					}
-				}
+				oValBase := 0.89 / math.Max(0.001, baseAggProbs[code])
 				if oValBase <= 0 {
-					oValBase = 0.89 / math.Max(0.001, cell.Prob)
+					oValBase = 0.89 / math.Max(0.001, prob)
 				}
 				oVal = math.Min(100.0, oValBase)
 			}
-			ev := cell.Prob*oVal - 1.0
+			ev := prob*oVal - 1.0
+			key := getCrsDisplayName(code)
 
-			if cell.Prob > maxProb || first {
-				maxProb = cell.Prob
-				safeOpt = PlayOption{key, oVal, cell.Prob, ev}
+			if prob > maxProb || first {
+				maxProb = prob
+				safeOpt = PlayOption{key, oVal, prob, ev}
 			}
 			if ev > maxEV || first {
 				maxEV = ev
-				aggOpt = PlayOption{key, oVal, cell.Prob, ev}
+				aggOpt = PlayOption{key, oVal, prob, ev}
 			}
 			first = false
 		}
@@ -366,4 +382,21 @@ func (s *LotteryService) GenerateFivePlaysAdvice(match models.Match, report *mod
 	}
 
 	return advices
+}
+
+func getCrsDisplayName(code string) string {
+	if code == "s1sh" {
+		return "胜其它"
+	}
+	if code == "s1sd" {
+		return "平其它"
+	}
+	if code == "s1sa" {
+		return "负其它"
+	}
+	var h, a int
+	if _, err := fmt.Sscanf(code, "s%02ds%02d", &h, &a); err == nil {
+		return fmt.Sprintf("%d:%d", h, a)
+	}
+	return code
 }

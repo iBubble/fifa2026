@@ -31,6 +31,7 @@ type LotteryAdvice struct {
 	Status        string        `json:"status"`
 	Reason        string        `json:"reason"`
 	OfficialOdds  *OfficialOdds `json:"officialOdds,omitempty"`
+	Critique      string        `json:"critique"` // 大模型风控反驳评语
 }
 
 type Hedge struct {
@@ -45,13 +46,23 @@ func (s *LotteryService) GenerateSingleAdvice(match models.Match, oddsHome, odds
 	var matrix []models.ScoreProbability
 	var isLLMRefined bool
 	var tacticsReport string
+	var critiqueReport string
+
+	advice := LotteryAdvice{
+		MatchID:       match.ID,
+		HomeTeam:      match.HomeTeam,
+		AwayTeam:      match.AwayTeam,
+		RecommendType: "SINGLE",
+	}
 
 	if report != nil {
 		matrix = report.ScoreMatrix
 		isLLMRefined = report.LLMRefined
 		tacticsReport = report.TacticsAnalysis
+		critiqueReport = report.CritiqueAnalysis
+		advice.Critique = critiqueReport
 	} else {
-		params := s.dcService.CalculateParams(match.HomeTeam, match.AwayTeam)
+		params := s.dcService.CalculateParamsWithVenue(match.HomeTeam, match.AwayTeam, match.Venue)
 		matrix, _, _ = s.dcService.GenerateProbabilityMatrix(params)
 	}
 
@@ -69,7 +80,7 @@ func (s *LotteryService) GenerateSingleAdvice(match models.Match, oddsHome, odds
 	minP := math.Min(winH, math.Min(draw, winA))
 
 	// 获取官方赔率
-	official := s.sportteryService.GetMatchOdds(match.HomeTeam, match.AwayTeam)
+	official := s.sportteryService.GetMatchOdds(match.HomeTeam, match.AwayTeam, match.ScheduledAt)
 	if official.IsAvailable {
 		oddsHome, oddsDraw, oddsAway = official.HomeOdds, official.DrawOdds, official.AwayOdds
 	} else {
@@ -100,12 +111,6 @@ func (s *LotteryService) GenerateSingleAdvice(match models.Match, oddsHome, odds
 		}
 	}
 
-	advice := LotteryAdvice{
-		MatchID:       match.ID,
-		HomeTeam:      match.HomeTeam,
-		AwayTeam:      match.AwayTeam,
-		RecommendType: "SINGLE",
-	}
 	if official.IsAvailable {
 		advice.OfficialOdds = &official
 	}
@@ -113,9 +118,10 @@ func (s *LotteryService) GenerateSingleAdvice(match models.Match, oddsHome, odds
 	// 战意/伤病突发风控排除
 	hasNegativeInfo := false
 	if isLLMRefined {
-		negKeywords := []string{"内讧", "暴雨", "伤病", "缺阵", "红牌", "矛盾", "不确定", "大波动", "停赛"}
+		negKeywords := []string{"内讧", "暴雨", "伤病", "缺阵", "红牌", "矛盾", "不确定", "大波动", "停赛", "大热必死"}
+		combinedAnalysis := tacticsReport + " " + critiqueReport
 		for _, kw := range negKeywords {
-			if strings.Contains(tacticsReport, kw) {
+			if strings.Contains(combinedAnalysis, kw) {
 				hasNegativeInfo = true
 				break
 			}
@@ -218,9 +224,9 @@ func (s *LotteryService) GenerateSingleAdvice(match models.Match, oddsHome, odds
 }
 
 // GenerateParlayAdvice 混合过关 2串1 时序对冲无风险套利计算
-func (s *LotteryService) GenerateParlayAdvice(m1, m2 models.Match, odds1, odds2 float64) LotteryAdvice {
-	off1 := s.sportteryService.GetMatchOdds(m1.HomeTeam, m1.AwayTeam)
-	off2 := s.sportteryService.GetMatchOdds(m2.HomeTeam, m2.AwayTeam)
+func (s *LotteryService) GenerateParlayAdvice(m1, m2 models.Match, odds1, odds2 float64, report *models.PredictionReport) LotteryAdvice {
+	off1 := s.sportteryService.GetMatchOdds(m1.HomeTeam, m1.AwayTeam, m1.ScheduledAt)
+	off2 := s.sportteryService.GetMatchOdds(m2.HomeTeam, m2.AwayTeam, m2.ScheduledAt)
 
 	o1 := odds1
 	if off1.IsAvailable {
@@ -245,13 +251,19 @@ func (s *LotteryService) GenerateParlayAdvice(m1, m2 models.Match, odds1, odds2 
 	profit := totalReturn - totalStake
 	roi := (profit / totalStake) * 100.0
 
+	// 标注数据来源
+	dataSource := "基于定量泊松模型"
+	if report != nil && report.LLMRefined {
+		dataSource = "基于多Agent反驳纠偏模型"
+	}
+
 	var reason string
 	if roi > 0 {
-		reason = fmt.Sprintf("【混合过关套利锁利方案】：第一场单选【%s 胜平负(主胜 @%.2f)】，第二场单选【%s 让球胜平负(让主胜 @%.2f)】组成混合过关 2串1。若第一场打出，在第二场开赛前单投第二场相反项【让客负 @%.2f】对冲 %.2f 元。无论第二场结果如何，均可稳定锁定 %.2f 元无风险利润 (ROI: +%.1f%%)！",
-			m1.HomeTeam, o1, m2.HomeTeam, o2, oHedge, sHedge, profit, roi)
+		reason = fmt.Sprintf("【混合过关套利锁利方案 (%s)】：第一场单选【%s 胜平负(主胜 @%.2f)】，第二场单选【%s 让球胜平负(让主胜 @%.2f)】组成混合过关 2串1。若第一场打出，在第二场开赛前单投第二场相反项【让客负 @%.2f】对冲 %.2f 元。无论第二场结果如何，均可稳定锁定 %.2f 元无风险利润 (ROI: +%.1f%%)！",
+			dataSource, m1.HomeTeam, o1, m2.HomeTeam, o2, oHedge, sHedge, profit, roi)
 	} else {
-		reason = fmt.Sprintf("【混合过关2串1建议】：主推【%s 主胜 @%.2f】+【%s 让主胜 @%.2f】。因对冲防守项【让客负 @%.2f】目前奖金偏低，公式计算套利 ROI 倒挂，不建议强行对冲，建议单独串关或继续观望赔率浮动。",
-			m1.HomeTeam, o1, m2.HomeTeam, o2, oHedge)
+		reason = fmt.Sprintf("【混合过关2串1建议 (%s)】：主推【%s 主胜 @%.2f】+【%s 让主胜 @%.2f】。因对冲防守项【让客负 @%.2f】目前奖金偏低，公式计算套利 ROI 倒挂，不建议强行对冲，建议单独串关或继续观望赔率浮动。",
+			dataSource, m1.HomeTeam, o1, m2.HomeTeam, o2, oHedge)
 	}
 
 	return LotteryAdvice{

@@ -4,27 +4,52 @@ import (
 	"fifa2026/src/internal/db"
 	"fifa2026/src/internal/models"
 	"math"
+	"strings"
 )
 
 type DixonColesService struct {
-	elo       *EloService
-	apiSports *APISportsService
-	rhoOffset float64
+	elo              *EloService
+	apiSports        *APISportsService
+	rhoOffset        float64
+	lambdaHomeOffset float64
+	lambdaAwayOffset float64
 }
 
 func NewDixonColesService(elo *EloService, apiSports *APISportsService) *DixonColesService {
 	s := &DixonColesService{
-		elo:       elo,
-		apiSports: apiSports,
-		rhoOffset: 0.0,
+		elo:              elo,
+		apiSports:        apiSports,
+		rhoOffset:        0.0,
+		lambdaHomeOffset: 0.0,
+		lambdaAwayOffset: 0.0,
 	}
 	s.RecalculateRhoOffset()
+	s.RecalculateLambdaOffset()
 	return s
 }
 
 // CalculateParams 根据两队当前 Elo 计算 Dixon-Coles 初始期望参数（包含自适应偏移）
 func (s *DixonColesService) CalculateParams(homeTeam, awayTeam string) models.DixonColesParams {
 	p := s.CalculateParamsWithoutOffset(homeTeam, awayTeam)
+	
+	// 应用全局累计自适应 Lambda 偏移量
+	p.LambdaHome += s.lambdaHomeOffset
+	p.LambdaAway += s.lambdaAwayOffset
+
+	// 限制 Lambda 期望在 [0.2, 2.8] 安全边界内，防止数学计算溢出
+	if p.LambdaHome > 2.8 {
+		p.LambdaHome = 2.8
+	}
+	if p.LambdaHome < 0.2 {
+		p.LambdaHome = 0.2
+	}
+	if p.LambdaAway > 2.8 {
+		p.LambdaAway = 2.8
+	}
+	if p.LambdaAway < 0.2 {
+		p.LambdaAway = 0.2
+	}
+
 	p.Rho += s.rhoOffset
 	// 强约束 rho 的范围在 [-0.15, -0.01] 之间
 	if p.Rho > -0.01 {
@@ -45,9 +70,9 @@ func (s *DixonColesService) CalculateParamsWithoutOffset(homeTeam, awayTeam stri
 	featH := s.elo.GetFeature(homeTeam)
 	featA := s.elo.GetFeature(awayTeam)
 
-	// 计算基础进球概率倾向 (几何平均数以平衡两队攻防，除以 1.35 归一化以维持传统比分数学中位数期望)
-	baseH := math.Sqrt(featH.AvgGoalsScored * featA.AvgGoalsConceded) / 1.35
-	baseA := math.Sqrt(featA.AvgGoalsScored * featH.AvgGoalsConceded) / 1.35
+	// 计算基础进球概率倾向 (几何平均数以平衡两队攻防，除以 1.05 归一化以适度释放进球率，回归大盘平均期望)
+	baseH := math.Sqrt(featH.AvgGoalsScored * featA.AvgGoalsConceded) / 1.05
+	baseA := math.Sqrt(featA.AvgGoalsScored * featH.AvgGoalsConceded) / 1.05
 
 	// 融入 api-football 历史直接交锋记录 (H2H) 场均进球数并与模型大盘进球率进行自适应加权混合
 	var h2hDiff float64
@@ -61,10 +86,18 @@ func (s *DixonColesService) CalculateParamsWithoutOffset(homeTeam, awayTeam stri
 			totalH2HMatches = h2h.TotalMatches
 			// 自适应 H2H 权重：交手次数越多，克制权重越高，上限为 30%
 			h2hWeight := math.Min(0.30, float64(h2h.TotalMatches)*0.08)
+			if h2h.TotalMatches < 3 {
+				// H2H 小样本（< 3 场）克制权重强行衰减 80% 平滑
+				h2hWeight = h2hWeight * 0.20
+			}
 			baseH = (1.0-h2hWeight)*baseH + h2hWeight*h2h.AvgHomeGoals
 			baseA = (1.0-h2hWeight)*baseA + h2hWeight*h2h.AvgAwayGoals
 			// 计算双方历史交手胜率差值倾向 (值范围 -1.0 到 1.0)
 			h2hDiff = (float64(h2h.HomeWins) - float64(h2h.AwayWins)) / float64(h2h.TotalMatches)
+			if h2h.TotalMatches < 3 {
+				// H2H 小样本影响系数同步衰减 80%（降至 ±3%）
+				h2hDiff = h2hDiff * 0.20
+			}
 			drawRate = float64(h2h.Draws) / float64(h2h.TotalMatches)
 		}
 	}
@@ -77,14 +110,25 @@ func (s *DixonColesService) CalculateParamsWithoutOffset(homeTeam, awayTeam stri
 		baseA = 0.2
 	}
 
-	// 最终复合进球期望 Lambda：将基础攻防与实时 Elo 实力差的指数级加权调节相叠加
-	lambdaH := baseH * math.Exp(0.12 + 0.35*diff)
-	lambdaA := baseA * math.Exp(-0.12 - 0.35*diff)
+	// 世界杯锦标赛为完全中立场，无主客场优势概念
+	homeAdv := 0.0
 
-	// 如果存在历史交战统计，继续叠加上 15% 上下浮动的胜率克制修正系数
+	// 最终复合进球期望 Lambda：将基础攻防与实时 Elo 实力差的指数级加权调节相叠加
+	lambdaH := baseH * math.Exp(homeAdv + 0.35*diff)
+	lambdaA := baseA * math.Exp(-homeAdv - 0.35*diff)
+
+	// 如果存在历史交战统计，继续叠加上胜率克制修正系数
 	if hasH2H {
 		lambdaH = lambdaH * (1.0 + 0.15*h2hDiff)
 		lambdaA = lambdaA * (1.0 - 0.15*h2hDiff)
+	}
+
+	// 对最终 Lambda 期望加入 2.8 的上限阀值，防止高分段计算发生数学溢出
+	if lambdaH > 2.8 {
+		lambdaH = 2.8
+	}
+	if lambdaA > 2.8 {
+		lambdaA = 2.8
 	}
 
 	// 经典平局相关系数初始值
@@ -240,4 +284,107 @@ func (s *DixonColesService) RecalculateRhoOffset() {
 		}
 	}
 	s.rhoOffset = offset
+}
+
+// isHostNation 判断该球队是否为 2026 世界杯东道主
+func isHostNation(team string) bool {
+	return team == "United States" || team == "Mexico" || team == "Canada"
+}
+
+// CalculateParamsWithVenue 根据两队 Elo 和赛场场馆所在的物理东道主国家，计算带有精确主场加成的 Dixon-Coles 参数
+func (s *DixonColesService) CalculateParamsWithVenue(homeTeam, awayTeam, venue string) models.DixonColesParams {
+	p := s.CalculateParams(homeTeam, awayTeam)
+
+	// 判定场馆国家
+	venueCountry := "United States" // 默认美国
+	vLower := strings.ToLower(venue)
+	if strings.Contains(vLower, "azteca") || strings.Contains(vLower, "akron") || strings.Contains(vLower, "bbva") {
+		venueCountry = "Mexico"
+	} else if strings.Contains(vLower, "bc place") || strings.Contains(vLower, "bmo") {
+		venueCountry = "Canada"
+	}
+
+	homeAdv := 0.0
+	// 只有东道主在自己国家踢球时，该东道主才享有主场优势
+	if isHostNation(homeTeam) && homeTeam == venueCountry {
+		homeAdv = 0.18
+	} else if isHostNation(awayTeam) && awayTeam == venueCountry {
+		homeAdv = -0.18 // 客队是东道主且在本国比赛，客队享有主场优势
+	}
+
+	if homeAdv != 0.0 {
+		p.LambdaHome = p.LambdaHome * math.Exp(homeAdv)
+		p.LambdaAway = p.LambdaAway * math.Exp(-homeAdv)
+
+		// 限制 Lambda 期望在 2.8 安全上限内
+		if p.LambdaHome > 2.8 {
+			p.LambdaHome = 2.8
+		}
+		if p.LambdaAway > 2.8 {
+			p.LambdaAway = 2.8
+		}
+	}
+
+	return p
+}
+
+// RecalculateLambdaOffset 根据所有已结算比赛的历史误差及 Brier Score 自适应纠偏 Lambda 进球期望
+func (s *DixonColesService) RecalculateLambdaOffset() {
+	reports, err := db.GetBacktestReports()
+	if err != nil || len(reports) == 0 {
+		s.lambdaHomeOffset = 0.0
+		s.lambdaAwayOffset = 0.0
+		return
+	}
+
+	homeOffset := 0.0
+	awayOffset := 0.0
+	learningRate := 0.05
+
+	for _, r := range reports {
+		m, err := db.GetMatch(r.MatchID)
+		if err != nil {
+			continue
+		}
+
+		pBase := s.CalculateParamsWithoutOffset(m.HomeTeam, m.AwayTeam)
+
+		// 累加当前的偏移量以便在增量推演中使用最新的自适应状态
+		lambdaH := pBase.LambdaHome + homeOffset
+		lambdaA := pBase.LambdaAway + awayOffset
+		if lambdaH < 0.2 {
+			lambdaH = 0.2
+		}
+		if lambdaA < 0.2 {
+			lambdaA = 0.2
+		}
+
+		actualH := float64(m.HomeScore)
+		actualA := float64(m.AwayScore)
+
+		// 误差反馈自校准公式：误差乘以 Brier Score 加权因子（2.0 - BrierScore）
+		// 预测越精准的正常赛事其权重越高，大冷门爆冷局其权重趋向于 0，保护核心定量模型免受极端偶然误差的污染
+		deltaH := learningRate * (actualH - lambdaH) * (2.0 - r.BrierScore)
+		deltaA := learningRate * (actualA - lambdaA) * (2.0 - r.BrierScore)
+
+		homeOffset += deltaH
+		awayOffset += deltaA
+	}
+
+	// 限制在 [-0.20, 0.20] 的自校准偏置裁剪阈值内，防范预测参数发散
+	if homeOffset > 0.20 {
+		homeOffset = 0.20
+	}
+	if homeOffset < -0.20 {
+		homeOffset = -0.20
+	}
+	if awayOffset > 0.20 {
+		awayOffset = 0.20
+	}
+	if awayOffset < -0.20 {
+		awayOffset = -0.20
+	}
+
+	s.lambdaHomeOffset = homeOffset
+	s.lambdaAwayOffset = awayOffset
 }

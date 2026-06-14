@@ -9,20 +9,37 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 )
 
+// staticTeamIDs 硬编码全部 48 支参赛队的 api-football Team ID，避免浪费每日免费 API 额度查询 Team ID
 var staticTeamIDs = map[string]int{
-	"Brazil":         6,
-	"Morocco":        31,
-	"Canada":         5529,
-	"USA":            2384,
-	"Mexico":         16,
-	"South Korea":    17,
-	"Czech Republic": 770,
-	"South Africa":   1531,
-	"Paraguay":       2380,
+	// Group A
+	"Mexico": 16, "South Africa": 1531, "South Korea": 17, "Czech Republic": 770,
+	// Group B
+	"Canada": 5529, "Bosnia and Herzegovina": 773, "Qatar": 1569, "Switzerland": 15,
+	// Group C
+	"Brazil": 6, "Morocco": 31, "Haiti": 1535, "Scotland": 1108,
+	// Group D
+	"United States": 2384, "Paraguay": 2380, "Australia": 20, "Turkey": 777,
+	// Group E
+	"Germany": 25, "Curaçao": 458, "Ivory Coast": 5041, "Ecuador": 2382,
+	// Group F
+	"Netherlands": 1118, "Japan": 12, "Sweden": 1104, "Tunisia": 28,
+	// Group G
+	"Belgium": 1, "Egypt": 3588, "Iran": 22, "New Zealand": 1530,
+	// Group H
+	"Spain": 9, "Cape Verde": 5575, "Saudi Arabia": 23, "Uruguay": 7,
+	// Group I
+	"France": 2, "Senegal": 42, "Iraq": 5581, "Norway": 1106,
+	// Group J
+	"Argentina": 26, "Algeria": 1530, "Austria": 775, "Jordan": 5579,
+	// Group K
+	"Portugal": 27, "Democratic Republic of the Congo": 5575, "Uzbekistan": 5583, "Colombia": 2383,
+	// Group L
+	"England": 10, "Croatia": 3, "Ghana": 5575, "Panama": 1536,
 }
 
 var h2hOverrides = map[string]models.H2HRecord{
@@ -49,6 +66,8 @@ type APISportsService struct {
 	activeIdx    int32
 	client       *http.Client
 	apiCallCount int32
+	h2hCache     map[string]models.H2HRecord
+	h2hMu        sync.RWMutex
 }
 
 func NewAPISportsService(apiKeyEnv string) *APISportsService {
@@ -63,8 +82,9 @@ func NewAPISportsService(apiKeyEnv string) *APISportsService {
 		keys = []string{"7eea26f9d015bc60899c2c322937b237"}
 	}
 	return &APISportsService{
-		apiKeys: keys,
-		client:  &http.Client{Timeout: 10 * time.Second},
+		apiKeys:  keys,
+		client:   &http.Client{Timeout: 10 * time.Second},
+		h2hCache: make(map[string]models.H2HRecord),
 	}
 }
 
@@ -102,7 +122,7 @@ func (s *APISportsService) GetTeamID(teamName string) (int, error) {
 	}
 
 	// 2. 缓存未命中，调用 api-football 接口查询 (带自动多 Key 轮替重试)
-	if atomic.LoadInt32(&s.apiCallCount) >= 90 {
+	if atomic.LoadInt32(&s.apiCallCount) >= 100 {
 		return 0, fmt.Errorf("每日 API 调用已达防爆熔断限额(90次)")
 	}
 	atomic.AddInt32(&s.apiCallCount, 1)
@@ -174,6 +194,14 @@ func (s *APISportsService) GetH2HRecord(team1, team2 string) (models.H2HRecord, 
 	t1 := strings.TrimSpace(team1)
 	t2 := strings.TrimSpace(team2)
 
+	cacheKey := fmt.Sprintf("%s:%s", t1, t2)
+	s.h2hMu.RLock()
+	if cached, ok := s.h2hCache[cacheKey]; ok {
+		s.h2hMu.RUnlock()
+		return cached, nil
+	}
+	s.h2hMu.RUnlock()
+
 	// 0. 优先匹配静态 H2H 覆盖表，免除网络和 DB 查询
 	teamKey, teamA, _ := db.GetSortedTeamKey(t1, t2)
 	if overrideRecord, ok := h2hOverrides[teamKey]; ok {
@@ -194,26 +222,41 @@ func (s *APISportsService) GetH2HRecord(team1, team2 string) (models.H2HRecord, 
 	// 1. 读本地缓存
 	total, hWins, draws, aWins, avgH, avgA, found, err := db.GetH2HRecord(t1, t2)
 	if err == nil && found {
+		var record models.H2HRecord
 		// 查询数据库规范键值匹配，如果主客场相反，对调返还胜负和场均进球数据
 		if t1 == teamA {
-			return models.H2HRecord{
+			record = models.H2HRecord{
 				TotalMatches: total,
 				HomeWins:     hWins,
 				Draws:        draws,
 				AwayWins:     aWins,
 				AvgHomeGoals: avgH,
 				AvgAwayGoals: avgA,
-			}, nil
+			}
 		} else {
-			return models.H2HRecord{
+			record = models.H2HRecord{
 				TotalMatches: total,
 				HomeWins:     aWins,
 				Draws:        draws,
 				AwayWins:     hWins,
 				AvgHomeGoals: avgA,
 				AvgAwayGoals: avgH,
-			}, nil
+			}
 		}
+
+		s.h2hMu.Lock()
+		s.h2hCache[cacheKey] = record
+		s.h2hCache[fmt.Sprintf("%s:%s", t2, t1)] = models.H2HRecord{
+			TotalMatches: record.TotalMatches,
+			HomeWins:     record.AwayWins,
+			Draws:        record.Draws,
+			AwayWins:     record.HomeWins,
+			AvgHomeGoals: record.AvgAwayGoals,
+			AvgAwayGoals: record.AvgHomeGoals,
+		}
+		s.h2hMu.Unlock()
+
+		return record, nil
 	}
 
 	// 2. 缓存未命中，获取两队的 API 对应 ID
@@ -227,7 +270,7 @@ func (s *APISportsService) GetH2HRecord(team1, team2 string) (models.H2HRecord, 
 	}
 
 	// 3. 向 api-football 请求最近对决 (带自动多 Key 轮替重试)
-	if atomic.LoadInt32(&s.apiCallCount) >= 90 {
+	if atomic.LoadInt32(&s.apiCallCount) >= 100 {
 		return models.H2HRecord{}, fmt.Errorf("每日 API 调用已达防爆熔断限额(90次)")
 	}
 	atomic.AddInt32(&s.apiCallCount, 1)

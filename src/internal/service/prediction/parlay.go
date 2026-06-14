@@ -100,9 +100,32 @@ func (s *ParlayService) RecommendParlay(matchIds []string, parlayMode string, pa
 			continue
 		}
 
-		// 强制跳过数据库报告缓存，每一次串关都实时重算，保证模型演算与数据融合真实度
-		params := s.dcService.CalculateParams(m.HomeTeam, m.AwayTeam)
-		matrix, over25, under25 := s.dcService.GenerateProbabilityMatrix(params)
+		var matrix []models.ScoreProbability
+		var over25, under25 float64
+		var report models.PredictionReport
+		var errRep error
+		var params models.DixonColesParams
+
+		// 优先读取已校验的 DB Report，保证混合过关完全采信多 Agent 纠偏数据
+		report, errRep = db.GetPredictionReport(id)
+		if errRep == nil && len(report.ScoreMatrix) > 0 {
+			matrix = report.ScoreMatrix
+			over25 = report.Over2_5Prob
+			under25 = report.Under2_5Prob
+			params = report.OriginalParams
+		} else {
+			// 安全降级：若读取数据库 report 报错或为空，降级回定量 Dixon-Coles 原始数学计算
+			params = s.dcService.CalculateParamsWithVenue(m.HomeTeam, m.AwayTeam, m.Venue)
+			matrix, over25, under25 = s.dcService.GenerateProbabilityMatrix(params)
+			report = models.PredictionReport{
+				MatchID:        id,
+				OriginalParams: params,
+				RefinedParams:  params,
+				ScoreMatrix:    matrix,
+				Over2_5Prob:    over25,
+				Under2_5Prob:   under25,
+			}
+		}
 
 		// 融入博彩巨头实时赔率偏移对比分概率及大小球概率的调整
 		matrix = applyShiftsToMatrix(m.HomeTeam, m.AwayTeam, matrix)
@@ -116,7 +139,7 @@ func (s *ParlayService) RecommendParlay(matchIds []string, parlayMode string, pa
 			}
 		}
 
-		odds := s.sportteryService.GetMatchOdds(m.HomeTeam, m.AwayTeam)
+		odds := s.sportteryService.GetMatchOdds(m.HomeTeam, m.AwayTeam, m.ScheduledAt)
 		if !odds.IsAvailable {
 			eloHome := s.eloService.GetElo(m.HomeTeam)
 			eloAway := s.eloService.GetElo(m.AwayTeam)
@@ -198,7 +221,7 @@ func (s *ParlayService) RecommendParlay(matchIds []string, parlayMode string, pa
 		homeRank := s.eloService.GetEloRank(m.HomeTeam)
 		awayRank := s.eloService.GetEloRank(m.AwayTeam)
 
-		report := models.PredictionReport{
+		report = models.PredictionReport{
 			MatchID:        id,
 			OriginalParams: params,
 			RefinedParams:  params,
@@ -211,23 +234,38 @@ func (s *ParlayService) RecommendParlay(matchIds []string, parlayMode string, pa
 		}
 		_ = db.SavePredictionReport(report)
 
-		// 1. 风控判断（仅进行软警示提示，不硬拦截过滤比赛，尊重用户“选什么就生成什么”的选择）
-		// A. 情报负面词风险
+		// 1. AI 智能过关风控硬排除
+		// 结合 TacticsAnalysis 与 CritiqueAnalysis 进行复合研判
 		hasNeg := false
-		if report.TacticsAnalysis != "" {
-			negKeywords := []string{"内讧", "暴雨", "伤病", "缺阵", "红牌", "矛盾", "不确定"}
-			for _, kw := range negKeywords {
-				if strings.Contains(report.TacticsAnalysis, kw) {
-					hasNeg = true
-					break
+		negReason := ""
+		combinedText := report.TacticsAnalysis + " " + report.CritiqueAnalysis
+
+		negKeywords := []string{"内讧", "暴雨", "伤病", "缺阵", "红牌", "矛盾", "不确定", "大波动", "停赛", "大热必死"}
+		for _, kw := range negKeywords {
+			if strings.Contains(combinedText, kw) {
+				hasNeg = true
+				negReason = report.CritiqueAnalysis
+				if negReason == "" {
+					negReason = "大模型研判检测到重大负面风控偏置（伤病/内讧/暴雨等），已被硬排除。"
+				} else {
+					negReason = "AI风控硬排除: " + negReason
 				}
+				break
 			}
 		}
+
 		if hasNeg {
-			resp.Excluded = append(resp.Excluded, ExcludedMatch{MatchID: id, HomeTeam: m.HomeTeam, AwayTeam: m.AwayTeam, Reason: "⚠️【突发情报预警】大模型检测到该队受内讧/主力伤缺/红牌或天气负面偏置，爆冷风险极高。"})
+			resp.Excluded = append(resp.Excluded, ExcludedMatch{
+				MatchID:  id,
+				HomeTeam: m.HomeTeam,
+				AwayTeam: m.AwayTeam,
+				Reason:   negReason,
+			})
+			// 触发硬拦截排除：不加入 Recommended 串关列表
+			continue
 		}
 
-		// B. 天敌克制风险
+		// B. 天敌克制风险（软警示）
 		hasClash := false
 		if report.H2H != nil && report.H2H.TotalMatches >= 3 {
 			h2h := report.H2H
@@ -241,7 +279,7 @@ func (s *ParlayService) RecommendParlay(matchIds []string, parlayMode string, pa
 			resp.Excluded = append(resp.Excluded, ExcludedMatch{MatchID: id, HomeTeam: m.HomeTeam, AwayTeam: m.AwayTeam, Reason: "⚠️【交手克制预警】两队历史交手存在单方 0% 胜率的天敌属性，建议谨慎防冷。"})
 		}
 
-		// C. 均势极度平局风险
+		// C. 均势极度平局风险（软警示）
 		var pHome, pDraw, pAway float64
 		for _, cell := range report.ScoreMatrix {
 			if cell.HomeScore > cell.AwayScore {
@@ -258,7 +296,7 @@ func (s *ParlayService) RecommendParlay(matchIds []string, parlayMode string, pa
 			resp.Excluded = append(resp.Excluded, ExcludedMatch{MatchID: id, HomeTeam: m.HomeTeam, AwayTeam: m.AwayTeam, Reason: "⚠️【竞彩平局预警】两队实力相近，胜平负预测概率高度均等，需注意爆冷。"})
 		}
 
-		// 只要是未完赛，哪怕有风险，也强制收集并在后台精算，生成用户选定场次的完整串关
+		// 通过风控检测，加入推荐串关列表
 		resp.Recommended = append(resp.Recommended, RecommendedBet{
 			MatchID:  id,
 			HomeTeam: m.HomeTeam,
@@ -481,33 +519,17 @@ func (s *ParlayService) calculateSinglePlayParlay(
 	}
 
 	var playDetail strings.Builder
-	if len(tickets) <= 5 {
-		for tIdx, t := range tickets {
-			if tIdx > 0 {
-				playDetail.WriteString("<br>")
-			}
-			playDetail.WriteString(fmt.Sprintf("注%d: ", tIdx+1))
-			for i, idx := range t.indices {
-				if i > 0 {
-					playDetail.WriteString(" × ")
-				}
-				playDetail.WriteString(choices[idx].desc)
-			}
+	for tIdx, t := range tickets {
+		if tIdx > 0 {
+			playDetail.WriteString("<br>")
 		}
-	} else {
-		for tIdx := 0; tIdx < 3; tIdx++ {
-			if tIdx > 0 {
-				playDetail.WriteString("<br>")
+		playDetail.WriteString(fmt.Sprintf("注%d: ", tIdx+1))
+		for i, idx := range t.indices {
+			if i > 0 {
+				playDetail.WriteString(" × ")
 			}
-			playDetail.WriteString(fmt.Sprintf("注%d: ", tIdx+1))
-			for i, idx := range tickets[tIdx].indices {
-				if i > 0 {
-					playDetail.WriteString(" × ")
-				}
-				playDetail.WriteString(choices[idx].desc)
-			}
+			playDetail.WriteString(choices[idx].desc)
 		}
-		playDetail.WriteString(fmt.Sprintf("<br>... 等共 %d 注组合", len(tickets)))
 	}
 
 	var parlayName string
@@ -616,8 +638,23 @@ func (s *ParlayService) getBestSingleChoice(matchID string, playCode string) (st
 	if err != nil {
 		return "", 0, 0, err
 	}
-	report, _ := db.GetPredictionReport(matchID)
-	odds := s.sportteryService.GetMatchOdds(m.HomeTeam, m.AwayTeam)
+	
+	// 读取已校验的 DB Report，并做防崩溃安全降级兜底
+	report, errRep := db.GetPredictionReport(matchID)
+	if errRep != nil || len(report.ScoreMatrix) == 0 {
+		// 若读取失败或尚未预测，使用定量 Dixon-Coles 原始数学计算兜底，防除零崩溃
+		params := s.dcService.CalculateParamsWithVenue(m.HomeTeam, m.AwayTeam, m.Venue)
+		matrix, over25, under25 := s.dcService.GenerateProbabilityMatrix(params)
+		report = models.PredictionReport{
+			MatchID:        matchID,
+			OriginalParams: params,
+			RefinedParams:  params,
+			ScoreMatrix:    matrix,
+			Over2_5Prob:    over25,
+			Under2_5Prob:   under25,
+		}
+	}
+	odds := s.sportteryService.GetMatchOdds(m.HomeTeam, m.AwayTeam, m.ScheduledAt)
 
 	var optName string
 	var optOdds float64
@@ -783,20 +820,35 @@ func (s *ParlayService) getBestSingleChoice(matchID string, playCode string) (st
 		optName, optOdds, optProb = bestTtg, bestTtgOdds, bestTtgProb
 
 	case "crs":
+		aggProbs := make(map[string]float64) // key: preciseKey
+		for _, cell := range report.ScoreMatrix {
+			code := getPreciseCrsKey(cell.HomeScore, cell.AwayScore)
+			aggProbs[code] += cell.Prob
+		}
+
 		var bestCrs string
 		var bestCrsProb float64
 		var bestCrsOdds float64
 
-		for _, cell := range report.ScoreMatrix {
-			key := fmt.Sprintf("%d:%d", cell.HomeScore, cell.AwayScore)
-			preciseKey := getPreciseCrsKey(cell.HomeScore, cell.AwayScore)
-			oVal := odds.CrsOdds[preciseKey]
+		// 竞彩官方 31 个比分代码
+		officialCrsCodes := []string{
+			"s01s00", "s02s00", "s02s01", "s03s00", "s03s01", "s03s02",
+			"s04s00", "s04s01", "s04s02", "s05s00", "s05s01", "s05s02", "s1sh",
+			"s00s00", "s01s01", "s02s02", "s03s03", "s1sd",
+			"s00s01", "s00s02", "s01s02", "s00s03", "s01s03", "s02s03",
+			"s00s04", "s01s04", "s02s04", "s00s05", "s01s05", "s02s05", "s1sa",
+		}
+
+		for _, code := range officialCrsCodes {
+			prob := aggProbs[code]
+			oVal := odds.CrsOdds[code]
 			if oVal <= 0 {
-				oVal = 0.89 / math.Max(0.001, cell.Prob)
+				oVal = 0.89 / math.Max(0.001, prob)
 			}
-			ev := cell.Prob*oVal - 1.0
+			oVal = math.Min(100.0, oVal)
+			ev := prob*oVal - 1.0
 			if ev > (bestCrsProb*bestCrsOdds - 1.0) || bestCrs == "" {
-				bestCrs, bestCrsProb, bestCrsOdds = key, cell.Prob, oVal
+				bestCrs, bestCrsProb, bestCrsOdds = getCrsDisplayName(code), prob, oVal
 			}
 		}
 		optName, optOdds, optProb = bestCrs, bestCrsOdds, bestCrsProb

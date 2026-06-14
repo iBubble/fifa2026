@@ -12,12 +12,18 @@ func SavePredictionReport(r models.PredictionReport) error {
 	if err != nil {
 		return err
 	}
+	origMatrixJSON, err := json.Marshal(r.OriginalScoreMatrix)
+	if err != nil {
+		return err
+	}
 
 	query := `INSERT INTO prediction_reports (
 			match_id, lambda_home, lambda_away, rho,
 			original_lambda_home, original_lambda_away, original_rho,
-			over_2_5_prob, under_2_5_prob, tactics_analysis, poster_prompt, score_matrix_json
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			over_2_5_prob, under_2_5_prob, tactics_analysis, poster_prompt, score_matrix_json,
+			proponent_opinion, critique_analysis, consensus_reason,
+			original_score_matrix_json, original_over_2_5_prob, original_under_2_5_prob
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(match_id) DO UPDATE SET
 			lambda_home = excluded.lambda_home,
 			lambda_away = excluded.lambda_away,
@@ -29,7 +35,13 @@ func SavePredictionReport(r models.PredictionReport) error {
 			under_2_5_prob = excluded.under_2_5_prob,
 			tactics_analysis = excluded.tactics_analysis,
 			poster_prompt = excluded.poster_prompt,
-			score_matrix_json = excluded.score_matrix_json`
+			score_matrix_json = excluded.score_matrix_json,
+			proponent_opinion = excluded.proponent_opinion,
+			critique_analysis = excluded.critique_analysis,
+			consensus_reason = excluded.consensus_reason,
+			original_score_matrix_json = excluded.original_score_matrix_json,
+			original_over_2_5_prob = excluded.original_over_2_5_prob,
+			original_under_2_5_prob = excluded.original_under_2_5_prob`
 	_, err = DB.Exec(query,
 		r.MatchID,
 		r.RefinedParams.LambdaHome,
@@ -43,6 +55,12 @@ func SavePredictionReport(r models.PredictionReport) error {
 		r.TacticsAnalysis,
 		r.PosterPrompt,
 		string(matrixJSON),
+		r.ProponentOpinion,
+		r.CritiqueAnalysis,
+		r.ConsensusReason,
+		string(origMatrixJSON),
+		r.OriginalOver2_5Prob,
+		r.OriginalUnder2_5Prob,
 	)
 	return err
 }
@@ -52,12 +70,14 @@ func GetPredictionReport(matchID string) (models.PredictionReport, error) {
 	query := `SELECT 
 			match_id, lambda_home, lambda_away, rho,
 			original_lambda_home, original_lambda_away, original_rho,
-			over_2_5_prob, under_2_5_prob, tactics_analysis, poster_prompt, score_matrix_json
+			over_2_5_prob, under_2_5_prob, tactics_analysis, poster_prompt, score_matrix_json,
+			proponent_opinion, critique_analysis, consensus_reason,
+			original_score_matrix_json, original_over_2_5_prob, original_under_2_5_prob
 		FROM prediction_reports WHERE match_id = ?`
 	row := DB.QueryRow(query, matchID)
 
 	var r models.PredictionReport
-	var matrixStr string
+	var matrixStr, origMatrixStr string
 	err := row.Scan(
 		&r.MatchID,
 		&r.RefinedParams.LambdaHome,
@@ -71,6 +91,12 @@ func GetPredictionReport(matchID string) (models.PredictionReport, error) {
 		&r.TacticsAnalysis,
 		&r.PosterPrompt,
 		&matrixStr,
+		&r.ProponentOpinion,
+		&r.CritiqueAnalysis,
+		&r.ConsensusReason,
+		&origMatrixStr,
+		&r.OriginalOver2_5Prob,
+		&r.OriginalUnder2_5Prob,
 	)
 	if err == sql.ErrNoRows {
 		return models.PredictionReport{}, err
@@ -85,6 +111,11 @@ func GetPredictionReport(matchID string) (models.PredictionReport, error) {
 		return models.PredictionReport{}, err
 	}
 	r.ScoreMatrix = scoreMatrix
+
+	var origScoreMatrix []models.ScoreProbability
+	if err := json.Unmarshal([]byte(origMatrixStr), &origScoreMatrix); err == nil {
+		r.OriginalScoreMatrix = origScoreMatrix
+	}
 
 	return r, nil
 }

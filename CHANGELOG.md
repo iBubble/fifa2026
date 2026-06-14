@@ -1,8 +1,22 @@
 # CHANGELOG
 
-## [Unreleased] - 2026-06-13
+## [Unreleased] - 2026-06-14
 
 ### Added
+- **双 Agent（代理）客观反驳与纠偏系统**：在大模型服务（`ollama.go`）中新增并集成了“常规立论 -> 魔鬼反驳 -> 理性裁判共识”的三阶段 CoT (Chain of Thought, 思维链) 辩论提示词机制。
+- **定性反驳因子**：引入了“大赛决赛高压心态”、“彩票热门陷阱与逆势 EV (Expected Value, 期望价值) 博弈”以及“最近3场 Brier Score (布莱尔得分，用于衡量概率预测准确度) 历史误差自校准”三大核心反驳因子。
+- **数据结构与自动迁移**：在数据模型（`prediction.go`）及数据库建表语句（`db.go`）中新增了三阶段辩论过程文本（立论、反驳、共识理由）以及 `OriginalScoreMatrix` (原始比分概率矩阵) 等相关字段，实现数据库无缝自动迁移。
+- **双列霓虹对比前端**：在前端（`app.js`, `index.html`）重构并实现了左右对称的双列卡片（左侧展示 Dixon-Coles 原始定量数学预测，右侧展示多 Agent 反驳纠偏后的定性预测），并对逆势高 EV 的大比分博弈选项引入霓虹彩光脉冲发光（`.ev-neon-glow`）动画效果。
+
+### Changed
+- **Dixon-Coles 核心参数调优**：将进球期望 Lambda 归一化分母从 1.35 调小至 1.05 合理释放基础期望，对 H2H (Head-to-Head, 历史交锋) 小样本（小于3场）权重进行 80% 平滑衰减，并引入 2.8 的上限阈值保护。
+- **投注与过关算法重构**：单场投注建议（`lottery.go`）和混合过关（`parlay.go`）均强制采信纠偏后的比分矩阵与参数。在串关中自动根据大模型辩论文本中的严重负面词进行硬拦截风控拦截，并引入数据库读取报错或为空时自动安全降级至 Dixon-Coles 原始数学模型的保护。
+- **大模型性能调优与通信降延迟**：大模型微调默认使用 `qwen3:8b`。在 `docker-compose.yml` 中移出了在 macOS 虚拟化网络下导致 10 倍延迟的 `extra_hosts: host.docker.internal:host-gateway` 字段，并将超时时间上调至 60 秒，彻底消除了大模型多 Agent 长文本辩论时的超时降级。
+
+### Added
+- 后端新增 `DeleteLotteryPlans` 函数和 `/api/lottery/delete` 路由接口，支持对已保存历史方案进行批量或单项物理删除。
+- 前端历史记录弹窗中新增“全选”复选框、“删除选中”批量删除按钮以及单个条目的“🗑️ 删除”按钮，实现持久化删除交互。
+- 调整了右侧投注建议和过关精算面板的 Flex 布局样式，将 `flex` 占比拉伸改为自适应高度 `flex: none; height: auto`，并将 `parlay-result` 最小高度降低至 60px，彻底消除了精算卡片在生成结果后下方遗留的大片空白行。
 - 后端新增 [TranslateArticles](file:///Users/gemini/Projects/Own/FIFA2026/src/internal/service/news/scraper.go#L298-L351) 后台静默汉化协程。自动在后台抓取和预温时将外围资讯翻译为中文落库，消除了前台用户的翻译压力。
 - 前端 [app.js](file:///Users/gemini/Projects/Own/FIFA2026/src/frontend/app.js) 新增 `hasChinese` 文本检测，拦截已汉化数据的翻译请求，避免冗余 fetch。
 - 前端 [app.js](file:///Users/gemini/Projects/Own/FIFA2026/src/frontend/app.js) 中新增 `[翻译超时, 点击重试]` 暗红发光交互按钮，允许用户在冷启动或超时降级后手动一键重新汉化卡片，克服死锁。

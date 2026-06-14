@@ -4,6 +4,7 @@ import (
 	"encoding/xml"
 	"fifa2026/src/internal/db"
 	"fifa2026/src/internal/models"
+	"fmt"
 	"net/http"
 	"sort"
 	"strings"
@@ -72,7 +73,23 @@ func (s *NewsService) FetchAndCacheRealNews() ([]models.NewsArticle, error) {
 				lowerTitle := strings.ToLower(item.Title)
 				lowerDesc := strings.ToLower(item.Description)
 				isFootball := false
-				footballKeywords := []string{"football", "soccer", "fifa", "cup", "goal", "clash", "match", "league", "chelsea", "arsenal", "united", "liverpool", "barcelona", "madrid", "bayern", "juventus", "messi", "ronaldo", "mbappe", "world cup"}
+				// 世界杯 2026 专属关键词集（严格过滤，排除俱乐部新闻）
+				footballKeywords := []string{
+					"world cup", "fifa 2026", "world cup 2026", "世界杯", "worldcup",
+					"mexico", "south africa", "south korea", "czech republic",
+					"canada", "bosnia", "qatar", "switzerland",
+					"brazil", "morocco", "haiti", "scotland",
+					"united states", "paraguay", "australia", "turkey",
+					"germany", "curaçao", "curacao", "ivory coast", "ecuador",
+					"netherlands", "japan", "sweden", "tunisia",
+					"belgium", "egypt", "iran", "new zealand",
+					"spain", "cape verde", "saudi arabia", "uruguay",
+					"france", "senegal", "iraq", "norway",
+					"argentina", "algeria", "austria", "jordan",
+					"portugal", "congo", "uzbekistan", "colombia",
+					"england", "croatia", "ghana", "panama",
+					"messi", "ronaldo", "mbappe", "injury", "suspended", "ruled out",
+				}
 				for _, kw := range footballKeywords {
 					if strings.Contains(lowerTitle, kw) || strings.Contains(lowerDesc, kw) {
 						isFootball = true
@@ -224,24 +241,33 @@ func (s *NewsService) FetchRealNewsForMatch(homeTeam, awayTeam string) ([]models
 	return filtered, nil
 }
 
-// translateTeam 将国家队英文简称转中文
+// translateTeam 将国家队英文名转中文（覆盖全部 48 支参赛队）
 func translateTeam(enName string) string {
 	dict := map[string]string{
-		"Brazil": "巴西", "Argentina": "阿根廷", "France": "法国", "Germany": "德国",
-		"Spain": "西班牙", "England": "英格兰", "Italy": "意大利", "Netherlands": "荷兰",
-		"Portugal": "葡萄牙", "Croatia": "克罗地亚", "Japan": "日本", "USA": "美国",
-		"Mexico": "墨西哥", "Ecuador": "厄瓜多尔", "South Africa": "南非",
-		"Venezuela": "委内瑞拉", "Jamaica": "牙买加", "Iran": "伊朗", "Wales": "威尔士",
-		"Saudi Arabia": "沙特阿拉伯", "Poland": "波兰", "Australia": "澳大利亚",
-		"Denmark": "丹麦", "Tunisia": "突尼斯", "Costa Rica": "哥斯达黎加",
-		"Belgium": "比利时", "Canada": "加拿大", "Morocco": "摩洛哥",
-		"Serbia": "塞尔维亚", "Switzerland": "瑞士", "Cameroon": "喀麦隆",
-		"Ghana": "加纳", "Uruguay": "乌拉圭", "South Korea": "韩国",
-		"Colombia": "哥伦比亚", "Algeria": "阿尔及利亚", "Chile": "智利",
-		"Nigeria": "尼日利亚", "Scotland": "苏格兰", "Hungary": "匈牙利",
-		"Panama": "巴拿马", "Bolivia": "玻利维亚", "Peru": "秘鲁",
-		"Czech Republic": "捷克", "Bosnia and Herzegovina": "波黑",
-		"Paraguay": "巴拉圭", "Qatar": "卡塔尔", "Haiti": "海地", "Turkey": "土耳其",
+		// A 组
+		"Mexico": "墨西哥", "South Africa": "南非", "South Korea": "韩国", "Czech Republic": "捷克",
+		// B 组
+		"Canada": "加拿大", "Bosnia and Herzegovina": "波黑", "Qatar": "卡塔尔", "Switzerland": "瑞士",
+		// C 组
+		"Brazil": "巴西", "Morocco": "摩洛哥", "Haiti": "海地", "Scotland": "苏格兰",
+		// D 组
+		"United States": "美国", "Paraguay": "巴拉圭", "Australia": "澳大利亚", "Turkey": "土耳其",
+		// E 组
+		"Germany": "德国", "Curaçao": "库拉索", "Ivory Coast": "科特迪瓦", "Ecuador": "厄瓜多尔",
+		// F 组
+		"Netherlands": "荷兰", "Japan": "日本", "Sweden": "瑞典", "Tunisia": "突尼斯",
+		// G 组
+		"Belgium": "比利时", "Egypt": "埃及", "Iran": "伊朗", "New Zealand": "新西兰",
+		// H 组
+		"Spain": "西班牙", "Cape Verde": "佛得角", "Saudi Arabia": "沙特阿拉伯", "Uruguay": "乌拉圭",
+		// I 组
+		"France": "法国", "Senegal": "塞内加尔", "Iraq": "伊拉克", "Norway": "挪威",
+		// J 组
+		"Argentina": "阿根廷", "Algeria": "阿尔及利亚", "Austria": "奥地利", "Jordan": "约旦",
+		// K 组
+		"Portugal": "葡萄牙", "Democratic Republic of the Congo": "民主刚果", "Uzbekistan": "乌兹别克斯坦", "Colombia": "哥伦比亚",
+		// L 组
+		"England": "英格兰", "Croatia": "克罗地亚", "Ghana": "加纳", "Panama": "巴拿马",
 	}
 	if cn, ok := dict[enName]; ok {
 		return cn
@@ -279,4 +305,39 @@ func parseRSSTime(pubDate string) time.Time {
 	}
 
 	return time.Now().In(time.FixedZone("CST", 8*3600))
+}
+
+// BuildPredictInfoForMatch 自动聚合与指定对战相关的新闻摘要（前 3 条）
+func (s *NewsService) BuildPredictInfoForMatch(homeTeam, awayTeam string) string {
+	articles, err := s.FetchAndCacheRealNews()
+	if err != nil || len(articles) == 0 {
+		return ""
+	}
+
+	homeTeamLower := strings.ToLower(homeTeam)
+	awayTeamLower := strings.ToLower(awayTeam)
+
+	var relevant []string
+	for _, a := range articles {
+		lowerTitle := strings.ToLower(a.Title)
+		lowerSummary := strings.ToLower(a.Summary)
+		content := lowerTitle + " " + lowerSummary
+
+		if strings.Contains(content, homeTeamLower) || strings.Contains(content, awayTeamLower) {
+			relevant = append(relevant, a.Title)
+			if len(relevant) >= 3 {
+				break
+			}
+		}
+	}
+
+	if len(relevant) == 0 {
+		return ""
+	}
+
+	result := "【新闻情报】\n"
+	for i, title := range relevant {
+		result += fmt.Sprintf("%d. %s\n", i+1, title)
+	}
+	return result
 }

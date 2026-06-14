@@ -234,7 +234,7 @@ document.getElementById("predict-btn").onclick = async () => {
   }
 };
 
-// 4. 渲染精确比分与大模型 Markdown 战术报告
+// 4. 渲染精确比分与大模型 Markdown 战术报告 (重构为左右霓虹并列对比版)
 function renderPredictionResult(report) {
   const dom = document.getElementById("prediction-result");
   dom.style.display = "block";
@@ -262,37 +262,109 @@ function renderPredictionResult(report) {
       rankBar.style.display = "none";
     }
   }
-  
-  // 找出最可能比分 (概率前三)
-  const sortedMatrix = [...report.scoreMatrix].sort((a,b) => b.prob - a.prob).slice(0, 3);
-  let html = `
-    <div style="background: rgba(0,0,0,0.15); padding: 10px; border-radius: 8px; margin-bottom: 8px;">
-      <h4 style="color: var(--neon-green); font-size: 13px; margin-bottom: 4px;">Dixon-Coles 精确比分概率 (前三名):</h4>
-      ${sortedMatrix.map(c => `<div>● ${c.homeScore} - ${c.awayScore} (几率: <span style="color: var(--neon-green); font-weight:600;">${(c.prob*100).toFixed(2)}%</span>)</div>`).join("")}
-      <div style="margin-top: 6px; display: flex; gap: 15px;">
-        <span>大球 (Over 2.5): <strong style="color:var(--neon-green);">${(report.over25Prob*100).toFixed(1)}%</strong></span>
-        <span>小球 (Under 2.5): <strong style="color:var(--neon-green);">${(report.under25Prob*100).toFixed(1)}%</strong></span>
-      </div>
-    </div>
-  `;
 
+  // 1. 提取左半部分（纯数学定量预测）前三名
+  const leftSorted = [...(report.originalScoreMatrix || [])].sort((a,b) => b.prob - a.prob).slice(0, 3);
+  // 2. 提取右半部分（多Agent反驳纠偏）前三名
+  const rightSorted = [...(report.scoreMatrix || [])].sort((a,b) => b.prob - a.prob).slice(0, 3);
+
+  // 3. 多 Agent 内部辩论三阶段 CoT 卡片
+  let CoTHtml = "";
   if (report.llmRefined) {
-    const lambdaHomeDiff = report.refinedParams && report.originalParams ? (report.refinedParams.lambdaHome - report.originalParams.lambdaHome).toFixed(4) : "0.0000";
-    const lambdaAwayDiff = report.refinedParams && report.originalParams ? (report.refinedParams.lambdaAway - report.originalParams.lambdaAway).toFixed(4) : "0.0000";
-    const rhoDiff = report.refinedParams && report.originalParams ? (report.refinedParams.rho - report.originalParams.rho).toFixed(4) : "0.0000";
-
-    html += `
-      <div style="border-left: 2px solid var(--neon-purple); padding-left: 8px; margin-top: 8px;">
-        <h4 style="color: var(--neon-purple); font-size: 13px; margin-bottom: 4px;">Ollama 大模型定性偏置报告 (Qwen/Llama)</h4>
-        <p style="font-style: italic; line-height: 1.4; font-size: 12px; margin-bottom: 6px;">"${report.tacticsAnalysis}"</p>
-        <div style="background: rgba(136,0,255,0.08); border: 1px solid rgba(136,0,255,0.15); padding: 8px; border-radius: 6px;">
-          <div style="font-size: 11px;">主队进球期望修正偏置: <strong style="color: var(--neon-purple);">${lambdaHomeDiff}</strong></div>
-          <div style="font-size: 11px;">客队进球期望修正偏置: <strong style="color: var(--neon-purple);">${lambdaAwayDiff}</strong></div>
-          <div style="font-size: 11px;">平局算子修正偏置: <strong style="color: var(--neon-purple);">${rhoDiff}</strong></div>
+    CoTHtml = `
+      <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px;">
+        <div style="background: rgba(0, 255, 136, 0.04); border-left: 3px solid var(--neon-green); padding: 6px 10px; border-radius: 4px;">
+          <strong style="color: var(--neon-green); font-size: 11px; display: block; margin-bottom: 2px;">🟢 常规立论 (Proponent Opinion)</strong>
+          <p style="font-size: 11px; line-height: 1.4; color: var(--text-main); margin: 0;">${report.proponentOpinion || "基于基本面与进攻效率倾向，进行常规泊松拉升模拟。"}</p>
+        </div>
+        <div style="background: rgba(255, 74, 74, 0.04); border-left: 3px solid #ff4a4a; padding: 6px 10px; border-radius: 4px;">
+          <strong style="color: #ff4a4a; font-size: 11px; display: block; margin-bottom: 2px;">🔴 魔鬼反驳 (Critique Analysis)</strong>
+          <p style="font-size: 11px; line-height: 1.4; color: var(--text-main); margin: 0;">${report.critiqueAnalysis || "无高危大赛心态波动或冷门漏洞检出。"}</p>
+        </div>
+        <div style="background: rgba(136, 0, 255, 0.04); border-left: 3px solid var(--neon-purple); padding: 6px 10px; border-radius: 4px;">
+          <strong style="color: var(--neon-purple); font-size: 11px; display: block; margin-bottom: 2px;">🟣 决策共识 (Consensus Reason)</strong>
+          <p style="font-size: 11px; line-height: 1.4; color: var(--text-main); margin: 0;">${report.consensusReason || "中立裁决达成，完成最终概率与偏置参数的平滑融合。"}</p>
         </div>
       </div>
     `;
+  } else {
+    const isCached = !!_llmCache[report.matchId || currentMatchID];
+    const isPending = _llmPending.has(report.matchId || currentMatchID);
+    if (isPending) {
+      CoTHtml = `
+        <div style="background: rgba(0,255,157,0.04); border: 1px dashed var(--neon-green); padding: 12px; border-radius: 6px; text-align: center; font-size: 12px; margin-top: 6px; display: flex; align-items: center; justify-content: center; gap: 10px;">
+          <style>@keyframes llmPulse { 0%,100% { opacity: 0.6; } 50% { opacity: 1; } }</style>
+          <span style="color: var(--neon-green); animation: llmPulse 1.5s ease-in-out infinite;">⏳ 大模型后台推理中，完成后自动刷新...</span>
+        </div>
+      `;
+    } else {
+      CoTHtml = `
+        <div style="background: rgba(255,255,255,0.02); border: 1px dashed var(--panel-border); padding: 12px; border-radius: 6px; text-align: center; font-size: 12px; margin-top: 6px; display: flex; align-items: center; justify-content: center; gap: 10px;">
+          <span style="color: var(--text-muted);">💡 纯定量模型结果</span>
+          <button onclick="autoFetchAndCalculate(true)" style="background: linear-gradient(135deg, var(--neon-green), var(--neon-purple)); color: #fff; border: none; border-radius: 4px; padding: 4px 12px; font-size: 11px; cursor: pointer; font-weight: 700;">🔄 启动大模型纠偏</button>
+        </div>
+      `;
+    }
   }
+
+  // 4. 重建双列 HTML 结构
+  let html = `
+    <div style="display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 8px; width: 100%;">
+      <!-- 左列: 纯定量泊松回归 (Dixon-Coles) -->
+      <div style="flex: 1; min-width: 250px; background: rgba(0,0,0,0.18); border: 1px solid var(--panel-border); border-radius: 8px; padding: 10px; display: flex; flex-direction: column; gap: 6px;">
+        <h4 style="color: var(--text-main); font-size: 13px; font-weight: 800; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 4px; margin-top: 0; margin-bottom: 4px; display: flex; justify-content: space-between;">
+          <span>📐 原始泊松回归模型</span>
+          <span style="font-size: 10px; color: var(--text-muted); font-weight: normal;">(不含定性修正)</span>
+        </h4>
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          ${leftSorted.length > 0 ? leftSorted.map(c => `
+            <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.04); border-radius: 5px; padding: 4px 8px; display: flex; justify-content: space-between; font-size:11.5px;">
+              <span>● 比分 ${c.homeScore} - ${c.awayScore}</span>
+              <span style="color: var(--text-main); font-weight: 600;">${(c.prob*100).toFixed(2)}%</span>
+            </div>
+          `).join("") : `<div style="color:var(--text-muted); font-style:italic;">矩阵未载入</div>`}
+        </div>
+        <div style="margin-top: 6px; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 6px; display: flex; justify-content: space-between; font-size: 11.5px; color: var(--text-muted);">
+          <span>大球 (Over 2.5): <strong style="color:#fff;">${((report.originalOver2_5Prob || 0)*100).toFixed(1)}%</strong></span>
+          <span>小球 (Under 2.5): <strong style="color:#fff;">${((report.originalUnder2_5Prob || 0)*100).toFixed(1)}%</strong></span>
+        </div>
+      </div>
+
+      <!-- 右列: 多 Agent 客观反驳决策 (CoT) -->
+      <div style="flex: 1; min-width: 250px; background: rgba(136,0,255,0.03); border: 1px solid rgba(136,0,255,0.15); border-radius: 8px; padding: 10px; display: flex; flex-direction: column; gap: 6px; box-shadow: 0 0 10px rgba(136,0,255,0.06);">
+        <h4 style="color: var(--neon-purple); font-size: 13px; font-weight: 800; border-bottom: 1px solid rgba(136,0,255,0.15); padding-bottom: 4px; margin-top: 0; margin-bottom: 4px; display: flex; justify-content: space-between; text-shadow: 0 0 8px rgba(136,0,255,0.35);">
+          <span>🧠 多 Agent 反驳纠偏版</span>
+          <span style="font-size: 10px; color: var(--neon-green); font-weight: bold;">(采信共识推荐)</span>
+        </h4>
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          ${rightSorted.length > 0 ? rightSorted.map(c => {
+            const isBigScore = (c.homeScore + c.awayScore) >= 3;
+            const isHighValue = report.critiqueAnalysis && (report.critiqueAnalysis.includes("大比分") || report.critiqueAnalysis.includes("博冷") || report.critiqueAnalysis.includes("逆势") || report.critiqueAnalysis.includes("诱导"));
+            const applyGlow = isBigScore && (isHighValue || c.prob > 0.12);
+            const glowStyle = applyGlow ? "background: rgba(136,0,255,0.15); border: 1.5px solid var(--neon-purple); box-shadow: 0 0 10px var(--neon-purple); font-weight: 800;" : "background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.04);";
+            const glowClass = applyGlow ? "class='ev-neon-glow'" : "";
+            return `
+              <div ${glowClass} style="${glowStyle} border-radius: 5px; padding: 4px 8px; display: flex; justify-content: space-between; font-size:11.5px;">
+                <span>● 比分 ${c.homeScore} - ${c.awayScore} ${applyGlow ? "🔥 [逆势高EV]" : ""}</span>
+                <span style="color: var(--neon-green); font-weight: 600;">${(c.prob*100).toFixed(2)}%</span>
+              </div>
+            `;
+          }).join("") : `<div style="color:var(--text-muted); font-style:italic;">矩阵未载入</div>`}
+        </div>
+        <div style="margin-top: 6px; border-top: 1px solid rgba(136,0,255,0.12); padding-top: 6px; display: flex; justify-content: space-between; font-size: 11.5px; color: var(--text-muted);">
+          <span>大球 (Over 2.5): <strong style="color:var(--neon-green);">${((report.over25Prob || 0)*100).toFixed(1)}%</strong></span>
+          <span>小球 (Under 2.5): <strong style="color:var(--neon-green);">${((report.under25Prob || 0)*100).toFixed(1)}%</strong></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 辩论 CoT 展示面板 -->
+    <div style="border-top: 1px dashed var(--panel-border); padding-top: 8px; margin-top: 4px;">
+      <h3 style="border-left-color: var(--neon-purple); font-size: 13.5px; margin-bottom: 6px; font-weight: 800;">🧠 双 Agent 客观反驳决策过程 (CoT)</h3>
+      ${CoTHtml}
+    </div>
+  `;
+
   dom.innerHTML = html;
 }
 
@@ -437,16 +509,21 @@ async function triggerAutoCalculation() {
   updateCountdownDisplay();
 }
 
-// 自动串联情报并计算
-async function autoFetchAndCalculate() {
+// LLM 纠偏结果缓存 { matchId: { report, timestamp } }
+const _llmCache = {};
+// 正在进行 LLM 推理的比赛集合（防止同一场比赛重复请求）
+const _llmPending = new Set();
+
+// 自动串联情报并计算（缓存优先 + 后台静默计算 + 强制重算）
+// forceRecalc=true 时清除缓存并强制重新调用大模型
+async function autoFetchAndCalculate(forceRecalc = false) {
   if (!currentMatchID) return;
+  const myMatchID = currentMatchID;
 
   try {
     // 1. 获取最新情报列表并串联
-    const resNews = await fetch(`${API_BASE}/news?matchId=${currentMatchID}`);
+    const resNews = await fetch(`${API_BASE}/news?matchId=${myMatchID}`);
     const articles = await resNews.json();
-    
-    // 挑选前 3 篇真实资讯并合并，作为外围大模型定性偏置的上下文
     const topArticles = articles.slice(0, 3);
     const translatedParts = [];
     for (let art of topArticles) {
@@ -457,44 +534,91 @@ async function autoFetchAndCalculate() {
     document.getElementById("qualitative-input").value = displayIntel;
     document.getElementById("use-llm-chk").checked = true;
 
-    // 2. 自动触发双变量泊松估值
-    const resPredict = await fetch(`${API_BASE}/predict`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ matchId: currentMatchID, info: displayIntel, useLLM: true })
-    });
-    const report = await resPredict.json();
-    currentPredictions = report;
-
-    // 3. 自动渲染预测结果
-    renderPredictionResult(report);
-
-    // 4. 自动触发体彩量化投注单生成
-    const oddsH = parseFloat(document.getElementById("lottery-odds-h").value) || 1.95;
-    const oddsD = parseFloat(document.getElementById("lottery-odds-d").value) || 3.20;
-    const oddsA = parseFloat(document.getElementById("lottery-odds-a").value) || 3.80;
-
-    let matchIDs = [currentMatchID];
-    const items = Array.from(document.querySelectorAll(".match-item"));
-    for (let item of items) {
-      const mid = item.dataset.matchId;
-      if (mid && mid !== currentMatchID) {
-        matchIDs.push(mid);
-        break;
-      }
+    // 2. 检查 LLM 缓存 —— 命中则直接渲染，跳过所有网络请求
+    if (!forceRecalc && _llmCache[myMatchID]) {
+      const cached = _llmCache[myMatchID].report;
+      currentPredictions = cached;
+      renderPredictionResult(cached);
+      await _refreshLotteryPanel(cached, myMatchID);
+      return;
     }
 
-    const resLottery = await fetch(`${API_BASE}/lottery/recommend`, {
+    // 3. 缓存未命中：先秒出定量泊松预测
+    const resBase = await fetch(`${API_BASE}/predict`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ matchIds: matchIDs, odds: [oddsH, oddsD, oddsA], predictReport: report })
+      body: JSON.stringify({ matchId: myMatchID, info: displayIntel, useLLM: false })
     });
-    const data = await resLottery.json();
-    lastLotteryData = data;
-    await renderLotteryPanel(data);
+    const baseReport = await resBase.json();
+    if (currentMatchID === myMatchID) {
+      currentPredictions = baseReport;
+      renderPredictionResult(baseReport);
+      await _refreshLotteryPanel(baseReport, myMatchID);
+    }
+
+    // 4. 强制重算时先清除旧缓存
+    if (forceRecalc) {
+      delete _llmCache[myMatchID];
+      _llmPending.delete(myMatchID);
+    }
+
+    // 5. 后台静默发起 LLM 请求（不 abort、不阻塞）
+    if (!_llmPending.has(myMatchID)) {
+      _llmPending.add(myMatchID);
+      // 如果有历史分析结果，作为参考锚点传给大模型进行校准
+      let llmInfo = displayIntel;
+      const prevCache = _llmCache[myMatchID];
+      if (prevCache && prevCache.report) {
+        const pr = prevCache.report;
+        llmInfo += `\n【上次大模型分析参考(请以此为锚点校准)】lambdaHome偏移=${pr.lambdaHomeOffset||0}, lambdaAway偏移=${pr.lambdaAwayOffset||0}, rho偏移=${pr.rhoOffset||0}, 战术="${pr.tacticsAnalysis||''}"`;
+      }
+      fetch(`${API_BASE}/predict`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ matchId: myMatchID, info: llmInfo, useLLM: true })
+      }).then(r => r.json()).then(llmReport => {
+        _llmPending.delete(myMatchID);
+        if (llmReport.llmRefined) {
+          // 无论用户在不在这场，都缓存结果
+          _llmCache[myMatchID] = { report: llmReport, timestamp: Date.now() };
+          // 仅当用户仍停留在这场时才刷新 UI
+          if (currentMatchID === myMatchID) {
+            currentPredictions = llmReport;
+            renderPredictionResult(llmReport);
+            _refreshLotteryPanel(llmReport, myMatchID);
+          }
+        }
+      }).catch(err => {
+        _llmPending.delete(myMatchID);
+        console.warn("大模型后台推理失败:", err);
+      });
+    }
 
   } catch (err) {
     console.error("全自动量化流计算失败:", err);
+  }
+}
+
+// 辅助：刷新体彩投注单面板
+async function _refreshLotteryPanel(report, matchId) {
+  const oddsH = parseFloat(document.getElementById("lottery-odds-h").value) || 1.95;
+  const oddsD = parseFloat(document.getElementById("lottery-odds-d").value) || 3.20;
+  const oddsA = parseFloat(document.getElementById("lottery-odds-a").value) || 3.80;
+  let matchIDs = [matchId];
+  const items = Array.from(document.querySelectorAll(".match-item"));
+  for (let item of items) {
+    const mid = item.dataset.matchId;
+    if (mid && mid !== matchId) { matchIDs.push(mid); break; }
+  }
+  const res = await fetch(`${API_BASE}/lottery/recommend`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ matchIds: matchIDs, odds: [oddsH, oddsD, oddsA], predictReport: report })
+  });
+  const data = await res.json();
+  if (currentMatchID === matchId) {
+    lastLotteryData = data;
+    await renderLotteryPanel(data);
   }
 }
 
@@ -1357,6 +1481,187 @@ window.onclick = (event) => {
 };
 
 // 全自动量化交易复盘对账中心渲染逻辑
+async function showSingleSaved() {
+  const modal = document.getElementById("single-saved-modal");
+  const listDom = document.getElementById("single-saved-list");
+  const selectAllChk = document.getElementById("single-saved-select-all");
+  if (selectAllChk) selectAllChk.checked = false; // 重置全选状态
+
+  listDom.innerHTML = `<div style="text-align:center; padding:10px; color:#00bfff; font-size:11px;">加载已保存方案...</div>`;
+  modal.style.display = "flex";
+  try {
+    const res = await fetch(`${API_BASE}/lottery/saved`);
+    const history = await res.json();
+    const list = history.filter(h => h.planType === "single");
+    if (list.length === 0) {
+      listDom.innerHTML = `<div style="text-align:center; padding:20px; color:var(--text-muted); font-size:11px;">📭 暂无已保存的单场方案记录</div>`;
+      return;
+    }
+    listDom.innerHTML = list.map(h => {
+      const home = translateTeamName(h.homeTeam);
+      const away = translateTeamName(h.awayTeam);
+      const isFT = h.status === "FT";
+      
+      let primaryBadge = "";
+      let hedgeBadge = "";
+      let statusBadge = "";
+      
+      if (h.isSettled === 1 && isFT) {
+        statusBadge = `<span style="background:rgba(0, 255, 136, 0.12); color:var(--neon-green); padding:2px 6px; border-radius:4px; font-weight:bold; font-size:10px;">已完赛结算</span>`;
+        primaryBadge = h.primaryHit ? `<span style="color:var(--neon-green);">主推: 🎯 ${h.primaryBet}(中)</span>` : `<span style="color:var(--text-muted);">主推: ❌ ${h.primaryBet}(失)</span>`;
+        if (h.hedgeBet) {
+          hedgeBadge = h.hedgeHit ? `<span style="color:#ffeb3b; margin-left:8px;">对冲: 🛡️ ${h.hedgeBet}(中)</span>` : `<span style="color:var(--text-muted); margin-left:8px;">对冲: ❌ ${h.hedgeBet}(失)</span>`;
+        } else {
+          hedgeBadge = `<span style="color:var(--text-muted); margin-left:8px;">无对冲</span>`;
+        }
+      } else {
+        statusBadge = `<span style="background:rgba(0, 191, 255, 0.12); color:#00bfff; padding:2px 6px; border-radius:4px; font-weight:bold; font-size:10px;">待结算</span>`;
+        primaryBadge = `<span style="color:var(--text-main);">主推: ${h.primaryBet}(待定)</span>`;
+        if (h.hedgeBet) {
+          hedgeBadge = `<span style="color:var(--text-main); margin-left:8px;">对冲: ${h.hedgeBet}(待定)</span>`;
+        } else {
+          hedgeBadge = `<span style="color:var(--text-muted); margin-left:8px;">无对冲</span>`;
+        }
+      }
+      
+      return `
+        <div style="display:flex; align-items:center; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.05); border-radius:6px; padding:8px; gap:8px;">
+          <input type="checkbox" class="saved-item-chk-single" data-id="${h.id}" style="accent-color:#00bfff; width:14px; height:14px; cursor:pointer; flex-shrink:0;">
+          <div style="flex:1; font-size:11px; display:flex; flex-direction:column; gap:4px;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <span><strong>${home} ${isFT ? `${h.homeScore}:${h.awayScore}` : 'vs'} ${away}</strong></span>
+              <div style="display:flex; align-items:center; gap:8px;">
+                ${statusBadge}
+                <span class="delete-saved-item-btn" data-id="${h.id}" data-type="single" style="color:#ff4a4a; cursor:pointer; font-size:10px; font-weight:bold; padding:2px 4px; background:rgba(255,74,74,0.1); border-radius:4px;">🗑️ 删除</span>
+              </div>
+            </div>
+            <div>${primaryBadge} ${hedgeBadge}</div>
+            <div style="font-size:9px; color:var(--text-muted); text-align:right; border-top:1px solid rgba(255,255,255,0.02); padding-top:4px; margin-top:2px;">保存时间: ${h.createdAt}</div>
+          </div>
+        </div>
+      `;
+    }).join("");
+    
+    // 绑定单条删除事件
+    listDom.querySelectorAll(".delete-saved-item-btn").forEach(btn => {
+      btn.onclick = async (e) => {
+        e.stopPropagation();
+        const id = parseInt(btn.getAttribute("data-id"));
+        if (await customConfirm("确定要删除这条保存记录吗？")) {
+          await deleteSavedRecords([id], "single");
+        }
+      };
+    });
+  } catch (err) {
+    listDom.innerHTML = `<div style="color:#ff4a4a; padding:10px; font-size:11px; text-align:center;">数据拉取失败: ${err.message}</div>`;
+  }
+}
+
+async function showParlaySaved() {
+  const modal = document.getElementById("parlay-saved-modal");
+  const listDom = document.getElementById("parlay-saved-list");
+  const selectAllChk = document.getElementById("parlay-saved-select-all");
+  if (selectAllChk) selectAllChk.checked = false; // 重置全选状态
+
+  listDom.innerHTML = `<div style="text-align:center; padding:10px; color:#00bfff; font-size:11px;">加载已保存方案...</div>`;
+  modal.style.display = "flex";
+  try {
+    const res = await fetch(`${API_BASE}/lottery/saved`);
+    const history = await res.json();
+    const list = history.filter(h => h.planType === "parlay");
+    if (list.length === 0) {
+      listDom.innerHTML = `<div style="text-align:center; padding:20px; color:var(--text-muted); font-size:11px;">📭 暂无已保存的过关方案记录</div>`;
+      return;
+    }
+    listDom.innerHTML = list.map(h => {
+      let statusBadge = "";
+      if (h.isSettled === 1) {
+        statusBadge = h.primaryHit 
+          ? `<span style="background:rgba(0, 255, 136, 0.12); color:var(--neon-green); padding:2px 6px; border-radius:4px; font-weight:bold; font-size:10px;">🎯 组合中奖</span>`
+          : `<span style="background:rgba(255, 255, 255, 0.05); color:var(--text-muted); padding:2px 6px; border-radius:4px; font-weight:bold; font-size:10px;">❌ 组合失效</span>`;
+      } else {
+        statusBadge = `<span style="background:rgba(0, 191, 255, 0.12); color:#00bfff; padding:2px 6px; border-radius:4px; font-weight:bold; font-size:10px;">待结算</span>`;
+      }
+
+      const uniqueLegsMap = {};
+      (h.tickets || []).forEach(tk => {
+        (tk.legs || []).forEach(leg => {
+          const key = `${leg.matchId}_${leg.option}`;
+          uniqueLegsMap[key] = leg;
+        });
+      });
+      const legsHtml = Object.values(uniqueLegsMap).map(leg => {
+        const homeCn = translateTeamName(leg.homeTeam || "");
+        const awayCn = translateTeamName(leg.awayTeam || "");
+        const isFT = leg.status === "FT";
+        let hitText = "待定";
+        if (isFT) {
+          hitText = leg.hit ? `<span style="color:var(--neon-green);">中</span>` : `<span style="color:var(--text-muted);">失</span>`;
+        }
+        return `
+          <div style="color:var(--text-muted); padding:2px 0; border-bottom:1px dashed rgba(255,255,255,0.02);">
+            • ${homeCn} ${isFT ? `${leg.homeScore}:${leg.awayScore}` : 'vs'} ${awayCn} | 预测: ${leg.option} (${hitText})
+          </div>
+        `;
+      }).join("");
+
+      return `
+        <div style="display:flex; align-items:center; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.05); border-radius:6px; padding:8px; gap:8px;">
+          <input type="checkbox" class="saved-item-chk-parlay" data-id="${h.id}" style="accent-color:#00bfff; width:14px; height:14px; cursor:pointer; flex-shrink:0;">
+          <div style="flex:1; font-size:11px; display:flex; flex-direction:column; gap:4px;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <span><strong>${h.homeTeam} (${h.awayTeam})</strong></span>
+              <div style="display:flex; align-items:center; gap:8px;">
+                ${statusBadge}
+                <span class="delete-saved-item-btn" data-id="${h.id}" data-type="parlay" style="color:#ff4a4a; cursor:pointer; font-size:10px; font-weight:bold; padding:2px 4px; background:rgba(255,74,74,0.1); border-radius:4px;">🗑️ 删除</span>
+              </div>
+            </div>
+            <div style="padding-left:6px; border-left:2px solid #00bfff; display:flex; flex-direction:column; gap:2px; margin-top:2px;">
+              ${legsHtml}
+            </div>
+            <div style="font-size:9px; color:var(--text-muted); text-align:right; border-top:1px solid rgba(255,255,255,0.02); padding-top:4px; margin-top:2px;">保存时间: ${h.createdAt}</div>
+          </div>
+        </div>
+      `;
+    }).join("");
+    
+    // 绑定单条删除事件
+    listDom.querySelectorAll(".delete-saved-item-btn").forEach(btn => {
+      btn.onclick = async (e) => {
+        e.stopPropagation();
+        const id = parseInt(btn.getAttribute("data-id"));
+        if (await customConfirm("确定要删除这条保存记录吗？")) {
+          await deleteSavedRecords([id], "parlay");
+        }
+      };
+    });
+  } catch (err) {
+    listDom.innerHTML = `<div style="color:#ff4a4a; padding:10px; font-size:11px; text-align:center;">数据拉取失败: ${err.message}</div>`;
+  }
+}
+
+async function deleteSavedRecords(ids, type) {
+  try {
+    const res = await fetch(`${API_BASE}/lottery/delete`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids })
+    });
+    const data = await res.json();
+    if (data.status === "ok") {
+      if (type === "single") {
+        await showSingleSaved();
+      } else {
+        await showParlaySaved();
+      }
+    } else {
+      alert("删除失败: " + (data.error || "未知错误"));
+    }
+  } catch (err) {
+    alert("删除出错: " + err.message);
+  }
+}
+
 let singleChartInstance = null;
 let parlayChartInstance = null;
 
@@ -1526,12 +1831,12 @@ window.addEventListener("DOMContentLoaded", () => {
   // 绑定历史记录查看按钮
   const historySingleBtn = document.getElementById("history-single-btn");
   if (historySingleBtn) {
-    historySingleBtn.onclick = () => showSingleHistory();
+    historySingleBtn.onclick = () => showSingleSaved();
   }
 
   const historyParlayBtn = document.getElementById("history-parlay-btn");
   if (historyParlayBtn) {
-    historyParlayBtn.onclick = () => showParlayHistory();
+    historyParlayBtn.onclick = () => showParlaySaved();
   }
 
   // 绑定智能多场过关复盘按钮
@@ -1613,6 +1918,27 @@ window.addEventListener("DOMContentLoaded", () => {
   // 点击背景遮罩关闭
   const singleModal = document.getElementById("single-history-modal");
   const parlayModal = document.getElementById("parlay-history-modal");
+  const singleSavedModal = document.getElementById("single-saved-modal");
+  const parlaySavedModal = document.getElementById("parlay-saved-modal");
+  
+  // 新增已保存弹窗关闭逻辑
+  const closeSingleSaved = document.getElementById("close-single-saved-btn");
+  if (closeSingleSaved) {
+    closeSingleSaved.onclick = () => { singleSavedModal.style.display = "none"; };
+  }
+  const confirmSingleSaved = document.getElementById("confirm-single-saved-btn");
+  if (confirmSingleSaved) {
+    confirmSingleSaved.onclick = () => { singleSavedModal.style.display = "none"; };
+  }
+  const closeParlaySaved = document.getElementById("close-parlay-saved-btn");
+  if (closeParlaySaved) {
+    closeParlaySaved.onclick = () => { parlaySavedModal.style.display = "none"; };
+  }
+  const confirmParlaySaved = document.getElementById("confirm-parlay-saved-btn");
+  if (confirmParlaySaved) {
+    confirmParlaySaved.onclick = () => { parlaySavedModal.style.display = "none"; };
+  }
+
   window.addEventListener("click", (event) => {
     if (event.target === singleModal) {
       singleModal.style.display = "none";
@@ -1620,7 +1946,60 @@ window.addEventListener("DOMContentLoaded", () => {
     if (event.target === parlayModal) {
       parlayModal.style.display = "none";
     }
+    if (event.target === singleSavedModal) {
+      singleSavedModal.style.display = "none";
+    }
+    if (event.target === parlaySavedModal) {
+      parlaySavedModal.style.display = "none";
+    }
   });
+
+  // 绑定全选与批量删除
+  const singleSelectAll = document.getElementById("single-saved-select-all");
+  if (singleSelectAll) {
+    singleSelectAll.onchange = () => {
+      const chks = document.querySelectorAll(".saved-item-chk-single");
+      chks.forEach(chk => chk.checked = singleSelectAll.checked);
+    };
+  }
+
+  const singleDeleteBatch = document.getElementById("single-saved-delete-batch-btn");
+  if (singleDeleteBatch) {
+    singleDeleteBatch.onclick = async () => {
+      const chks = document.querySelectorAll(".saved-item-chk-single:checked");
+      if (chks.length === 0) {
+        alert("请先选择要删除的历史方案！");
+        return;
+      }
+      const ids = Array.from(chks).map(chk => parseInt(chk.getAttribute("data-id")));
+      if (await customConfirm(`确定要删除选中的 ${ids.length} 个方案记录吗？`)) {
+        await deleteSavedRecords(ids, "single");
+      }
+    };
+  }
+
+  const parlaySelectAll = document.getElementById("parlay-saved-select-all");
+  if (parlaySelectAll) {
+    parlaySelectAll.onchange = () => {
+      const chks = document.querySelectorAll(".saved-item-chk-parlay");
+      chks.forEach(chk => chk.checked = parlaySelectAll.checked);
+    };
+  }
+
+  const parlayDeleteBatch = document.getElementById("parlay-saved-delete-batch-btn");
+  if (parlayDeleteBatch) {
+    parlayDeleteBatch.onclick = async () => {
+      const chks = document.querySelectorAll(".saved-item-chk-parlay:checked");
+      if (chks.length === 0) {
+        alert("请先选择要删除的历史方案！");
+        return;
+      }
+      const ids = Array.from(chks).map(chk => parseInt(chk.getAttribute("data-id")));
+      if (await customConfirm(`确定要删除选中的 ${ids.length} 个方案记录吗？`)) {
+        await deleteSavedRecords(ids, "parlay");
+      }
+    };
+  }
 
   // 保留全自动端到端（E2E）精算测试调试钩子
   if (window.location.search.includes("auto_verify=true")) {

@@ -81,9 +81,10 @@ func (s *BacktestService) ReviewMatch(match models.Match, report *models.Predict
 	// 同时也持久化保存本场预测分析的完整报告 (Dixon-Coles参数、矩阵概率、定性分析等)
 	_ = db.SavePredictionReport(*report)
 
-	// 触发自适应 Dixon-Coles 参数的平局修正系数进化
+	// 触发自适应 Dixon-Coles 参数的平局修正系数与进球期望偏差自适应进化
 	if s.dcService != nil {
 		s.dcService.RecalculateRhoOffset()
+		s.dcService.RecalculateLambdaOffset()
 	}
 
 	return dbReport, nil

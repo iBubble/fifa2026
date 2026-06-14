@@ -11,11 +11,10 @@ services:
     environment:
       - PORT=20260
       - OLLAMA_URL=http://host.docker.internal:11434
-      - OLLAMA_MODEL=qwen3.6:35b-q4
-      - OLLAMA_PREDICT_TIMEOUT=15
+      - OLLAMA_MODEL=qwen3:8b
+      - OLLAMA_PREDICT_TIMEOUT=20
       - OLLAMA_REVIEW_TIMEOUT=60
     volumes:
       - ./data:/app/data
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - ./src/frontend:/app/src/frontend
     restart: always
