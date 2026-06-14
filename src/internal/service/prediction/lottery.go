@@ -243,31 +243,10 @@ func (s *LotteryService) GenerateSingleAdvice(match models.Match, oddsHome, odds
 	if official.IsAvailable {
 		oddsHome, oddsDraw, oddsAway = official.HomeOdds, official.DrawOdds, official.AwayOdds
 	} else {
-		// 官方未开售降级：使用 Dixon-Coles 泊松联合概率与竞彩理论 89% 返奖率仿真模拟官方赔率
-		payout := 0.89
-		if winH > 0 {
-			oddsHome = math.Min(100.0, payout/winH)
-		} else {
-			oddsHome = 2.0
-		}
-		if draw > 0 {
-			oddsDraw = math.Min(100.0, payout/draw)
-		} else {
-			oddsDraw = 3.2
-		}
-		if winA > 0 {
-			oddsAway = math.Min(100.0, payout/winA)
-		} else {
-			oddsAway = 3.6
-		}
-
-		official = OfficialOdds{
-			HomeOdds:     oddsHome,
-			DrawOdds:     oddsDraw,
-			AwayOdds:     oddsAway,
-			IsAvailable:  true,
-			IsSimulation: true,
-		}
+		advice.Status = "EXCLUDED"
+		advice.Reason = "【体彩未开盘】该赛事竞彩官网目前未开售，无法提供投注推荐。"
+		advice.OfficialOdds = &official
+		return advice
 	}
 
 	if official.IsAvailable {

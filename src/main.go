@@ -287,27 +287,8 @@ func main() {
 			// 计算比分概率矩阵与大小球概率（纠偏平滑后）
 			matrix, over25, under25 := dcService.GenerateProbabilityMatrix(refined)
 
-			// 获取当前比赛的赔率 (若官方未开售，以两队实力 Elo 逆向推演仿真赔率兜底)
+			// 获取当前比赛的赔率
 			odds := sportteryService.GetMatchOdds(match.HomeTeam, match.AwayTeam, match.ScheduledAt)
-			if !odds.IsAvailable {
-				eloHome := eloService.GetElo(match.HomeTeam)
-				eloAway := eloService.GetElo(match.AwayTeam)
-				expHome := eloService.CalculateExpectedWinProb(eloHome, eloAway)
-				expAway := eloService.CalculateExpectedWinProb(eloAway, eloHome)
-				eloDiff := math.Abs(eloHome - eloAway)
-				probDraw := 0.28 * math.Exp(-eloDiff/600.0)
-				totalExp := expHome + expAway
-				probHome := (1.0 - probDraw) * (expHome / totalExp)
-				probAway := (1.0 - probDraw) * (expAway / totalExp)
-				payout := 0.89
-				odds = prediction.OfficialOdds{
-					HomeOdds:     math.Round((payout/probHome)*100) / 100,
-					DrawOdds:     math.Round((payout/probDraw)*100) / 100,
-					AwayOdds:     math.Round((payout/probAway)*100) / 100,
-					IsAvailable:  true,
-					IsSimulation: true,
-				}
-			}
 
 			// 计算主客两队的综合实力排名 (基于所有参赛队实时 Elo 积分)
 			homeRank := eloService.GetEloRank(match.HomeTeam)
@@ -767,57 +748,6 @@ func main() {
 				return
 			}
 			odds := sportteryService.GetMatchOdds(match.HomeTeam, match.AwayTeam, match.ScheduledAt)
-			// 如果官方未开售，根据双方 Elo 实力推导仿真赔率，杜绝界面空白和数据幻觉
-			if !odds.IsAvailable {
-				eloHome := eloService.GetElo(match.HomeTeam)
-				eloAway := eloService.GetElo(match.AwayTeam)
-
-				// A 队对 B 队的期望胜率倾向 (0~1)
-				expHome := eloService.CalculateExpectedWinProb(eloHome, eloAway)
-				expAway := eloService.CalculateExpectedWinProb(eloAway, eloHome)
-
-				// 平局概率根据两队 Elo 接近度估计
-				eloDiff := math.Abs(eloHome - eloAway)
-				probDraw := 0.28 * math.Exp(-eloDiff/600.0)
-
-				// 归一化胜平负概率
-				totalExp := expHome + expAway
-				probHome := (1.0 - probDraw) * (expHome / totalExp)
-				probAway := (1.0 - probDraw) * (expAway / totalExp)
-
-				// 中国竞彩大致返还率 89%
-				payout := 0.89
-				oddsH := payout / probHome
-				oddsD := payout / probDraw
-				oddsA := payout / probAway
-
-				// 设定仿真让球与让球赔率
-				goalLine := 0
-				hhadH, hhadD, hhadA := oddsH, oddsD, oddsA
-				if eloHome-eloAway > 150 {
-					goalLine = -1
-					hhadH = oddsH * 1.8
-					hhadD = oddsD * 1.1
-					hhadA = oddsA * 0.6
-				} else if eloAway-eloHome > 150 {
-					goalLine = 1
-					hhadH = oddsH * 0.6
-					hhadD = oddsD * 1.1
-					hhadA = oddsA * 1.8
-				}
-
-				odds = prediction.OfficialOdds{
-					HomeOdds:     math.Round(oddsH*100) / 100,
-					DrawOdds:     math.Round(oddsD*100) / 100,
-					AwayOdds:     math.Round(oddsA*100) / 100,
-					GoalLine:     goalLine,
-					HhadHomeOdds: math.Round(hhadH*100) / 100,
-					HhadDrawOdds: math.Round(hhadD*100) / 100,
-					HhadAwayOdds: math.Round(hhadA*100) / 100,
-					IsAvailable:  true,
-					IsSimulation: true,
-				}
-			}
 			c.JSON(http.StatusOK, odds)
 		})
 

@@ -43,21 +43,13 @@ func (s *LotteryService) GenerateFivePlaysAdvice(match models.Match, report *mod
 
 	odds := s.sportteryService.GetMatchOdds(match.HomeTeam, match.AwayTeam, match.ScheduledAt)
 	if !odds.IsAvailable {
-		pHomeBase, pDrawBase, pAwayBase := 0.0, 0.0, 0.0
-		for _, cell := range baseMatrix {
-			if cell.HomeScore > cell.AwayScore {
-				pHomeBase += cell.Prob
-			} else if cell.HomeScore == cell.AwayScore {
-				pDrawBase += cell.Prob
-			} else {
-				pAwayBase += cell.Prob
-			}
-		}
-		odds.HomeOdds = math.Min(100.0, 0.89/math.Max(0.001, pHomeBase))
-		odds.DrawOdds = math.Min(100.0, 0.89/math.Max(0.001, pDrawBase))
-		odds.AwayOdds = math.Min(100.0, 0.89/math.Max(0.001, pAwayBase))
-		odds.GoalLine = -1
-		odds.IsAvailable = true
+		var advices []PlayAdvice
+		advices = append(advices, PlayAdvice{"had", "胜平负", PlayOption{"不可售", 0.0, 0.0, 0.0}, PlayOption{"不可售", 0.0, 0.0, 0.0}})
+		advices = append(advices, PlayAdvice{"hhad", "让球胜平负", PlayOption{"不可售", 0.0, 0.0, 0.0}, PlayOption{"不可售", 0.0, 0.0, 0.0}})
+		advices = append(advices, PlayAdvice{"crs", "比分", PlayOption{"不可售", 0.0, 0.0, 0.0}, PlayOption{"不可售", 0.0, 0.0, 0.0}})
+		advices = append(advices, PlayAdvice{"ttg", "总进球数", PlayOption{"不可售", 0.0, 0.0, 0.0}, PlayOption{"不可售", 0.0, 0.0, 0.0}})
+		advices = append(advices, PlayAdvice{"hafu", "半全场胜平负", PlayOption{"不可售", 0.0, 0.0, 0.0}, PlayOption{"不可售", 0.0, 0.0, 0.0}})
+		return advices
 	}
 
 	var advices []PlayAdvice

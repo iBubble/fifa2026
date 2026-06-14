@@ -141,23 +141,13 @@ func (s *ParlayService) RecommendParlay(matchIds []string, parlayMode string, pa
 
 		odds := s.sportteryService.GetMatchOdds(m.HomeTeam, m.AwayTeam, m.ScheduledAt)
 		if !odds.IsAvailable {
-			eloHome := s.eloService.GetElo(m.HomeTeam)
-			eloAway := s.eloService.GetElo(m.AwayTeam)
-			expHome := s.eloService.CalculateExpectedWinProb(eloHome, eloAway)
-			expAway := s.eloService.CalculateExpectedWinProb(eloAway, eloHome)
-			eloDiff := math.Abs(eloHome - eloAway)
-			probDraw := 0.28 * math.Exp(-eloDiff/600.0)
-			totalExp := expHome + expAway
-			probHome := (1.0 - probDraw) * (expHome / totalExp)
-			probAway := (1.0 - probDraw) * (expAway / totalExp)
-			payout := 0.89
-			odds = OfficialOdds{
-				HomeOdds:     math.Round((payout/probHome)*100) / 100,
-				DrawOdds:     math.Round((payout/probDraw)*100) / 100,
-				AwayOdds:     math.Round((payout/probAway)*100) / 100,
-				IsAvailable:  true,
-				IsSimulation: true,
-			}
+			resp.Excluded = append(resp.Excluded, ExcludedMatch{
+				MatchID:  id,
+				HomeTeam: m.HomeTeam,
+				AwayTeam: m.AwayTeam,
+				Reason:   "【体彩未开盘】该赛事竞彩官网目前未开售，无法参与过关组合。",
+			})
+			continue
 		}
 
 		var h2hRecord *models.H2HRecord
@@ -698,10 +688,10 @@ func (s *ParlayService) getBestSingleChoice(matchID string, playCode string) (st
 
 	switch playCode {
 	case "had":
-		oH, oD, oA := odds.HomeOdds, odds.DrawOdds, odds.AwayOdds
 		if !odds.IsAvailable {
-			oH, oD, oA = 0.89/pHome, 0.89/pDraw, 0.89/pAway
+			return "", 0.0, 0.0, nil
 		}
+		oH, oD, oA := odds.HomeOdds, odds.DrawOdds, odds.AwayOdds
 		// 校验：如果官方已在售其他玩法，但当前常规胜平负未售，智能降级切换至已开售的让球玩法以保证混合串关组合
 		if odds.IsAvailable && oH <= 0.0 {
 			if odds.HhadHomeOdds > 0.0 {
@@ -736,10 +726,10 @@ func (s *ParlayService) getBestSingleChoice(matchID string, playCode string) (st
 				pRAway += cell.Prob
 			}
 		}
-		oRH, oRD, oRA := odds.HhadHomeOdds, odds.HhadDrawOdds, odds.HhadAwayOdds
-		if !odds.IsAvailable && oRH <= 0 {
-			oRH, oRD, oRA = 0.89/pRHome, 0.89/pRDraw, 0.89/pRAway
+		if !odds.IsAvailable {
+			return "", 0.0, 0.0, nil
 		}
+		oRH, oRD, oRA := odds.HhadHomeOdds, odds.HhadDrawOdds, odds.HhadAwayOdds
 		// 校验：如果官方已开售其他玩法，但当前让球胜平负未开售，智能升级切换至已开售的常规胜平负玩法以保证混合串关组合
 		if odds.IsAvailable && oRH <= 0.0 {
 			if odds.HomeOdds > 0.0 {
