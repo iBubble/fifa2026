@@ -168,9 +168,6 @@ func (s *SportteryService) executeFetch() {
 	}
 	for _, day := range res.Value.MatchInfoList {
 		for _, m := range day.SubMatchList {
-			if !strings.Contains(m.LeagueAllName, "世界杯") {
-				continue
-			}
 			key := m.HomeTeamAbbName + "_" + m.AwayTeamAbbName
 			h, _ := strconv.ParseFloat(m.Had.H, 64)
 			d, _ := strconv.ParseFloat(m.Had.D, 64)
