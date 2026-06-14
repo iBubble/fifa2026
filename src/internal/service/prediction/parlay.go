@@ -795,6 +795,13 @@ func (s *ParlayService) getBestSingleChoice(matchID string, playCode string) (st
 		}
 
 		if !odds.IsAvailable || len(odds.HafuOdds) == 0 {
+			if odds.IsAvailable {
+				if odds.HomeOdds > 0.0 {
+					return s.getBestSingleChoice(matchID, "had")
+				} else if odds.HhadHomeOdds > 0.0 {
+					return s.getBestSingleChoice(matchID, "hhad")
+				}
+			}
 			return "", 0.0, 0.0, nil
 		}
 
@@ -817,6 +824,13 @@ func (s *ParlayService) getBestSingleChoice(matchID string, playCode string) (st
 
 	case "ttg":
 		if !odds.IsAvailable || len(odds.TtgOdds) == 0 {
+			if odds.IsAvailable {
+				if odds.HomeOdds > 0.0 {
+					return s.getBestSingleChoice(matchID, "had")
+				} else if odds.HhadHomeOdds > 0.0 {
+					return s.getBestSingleChoice(matchID, "hhad")
+				}
+			}
 			return "", 0.0, 0.0, nil
 		}
 
@@ -854,6 +868,13 @@ func (s *ParlayService) getBestSingleChoice(matchID string, playCode string) (st
 
 	case "crs":
 		if !odds.IsAvailable || len(odds.CrsOdds) == 0 {
+			if odds.IsAvailable {
+				if odds.HomeOdds > 0.0 {
+					return s.getBestSingleChoice(matchID, "had")
+				} else if odds.HhadHomeOdds > 0.0 {
+					return s.getBestSingleChoice(matchID, "hhad")
+				}
+			}
 			return "", 0.0, 0.0, nil
 		}
 
