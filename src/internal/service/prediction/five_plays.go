@@ -3,7 +3,6 @@ package prediction
 import (
 	"fifa2026/src/internal/models"
 	"fmt"
-	"math"
 )
 
 type PlayAdvice struct {
@@ -118,34 +117,18 @@ func (s *LotteryService) GenerateFivePlaysAdvice(match models.Match, report *mod
 		}
 
 		oRH, oRD, oRA := odds.HhadHomeOdds, odds.HhadDrawOdds, odds.HhadAwayOdds
-		if oRH <= 0 {
-			pRHomeBase, pRDrawBase, pRAwayBase := 0.0, 0.0, 0.0
-			for _, cell := range baseMatrix {
-				diff := cell.HomeScore - cell.AwayScore + gLine
-				if diff > 0 {
-					pRHomeBase += cell.Prob
-				} else if diff == 0 {
-					pRDrawBase += cell.Prob
-				} else {
-					pRAwayBase += cell.Prob
-				}
-			}
-			oRH = math.Min(100.0, 0.89/math.Max(0.001, pRHomeBase))
-			oRD = math.Min(100.0, 0.89/math.Max(0.001, pRDrawBase))
-			oRA = math.Min(100.0, 0.89/math.Max(0.001, pRAwayBase))
-		}
-		evRH := pRHome*oRH - 1.0
-		evRD := pRDraw*oRD - 1.0
-		evRA := pRAway*oRA - 1.0
-
 		var safeOpt PlayOption
 		var aggOpt PlayOption
 
-		// 校验：如果官方已开售其他玩法，但当前让球胜平负未开售，标记为不可售并将赔率归零，防止用户购买
+		// 校验：如果官方已开售其他玩法，但当前让球胜平负未开售（赔率为0或负数），直接标记为不可售
 		if odds.IsAvailable && oRH <= 0.0 {
 			safeOpt = PlayOption{"不可售", 0.0, 0.0, 0.0}
 			aggOpt = PlayOption{"不可售", 0.0, 0.0, 0.0}
 		} else {
+			evRH := pRHome*oRH - 1.0
+			evRD := pRDraw*oRD - 1.0
+			evRA := pRAway*oRA - 1.0
+
 			if pRHome >= pRDraw && pRHome >= pRAway {
 				safeOpt = PlayOption{fmt.Sprintf("让胜(%d)", gLine), oRH, pRHome, evRH}
 			} else if pRDraw >= pRHome && pRDraw >= pRAway {
@@ -181,40 +164,41 @@ func (s *LotteryService) GenerateFivePlaysAdvice(match models.Match, report *mod
 
 		var safeOpt PlayOption
 		var aggOpt PlayOption
-		var maxProb, maxEV float64
-		first := true
 
-		// 竞彩官方 31 个比分代码
-		officialCrsCodes := []string{
-			"s01s00", "s02s00", "s02s01", "s03s00", "s03s01", "s03s02",
-			"s04s00", "s04s01", "s04s02", "s05s00", "s05s01", "s05s02", "s1sh",
-			"s00s00", "s01s01", "s02s02", "s03s03", "s1sd",
-			"s00s01", "s00s02", "s01s02", "s00s03", "s01s03", "s02s03",
-			"s00s04", "s01s04", "s02s04", "s00s05", "s01s05", "s02s05", "s1sa",
-		}
+		// 校验：如果官方已开售其他玩法，但当前比分未开售，直接标记为不可售
+		if odds.IsAvailable && len(odds.CrsOdds) == 0 {
+			safeOpt = PlayOption{"不可售", 0.0, 0.0, 0.0}
+			aggOpt = PlayOption{"不可售", 0.0, 0.0, 0.0}
+		} else {
+			var maxProb, maxEV float64
+			first := true
 
-		for _, code := range officialCrsCodes {
-			prob := aggProbs[code]
-			oVal := odds.CrsOdds[code]
-			if oVal <= 0 {
-				oValBase := 0.89 / math.Max(0.001, baseAggProbs[code])
-				if oValBase <= 0 {
-					oValBase = 0.89 / math.Max(0.001, prob)
+			// 竞彩官方 31 个比分代码
+			officialCrsCodes := []string{
+				"s01s00", "s02s00", "s02s01", "s03s00", "s03s01", "s03s02",
+				"s04s00", "s04s01", "s04s02", "s05s00", "s05s01", "s05s02", "s1sh",
+				"s00s00", "s01s01", "s02s02", "s03s03", "s1sd",
+				"s00s01", "s00s02", "s01s02", "s00s03", "s01s03", "s02s03",
+				"s00s04", "s01s04", "s02s04", "s00s05", "s01s05", "s02s05", "s1sa",
+			}
+
+			for _, code := range officialCrsCodes {
+				prob := aggProbs[code]
+				oVal := odds.CrsOdds[code]
+				// 若赔率未设置或为0，则代表该选项不售或取值失败，不进行仿真
+				ev := prob*oVal - 1.0
+				key := getCrsDisplayName(code)
+
+				if prob > maxProb || first {
+					maxProb = prob
+					safeOpt = PlayOption{key, oVal, prob, ev}
 				}
-				oVal = math.Min(100.0, oValBase)
+				if ev > maxEV || first {
+					maxEV = ev
+					aggOpt = PlayOption{key, oVal, prob, ev}
+				}
+				first = false
 			}
-			ev := prob*oVal - 1.0
-			key := getCrsDisplayName(code)
-
-			if prob > maxProb || first {
-				maxProb = prob
-				safeOpt = PlayOption{key, oVal, prob, ev}
-			}
-			if ev > maxEV || first {
-				maxEV = ev
-				aggOpt = PlayOption{key, oVal, prob, ev}
-			}
-			first = false
 		}
 		advices = append(advices, PlayAdvice{"crs", "比分", safeOpt, aggOpt})
 	}
@@ -243,31 +227,35 @@ func (s *LotteryService) GenerateFivePlaysAdvice(match models.Match, report *mod
 
 		var safeOpt PlayOption
 		var aggOpt PlayOption
-		var maxProb, maxEV float64
-		first := true
 
-		for g := 0; g <= 7; g++ {
-			prob := ttgProbs[g]
-			apiCode := fmt.Sprintf("s%d", g)
-			oVal := odds.TtgOdds[apiCode]
-			if oVal <= 0 {
-				oVal = math.Min(100.0, 0.89/math.Max(0.001, baseTtgProbs[g]))
-			}
-			ev := prob*oVal - 1.0
-			name := fmt.Sprintf("%d球", g)
-			if g == 7 {
-				name = "7+球"
-			}
+		// 校验：如果官方已开售其他玩法，但当前总进球数未开售，直接标记为不可售
+		if odds.IsAvailable && len(odds.TtgOdds) == 0 {
+			safeOpt = PlayOption{"不可售", 0.0, 0.0, 0.0}
+			aggOpt = PlayOption{"不可售", 0.0, 0.0, 0.0}
+		} else {
+			var maxProb, maxEV float64
+			first := true
 
-			if prob > maxProb || first {
-				maxProb = prob
-				safeOpt = PlayOption{name, oVal, prob, ev}
+			for g := 0; g <= 7; g++ {
+				prob := ttgProbs[g]
+				apiCode := fmt.Sprintf("s%d", g)
+				oVal := odds.TtgOdds[apiCode]
+				ev := prob*oVal - 1.0
+				name := fmt.Sprintf("%d球", g)
+				if g == 7 {
+					name = "7+球"
+				}
+
+				if prob > maxProb || first {
+					maxProb = prob
+					safeOpt = PlayOption{name, oVal, prob, ev}
+				}
+				if ev > maxEV || first {
+					maxEV = ev
+					aggOpt = PlayOption{name, oVal, prob, ev}
+				}
+				first = false
 			}
-			if ev > maxEV || first {
-				maxEV = ev
-				aggOpt = PlayOption{name, oVal, prob, ev}
-			}
-			first = false
 		}
 		advices = append(advices, PlayAdvice{"ttg", "总进球数", safeOpt, aggOpt})
 	}
@@ -363,26 +351,30 @@ func (s *LotteryService) GenerateFivePlaysAdvice(match models.Match, report *mod
 
 		var safeOpt PlayOption
 		var aggOpt PlayOption
-		var maxProb, maxEV float64
-		first := true
 
-		for op, prob := range hafuProbs {
-			apiCode := hafuKeys[op]
-			oVal := odds.HafuOdds[apiCode]
-			if oVal <= 0 {
-				oVal = math.Min(100.0, 0.89/math.Max(0.001, baseHafuProbs[op]))
-			}
-			ev := prob*oVal - 1.0
+		// 校验：如果官方已开售其他玩法，但当前半全场胜平负未开售，直接标记为不可售
+		if odds.IsAvailable && len(odds.HafuOdds) == 0 {
+			safeOpt = PlayOption{"不可售", 0.0, 0.0, 0.0}
+			aggOpt = PlayOption{"不可售", 0.0, 0.0, 0.0}
+		} else {
+			var maxProb, maxEV float64
+			first := true
 
-			if prob > maxProb || first {
-				maxProb = prob
-				safeOpt = PlayOption{op, oVal, prob, ev}
+			for op, prob := range hafuProbs {
+				apiCode := hafuKeys[op]
+				oVal := odds.HafuOdds[apiCode]
+				ev := prob*oVal - 1.0
+
+				if prob > maxProb || first {
+					maxProb = prob
+					safeOpt = PlayOption{op, oVal, prob, ev}
+				}
+				if ev > maxEV || first {
+					maxEV = ev
+					aggOpt = PlayOption{op, oVal, prob, ev}
+				}
+				first = false
 			}
-			if ev > maxEV || first {
-				maxEV = ev
-				aggOpt = PlayOption{op, oVal, prob, ev}
-			}
-			first = false
 		}
 		advices = append(advices, PlayAdvice{"hafu", "半全场胜平负", safeOpt, aggOpt})
 	}

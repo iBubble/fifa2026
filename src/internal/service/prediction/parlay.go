@@ -798,6 +798,10 @@ func (s *ParlayService) getBestSingleChoice(matchID string, playCode string) (st
 			"负胜": "ah", "负平": "ad", "负负": "aa",
 		}
 
+		if !odds.IsAvailable || len(odds.HafuOdds) == 0 {
+			return "", 0.0, 0.0, nil
+		}
+
 		var bestHafu string
 		var bestHafuProb float64
 		var bestHafuOdds float64
@@ -805,9 +809,6 @@ func (s *ParlayService) getBestSingleChoice(matchID string, playCode string) (st
 		for op, prob := range hafuProbs {
 			apiCode := hafuKeys[op]
 			oVal := odds.HafuOdds[apiCode]
-			if oVal <= 0 {
-				oVal = 0.89 / math.Max(0.001, prob)
-			}
 			ev := prob*oVal - 1.0
 			if ev > (bestHafuProb*bestHafuOdds - 1.0) || bestHafu == "" {
 				bestHafu, bestHafuProb, bestHafuOdds = op, prob, oVal
@@ -816,6 +817,10 @@ func (s *ParlayService) getBestSingleChoice(matchID string, playCode string) (st
 		optName, optOdds, optProb = bestHafu, bestHafuOdds, bestHafuProb
 
 	case "ttg":
+		if !odds.IsAvailable || len(odds.TtgOdds) == 0 {
+			return "", 0.0, 0.0, nil
+		}
+
 		ttgProbs := make([]float64, 8)
 		for _, cell := range report.ScoreMatrix {
 			tot := cell.HomeScore + cell.AwayScore
@@ -834,9 +839,6 @@ func (s *ParlayService) getBestSingleChoice(matchID string, playCode string) (st
 			prob := ttgProbs[g]
 			apiCode := fmt.Sprintf("s%d", g)
 			oVal := odds.TtgOdds[apiCode]
-			if oVal <= 0 {
-				oVal = 0.89 / math.Max(0.001, prob)
-			}
 			ev := prob*oVal - 1.0
 			if ev > (bestTtgProb*bestTtgOdds - 1.0) || bestTtg == "" {
 				bestTtg = fmt.Sprintf("%d球", g)
@@ -849,6 +851,10 @@ func (s *ParlayService) getBestSingleChoice(matchID string, playCode string) (st
 		optName, optOdds, optProb = bestTtg, bestTtgOdds, bestTtgProb
 
 	case "crs":
+		if !odds.IsAvailable || len(odds.CrsOdds) == 0 {
+			return "", 0.0, 0.0, nil
+		}
+
 		aggProbs := make(map[string]float64) // key: preciseKey
 		for _, cell := range report.ScoreMatrix {
 			code := getPreciseCrsKey(cell.HomeScore, cell.AwayScore)
@@ -871,10 +877,6 @@ func (s *ParlayService) getBestSingleChoice(matchID string, playCode string) (st
 		for _, code := range officialCrsCodes {
 			prob := aggProbs[code]
 			oVal := odds.CrsOdds[code]
-			if oVal <= 0 {
-				oVal = 0.89 / math.Max(0.001, prob)
-			}
-			oVal = math.Min(100.0, oVal)
 			ev := prob*oVal - 1.0
 			if ev > (bestCrsProb*bestCrsOdds - 1.0) || bestCrs == "" {
 				bestCrs, bestCrsProb, bestCrsOdds = getCrsDisplayName(code), prob, oVal
