@@ -377,6 +377,10 @@ func (s *ParlayService) calculateSinglePlayParlay(
 		if err != nil {
 			return ParlayAdvice{}, ExcludedMatch{}, err
 		}
+		// 若获取的赔率 <= 0.0，说明此玩法在该场比赛未开盘，无法购买，过滤剔除
+		if optOdds <= 0.0 {
+			continue
+		}
 		m, _ := db.GetMatch(rec.MatchID)
 		choices = append(choices, singleMatchChoice{
 			matchID: rec.MatchID,
@@ -385,6 +389,27 @@ func (s *ParlayService) calculateSinglePlayParlay(
 			prob:    optProb,
 			desc:    fmt.Sprintf("%s(%s@%.2f)", m.HomeTeam, optName, optOdds),
 		})
+	}
+
+	kValActual := len(choices)
+	if kValActual < subTicketSizes[0] {
+		// 剩余能买的场数不够串关，不推荐该玩法
+		return ParlayAdvice{
+			ParlayType:         playName,
+			ComboOdds:          0,
+			ComboProb:          0,
+			SingleTicketPayout: 0,
+			KellyStake:         0,
+			TotalEV:            0,
+			Cost:               0,
+			WinsCount:          0,
+			MinMatchToWin:      subTicketSizes[0],
+		}, ExcludedMatch{
+			MatchID:  playCode,
+			HomeTeam: playName,
+			AwayTeam: fmt.Sprintf("【串关玩法未售/场数不足】本组赛事中仅有 %d 场开售该玩法，不足以组成所选过关方式。", kValActual),
+			Reason:   "0%",
+		}, nil
 	}
 
 	type subTicket struct {
@@ -396,10 +421,10 @@ func (s *ParlayService) calculateSinglePlayParlay(
 	var tickets []subTicket
 
 	for _, sz := range subTicketSizes {
-		if sz > kVal {
+		if sz > kValActual {
 			continue
 		}
-		combos := combinations(kVal, sz)
+		combos := combinations(kValActual, sz)
 		for _, c := range combos {
 			tOdds := 1.0
 			tProb := 1.0
@@ -444,7 +469,7 @@ func (s *ParlayService) calculateSinglePlayParlay(
 		})
 	}
 
-	numStates := 1 << kVal
+	numStates := 1 << kValActual
 	var comboProb float64 = 0.0
 	var totalExpectedPayout float64 = 0.0
 	var maxPayout float64 = 0.0
@@ -452,7 +477,7 @@ func (s *ParlayService) calculateSinglePlayParlay(
 
 	for sIdx := 0; sIdx < numStates; sIdx++ {
 		sProb := 1.0
-		for i := 0; i < kVal; i++ {
+		for i := 0; i < kValActual; i++ {
 			if (sIdx & (1 << i)) != 0 {
 				sProb *= choices[i].prob
 			} else {
@@ -542,10 +567,10 @@ func (s *ParlayService) calculateSinglePlayParlay(
 				parlayName = fmt.Sprintf("%s(原%s因风控降级)", parlayName, translateOptToChinese(originalOpt))
 			}
 		} else {
-			parlayName = fmt.Sprintf("%d串1", kVal)
+			parlayName = fmt.Sprintf("%d串1", kValActual)
 		}
 	}
-	descStr := fmt.Sprintf("【过关方式:%s】共%d注。如果全对%d场最高奖金%.2f元。细则：<br>%s", parlayName, len(tickets), kVal, maxPayout, playDetail.String())
+	descStr := fmt.Sprintf("【过关方式:%s】共%d注。如果全对%d场最高奖金%.2f元。细则：<br>%s", parlayName, len(tickets), kValActual, maxPayout, playDetail.String())
 
 	excl := ExcludedMatch{
 		MatchID:  playCode,
@@ -677,6 +702,10 @@ func (s *ParlayService) getBestSingleChoice(matchID string, playCode string) (st
 		if !odds.IsAvailable {
 			oH, oD, oA = 0.89/pHome, 0.89/pDraw, 0.89/pAway
 		}
+		// 校验：如果官方已在售其他玩法，但当前胜平负未售，设置赔率为 0.0 阻止购买
+		if odds.IsAvailable && oH <= 0.0 {
+			return "", 0.0, 0.0, nil
+		}
 		evH := pHome*oH - 1.0
 		evD := pDraw*oD - 1.0
 		evA := pAway*oA - 1.0
@@ -705,8 +734,12 @@ func (s *ParlayService) getBestSingleChoice(matchID string, playCode string) (st
 			}
 		}
 		oRH, oRD, oRA := odds.HhadHomeOdds, odds.HhadDrawOdds, odds.HhadAwayOdds
-		if oRH <= 0 {
+		if !odds.IsAvailable && oRH <= 0 {
 			oRH, oRD, oRA = 0.89/pRHome, 0.89/pRDraw, 0.89/pRAway
+		}
+		// 校验：如果官方已开售其他玩法，但当前让球胜平负未开售，设置赔率为 0.0 阻止购买
+		if odds.IsAvailable && oRH <= 0.0 {
+			return "", 0.0, 0.0, nil
 		}
 		evRH := pRHome*oRH - 1.0
 		evRD := pRDraw*oRD - 1.0

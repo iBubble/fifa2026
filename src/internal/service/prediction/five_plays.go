@@ -80,21 +80,28 @@ func (s *LotteryService) GenerateFivePlaysAdvice(match models.Match, report *mod
 		evA := pAway*oA - 1.0
 
 		var safeOpt PlayOption
-		if pHome >= pDraw && pHome >= pAway {
-			safeOpt = PlayOption{"主胜", oH, pHome, evH}
-		} else if pDraw >= pHome && pDraw >= pAway {
-			safeOpt = PlayOption{"平局", oD, pDraw, evD}
-		} else {
-			safeOpt = PlayOption{"客胜", oA, pAway, evA}
-		}
-
 		var aggOpt PlayOption
-		if evH >= evD && evH >= evA {
-			aggOpt = PlayOption{"主胜", oH, pHome, evH}
-		} else if evD >= evH && evD >= evA {
-			aggOpt = PlayOption{"平局", oD, pDraw, evD}
+
+		// 校验：如果官方已开售其他玩法，但当前常规胜平负未售，标记为未开售并将赔率归零，防止用户购买
+		if odds.IsAvailable && oH <= 0.0 {
+			safeOpt = PlayOption{"未开售", 0.0, 0.0, 0.0}
+			aggOpt = PlayOption{"未开售", 0.0, 0.0, 0.0}
 		} else {
-			aggOpt = PlayOption{"客胜", oA, pAway, evA}
+			if pHome >= pDraw && pHome >= pAway {
+				safeOpt = PlayOption{"主胜", oH, pHome, evH}
+			} else if pDraw >= pHome && pDraw >= pAway {
+				safeOpt = PlayOption{"平局", oD, pDraw, evD}
+			} else {
+				safeOpt = PlayOption{"客胜", oA, pAway, evA}
+			}
+
+			if evH >= evD && evH >= evA {
+				aggOpt = PlayOption{"主胜", oH, pHome, evH}
+			} else if evD >= evH && evD >= evA {
+				aggOpt = PlayOption{"平局", oD, pDraw, evD}
+			} else {
+				aggOpt = PlayOption{"客胜", oA, pAway, evA}
+			}
 		}
 
 		advices = append(advices, PlayAdvice{"had", "胜平负", safeOpt, aggOpt})
@@ -140,21 +147,28 @@ func (s *LotteryService) GenerateFivePlaysAdvice(match models.Match, report *mod
 		evRA := pRAway*oRA - 1.0
 
 		var safeOpt PlayOption
-		if pRHome >= pRDraw && pRHome >= pRAway {
-			safeOpt = PlayOption{fmt.Sprintf("让胜(%d)", gLine), oRH, pRHome, evRH}
-		} else if pRDraw >= pRHome && pRDraw >= pRAway {
-			safeOpt = PlayOption{fmt.Sprintf("让平(%d)", gLine), oRD, pRDraw, evRD}
-		} else {
-			safeOpt = PlayOption{fmt.Sprintf("让负(%d)", gLine), oRA, pRAway, evRA}
-		}
-
 		var aggOpt PlayOption
-		if evRH >= evRD && evRH >= evRA {
-			aggOpt = PlayOption{fmt.Sprintf("让胜(%d)", gLine), oRH, pRHome, evRH}
-		} else if evRD >= evRH && evRD >= evRA {
-			aggOpt = PlayOption{fmt.Sprintf("让平(%d)", gLine), oRD, pRDraw, evRD}
+
+		// 校验：如果官方已开售其他玩法，但当前让球胜平负未开售，标记为未开售并将赔率归零，防止用户购买
+		if odds.IsAvailable && oRH <= 0.0 {
+			safeOpt = PlayOption{"未开售", 0.0, 0.0, 0.0}
+			aggOpt = PlayOption{"未开售", 0.0, 0.0, 0.0}
 		} else {
-			aggOpt = PlayOption{fmt.Sprintf("让负(%d)", gLine), oRA, pRAway, evRA}
+			if pRHome >= pRDraw && pRHome >= pRAway {
+				safeOpt = PlayOption{fmt.Sprintf("让胜(%d)", gLine), oRH, pRHome, evRH}
+			} else if pRDraw >= pRHome && pRDraw >= pRAway {
+				safeOpt = PlayOption{fmt.Sprintf("让平(%d)", gLine), oRD, pRDraw, evRD}
+			} else {
+				safeOpt = PlayOption{fmt.Sprintf("让负(%d)", gLine), oRA, pRAway, evRA}
+			}
+
+			if evRH >= evRD && evRH >= evRA {
+				aggOpt = PlayOption{fmt.Sprintf("让胜(%d)", gLine), oRH, pRHome, evRH}
+			} else if evRD >= evRH && evRD >= evRA {
+				aggOpt = PlayOption{fmt.Sprintf("让平(%d)", gLine), oRD, pRDraw, evRD}
+			} else {
+				aggOpt = PlayOption{fmt.Sprintf("让负(%d)", gLine), oRA, pRAway, evRA}
+			}
 		}
 		advices = append(advices, PlayAdvice{"hhad", "让球胜平负", safeOpt, aggOpt})
 	}

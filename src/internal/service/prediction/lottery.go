@@ -81,6 +81,81 @@ func (s *LotteryService) GenerateSingleAdvice(match models.Match, oddsHome, odds
 
 	// 获取官方赔率
 	official := s.sportteryService.GetMatchOdds(match.HomeTeam, match.AwayTeam, match.ScheduledAt)
+
+	// 针对官方开售但常规未开盘（仅开让球）或完全未开盘（不可购买）的实战拦截与路由降级
+	hadAvailable := official.IsAvailable && official.HomeOdds > 0.0
+	if official.IsAvailable && !hadAvailable {
+		hhadAvailable := official.HhadHomeOdds > 0.0
+		if hhadAvailable {
+			// 1. 计算让球胜平负概率
+			gLine := official.GoalLine
+			if gLine == 0 {
+				gLine = -1
+			}
+			var pRHome, pRDraw, pRAway float64
+			for _, cell := range matrix {
+				diff := cell.HomeScore - cell.AwayScore + gLine
+				if diff > 0 {
+					pRHome += cell.Prob
+				} else if diff == 0 {
+					pRDraw += cell.Prob
+				} else {
+					pRAway += cell.Prob
+				}
+			}
+
+			// 2. 选择主推项
+			var primary string
+			var pProb, pOdds float64
+			if pRHome >= pRDraw && pRHome >= pRAway {
+				primary = fmt.Sprintf("让胜(%d)", gLine)
+				pProb = pRHome
+				pOdds = official.HhadHomeOdds
+			} else if pRAway >= pRHome && pRAway >= pRDraw {
+				primary = fmt.Sprintf("让负(%d)", gLine)
+				pProb = pRAway
+				pOdds = official.HhadAwayOdds
+			} else {
+				primary = fmt.Sprintf("让平(%d)", gLine)
+				pProb = pRDraw
+				pOdds = official.HhadDrawOdds
+			}
+
+			advice.PrimaryBet = primary
+			advice.PrimaryOdds = pOdds
+			advice.PrimaryStake = 0.80
+			advice.Status = "RECOMMENDED"
+
+			// 3. 配置对冲项 (比分1-1)
+			hedgeOutcome := "比分 1-1"
+			hedgeOdds := 6.00
+			if official.CrsOdds != nil {
+				if val, ok := official.CrsOdds["s01s01"]; ok && val > 0 {
+					hedgeOdds = val
+				}
+			}
+			advice.HedgeBets = []Hedge{
+				{Outcome: hedgeOutcome, Odds: hedgeOdds, StakePct: 0.20},
+			}
+
+			llmPrefix := ""
+			if isLLMRefined {
+				llmPrefix = "【外围情报校准】"
+			}
+			advice.Reason = fmt.Sprintf("%s官方常规胜平负未开售，系统自动切换至让球玩法。让球胜率达 %s，建议体彩 80%% 投【%s】，20%% 配备【%s @%.2f】保本防冷平。", 
+				llmPrefix, fmt.Sprintf("%.1f%%", pProb*100), primary, hedgeOutcome, hedgeOdds)
+
+			advice.OfficialOdds = &official
+			return advice
+		} else {
+			// 常规和让球均未开售，无法购买
+			advice.Status = "EXCLUDED"
+			advice.Reason = "【体彩未开盘】该赛事常规胜平负与让球胜平负目前均未开售，无法提供投注方案组合。"
+			advice.OfficialOdds = &official
+			return advice
+		}
+	}
+
 	if official.IsAvailable {
 		oddsHome, oddsDraw, oddsAway = official.HomeOdds, official.DrawOdds, official.AwayOdds
 	} else {
