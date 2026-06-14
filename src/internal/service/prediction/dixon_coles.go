@@ -5,6 +5,7 @@ import (
 	"fifa2026/src/internal/models"
 	"math"
 	"strings"
+	"time"
 )
 
 type DixonColesService struct {
@@ -90,15 +91,72 @@ func (s *DixonColesService) CalculateParamsWithoutOffset(homeTeam, awayTeam stri
 				// H2H 小样本（< 3 场）克制权重强行衰减 80% 平滑
 				h2hWeight = h2hWeight * 0.20
 			}
-			baseH = (1.0-h2hWeight)*baseH + h2hWeight*h2h.AvgHomeGoals
-			baseA = (1.0-h2hWeight)*baseA + h2hWeight*h2h.AvgAwayGoals
-			// 计算双方历史交手胜率差值倾向 (值范围 -1.0 到 1.0)
+
+			avgHomeGoals := h2h.AvgHomeGoals
+			avgAwayGoals := h2h.AvgAwayGoals
 			h2hDiff = (float64(h2h.HomeWins) - float64(h2h.AwayWins)) / float64(h2h.TotalMatches)
+			drawRate = float64(h2h.Draws) / float64(h2h.TotalMatches)
+
+			if len(h2h.Matches) > 0 {
+				var weightSum float64
+				var weightedHomeGoals float64
+				var weightedAwayGoals float64
+				var weightedDiff float64
+				var weightedDraws float64
+
+				phi := 0.15 // 时间加权衰减常数 (以年为单位)
+				now := time.Now()
+
+				for _, m := range h2h.Matches {
+					// 解析开赛时间
+					tMatch, errTime := time.Parse(time.RFC3339, m.MatchTime)
+					if errTime != nil {
+						tMatch, errTime = time.Parse("2006-01-02", m.MatchTime)
+					}
+
+					daysDiff := 0.0
+					if errTime == nil {
+						daysDiff = now.Sub(tMatch).Hours() / 24.0
+						if daysDiff < 0 {
+							daysDiff = 0
+						}
+					}
+
+					// 计算权重: e^(-phi * t_years)
+					w := math.Exp(-phi * (daysDiff / 365.0))
+					weightSum += w
+
+					weightedHomeGoals += w * m.HomeGoals
+					weightedAwayGoals += w * m.AwayGoals
+
+					winSign := 0.0
+					if m.HomeGoals > m.AwayGoals {
+						winSign = 1.0
+					} else if m.HomeGoals < m.AwayGoals {
+						winSign = -1.0
+					}
+					weightedDiff += w * winSign
+
+					if m.HomeGoals == m.AwayGoals {
+						weightedDraws += w
+					}
+				}
+
+				if weightSum > 0 {
+					avgHomeGoals = weightedHomeGoals / weightSum
+					avgAwayGoals = weightedAwayGoals / weightSum
+					h2hDiff = weightedDiff / weightSum
+					drawRate = weightedDraws / weightSum
+				}
+			}
+
+			baseH = (1.0-h2hWeight)*baseH + h2hWeight*avgHomeGoals
+			baseA = (1.0-h2hWeight)*baseA + h2hWeight*avgAwayGoals
+
 			if h2h.TotalMatches < 3 {
 				// H2H 小样本影响系数同步衰减 80%（降至 ±3%）
 				h2hDiff = h2hDiff * 0.20
 			}
-			drawRate = float64(h2h.Draws) / float64(h2h.TotalMatches)
 		}
 	}
 

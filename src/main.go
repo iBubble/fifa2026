@@ -1206,7 +1206,7 @@ func prewarmH2HForIncomingMatches(apiService *prediction.APISportsService) {
 		m := incoming[i]
 
 		// 检查本地 SQLite 数据库中是否已有 H2H 记录
-		_, _, _, _, _, _, found, err := db.GetH2HRecord(m.HomeTeam, m.AwayTeam)
+		_, _, _, _, _, _, _, found, err := db.GetH2HRecord(m.HomeTeam, m.AwayTeam)
 		if err == nil && found {
 			// 缓存已存在，跳过，不发出任何网络请求
 			continue

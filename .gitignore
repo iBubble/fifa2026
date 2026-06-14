@@ -9,8 +9,12 @@ bin/
 # Local Databases and dynamic data
 data/db/*.db
 data/db/*.db-journal
+data/db/*.db-shm
+data/db/*.db-wal
 *.db
 *.db-journal
+*.db-shm
+*.db-wal
 
 # Operating System Files
 .DS_Store

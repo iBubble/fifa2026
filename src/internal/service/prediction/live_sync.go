@@ -14,13 +14,21 @@ import (
 	"time"
 )
 
+type RolledBackMatch struct {
+	TargetHomeScore int
+	TargetAwayScore int
+	DetectedTime    time.Time
+}
+
 type LiveSyncService struct {
-	dcService       *DixonColesService
-	backtestService *BacktestService
-	ollamaService   *ai.OllamaService
-	mu              sync.Mutex
-	listeners       []chan string
-	listenersMu     sync.Mutex
+	dcService         *DixonColesService
+	backtestService   *BacktestService
+	ollamaService     *ai.OllamaService
+	mu                sync.Mutex
+	listeners         []chan string
+	listenersMu       sync.Mutex
+	rolledBackMatches map[string]RolledBackMatch
+	rbMu              sync.Mutex
 }
 
 type RealtimeMatch struct {
@@ -31,10 +39,11 @@ type RealtimeMatch struct {
 
 func NewLiveSyncService(dc *DixonColesService, backtest *BacktestService, ollama *ai.OllamaService) *LiveSyncService {
 	return &LiveSyncService{
-		dcService:       dc,
-		backtestService: backtest,
-		ollamaService:   ollama,
-		listeners:       make([]chan string, 0),
+		dcService:         dc,
+		backtestService:   backtest,
+		ollamaService:     ollama,
+		listeners:         make([]chan string, 0),
+		rolledBackMatches: make(map[string]RolledBackMatch),
 	}
 }
 
@@ -202,7 +211,54 @@ func (s *LiveSyncService) SyncMatches() {
 			}
 
 			// 若合并后的比分或状态发生变更，执行更新并广播
-			if m.HomeScore != maxHome || m.AwayScore != maxAway || m.Status != finalStatus {
+			// 判断是否发生比分倒流
+			isRollback := maxHome < m.HomeScore || maxAway < m.AwayScore
+			allowUpdate := true
+
+			if isRollback {
+				s.rbMu.Lock()
+				rbKey := m.ID
+				if rbKey == "" {
+					rbKey = key
+				}
+
+				rb, exists := s.rolledBackMatches[rbKey]
+				if !exists || rb.TargetHomeScore != maxHome || rb.TargetAwayScore != maxAway {
+					// 第一次检测到该比分倒流，登记到待确认队列，本次拦截更新
+					s.rolledBackMatches[rbKey] = RolledBackMatch{
+						TargetHomeScore: maxHome,
+						TargetAwayScore: maxAway,
+						DetectedTime:    time.Now(),
+					}
+					allowUpdate = false
+					log.Printf("[LiveSync] ⚠️ 检测到比赛 %s vs %s 比分疑似倒流 (从 %d:%d 到 %d:%d)，加入2分钟VAR防抖待确认队列", 
+						m.HomeTeam, m.AwayTeam, m.HomeScore, m.AwayScore, maxHome, maxAway)
+				} else {
+					// 已经登记过，检查是否已持续超过 2 分钟
+					if time.Since(rb.DetectedTime) >= 2*time.Minute {
+						// 确认为 VAR 真实回滚，允许执行更新
+						log.Printf("[LiveSync] 🚨 比赛 %s vs %s 比分持续倒流超2分钟，确认触发VAR进球无效回滚，允许数据落地", 
+							m.HomeTeam, m.AwayTeam)
+						delete(s.rolledBackMatches, rbKey)
+					} else {
+						// 未满 2 分钟，继续拦截更新
+						allowUpdate = false
+					}
+				}
+				s.rbMu.Unlock()
+			} else {
+				// 如果比分正常（未倒流），若当前存在倒流登记，则予以清除
+				s.rbMu.Lock()
+				rbKey := m.ID
+				if rbKey == "" {
+					rbKey = key
+				}
+				delete(s.rolledBackMatches, rbKey)
+				s.rbMu.Unlock()
+			}
+
+			// 若合并后的比分或状态发生变更，且被允许更新时，执行更新并广播
+			if allowUpdate && (m.HomeScore != maxHome || m.AwayScore != maxAway || m.Status != finalStatus) {
 				m.HomeScore = maxHome
 				m.AwayScore = maxAway
 				m.Status = finalStatus

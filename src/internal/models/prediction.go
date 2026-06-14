@@ -59,12 +59,22 @@ type SimulationResult struct {
 	WinnerProb   float64 `json:"winnerProb"`   // 夺冠概率
 }
 
+// H2HMatchDetail 保存单场历史交手数据以供时间加权衰减计算
+type H2HMatchDetail struct {
+	MatchTime string  `json:"matchTime"` // 开赛时间, 格式如 "2022-11-20T17:00:00Z"
+	HomeTeam  string  `json:"homeTeam"`
+	AwayTeam  string  `json:"awayTeam"`
+	HomeGoals float64 `json:"homeGoals"`
+	AwayGoals float64 `json:"awayGoals"`
+}
+
 // H2HRecord 代表两队之间的历史直接交手统计数据
 type H2HRecord struct {
-	TotalMatches int     `json:"totalMatches"`
-	HomeWins     int     `json:"homeWins"`
-	Draws        int     `json:"draws"`
-	AwayWins     int     `json:"awayWins"`
-	AvgHomeGoals float64 `json:"avgHomeGoals"`
-	AvgAwayGoals float64 `json:"avgAwayGoals"`
+	TotalMatches int              `json:"totalMatches"`
+	HomeWins     int              `json:"homeWins"`
+	Draws        int              `json:"draws"`
+	AwayWins     int              `json:"awayWins"`
+	AvgHomeGoals float64          `json:"avgHomeGoals"`
+	AvgAwayGoals float64          `json:"avgAwayGoals"`
+	Matches      []H2HMatchDetail `json:"matches"` // 交手明细列表
 }

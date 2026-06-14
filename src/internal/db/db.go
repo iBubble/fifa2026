@@ -24,6 +24,10 @@ func Init(dataDir string) error {
 		return fmt.Errorf("打开SQLite数据库失败: %w", err)
 	}
 
+	// 开启高并发 WAL 模式与忙等待超时
+	_, _ = DB.Exec("PRAGMA journal_mode=WAL;")
+	_, _ = DB.Exec("PRAGMA busy_timeout=5000;")
+
 	if err := DB.Ping(); err != nil {
 		return fmt.Errorf("数据库连接Ping失败: %w", err)
 	}
@@ -152,6 +156,7 @@ func createTables() error {
 			team_b_wins INTEGER NOT NULL,
 			avg_a_goals REAL NOT NULL,
 			avg_b_goals REAL NOT NULL,
+			matches_json TEXT NOT NULL DEFAULT '[]',
 			last_updated DATETIME DEFAULT CURRENT_TIMESTAMP
 		);`,
 
@@ -221,6 +226,9 @@ func createTables() error {
 	_, _ = DB.Exec("ALTER TABLE prediction_reports ADD COLUMN original_score_matrix_json TEXT NOT NULL DEFAULT '[]'")
 	_, _ = DB.Exec("ALTER TABLE prediction_reports ADD COLUMN original_over_2_5_prob REAL NOT NULL DEFAULT 0.0")
 	_, _ = DB.Exec("ALTER TABLE prediction_reports ADD COLUMN original_under_2_5_prob REAL NOT NULL DEFAULT 0.0")
+
+	// 平滑升级：若已存在的 h2h_records 表没有 matches_json 字段，自动添加
+	_, _ = DB.Exec("ALTER TABLE h2h_records ADD COLUMN matches_json TEXT NOT NULL DEFAULT '[]'")
 
 	return nil
 }

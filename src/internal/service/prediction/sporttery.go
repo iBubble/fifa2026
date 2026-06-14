@@ -3,6 +3,8 @@ package prediction
 import (
 	"encoding/json"
 	"fifa2026/src/internal/models"
+	"log"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -213,6 +215,17 @@ func (s *SportteryService) executeFetch() {
 				matchTime, _ = time.Parse("2006-01-02 15:04:05", m.MatchDate+" "+m.MatchTime)
 			}
 
+			// 获取缓存中的旧赔率以进行突变率校验
+			var oldH, oldD, oldA float64
+			if oldOdds, exists := s.cachedOdds[key]; exists {
+				oldH = oldOdds.HomeOdds
+				oldD = oldOdds.DrawOdds
+				oldA = oldOdds.AwayOdds
+			}
+
+			// 执行熔断器校验
+			isCircuitBroken := checkOddsCircuitBreaker(h, d, a, oldH, oldD, oldA)
+
 			s.cachedOdds[key] = OfficialOdds{
 				HomeOdds:     h,
 				DrawOdds:     d,
@@ -224,8 +237,12 @@ func (s *SportteryService) executeFetch() {
 				CrsOdds:      crsOdds,
 				TtgOdds:      ttgOdds,
 				HafuOdds:     hafuOdds,
-				IsAvailable:  h > 0.0,
+				IsAvailable:  h > 0.0 && !isCircuitBroken,
 				MatchTime:    matchTime,
+			}
+
+			if isCircuitBroken && h > 0.0 {
+				log.Printf("[CircuitBreaker] ⚠️ 比赛 %s 赔率异常 (H:%.2f, D:%.2f, A:%.2f)，触发熔断，挂起凯利仓位推荐", key, h, d, a)
 			}
 		}
 	}
@@ -334,6 +351,36 @@ func applyOddsShiftsToProbs(homeTeam, awayTeam string, pHome, pDraw, pAway float
 		pA = pA / sum
 	}
 	return pH, pD, pA
+}
+
+// checkOddsCircuitBreaker 熔断器：校验赔率合法性、抽水率 Margin 和赔率突变偏离度
+func checkOddsCircuitBreaker(newH, newD, newA float64, oldH, oldD, oldA float64) bool {
+	// 1. 基本合法性校验：体彩非售或异常时赔率可能为 0 或小于 1.0 等
+	if newH <= 1.01 || newD <= 1.01 || newA <= 1.01 {
+		return true // 熔断
+	}
+
+	// 2. 抽水率 Margin 校验
+	// Margin = 1.0 - 1.0 / (1.0/H + 1.0/D + 1.0/A)
+	invSum := 1.0/newH + 1.0/newD + 1.0/newA
+	margin := 1.0 - 1.0/invSum
+	if margin < -0.02 || margin > 0.30 {
+		// 抽水率异常（小于 -2% 或大于 30%），触发熔断。体彩正常抽水一般在 5% 到 15% 之间
+		return true
+	}
+
+	// 3. 赔率突变校验 (单次变动大于 50%)
+	if oldH > 0.0 {
+		diffH := math.Abs(newH-oldH) / oldH
+		diffD := math.Abs(newD-oldD) / oldD
+		diffA := math.Abs(newA-oldA) / oldA
+		if diffH > 0.50 || diffD > 0.50 || diffA > 0.50 {
+			// 赔率变动超过 50%，可能是数据录入错误或接口异常，熔断保护
+			return true
+		}
+	}
+
+	return false // 未触发熔断
 }
 
 // applyShiftsToMatrix 将比分概率矩阵依据赔率偏移进行调整

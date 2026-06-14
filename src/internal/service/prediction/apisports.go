@@ -220,8 +220,11 @@ func (s *APISportsService) GetH2HRecord(team1, team2 string) (models.H2HRecord, 
 	}
 
 	// 1. 读本地缓存
-	total, hWins, draws, aWins, avgH, avgA, found, err := db.GetH2HRecord(t1, t2)
+	total, hWins, draws, aWins, avgH, avgA, matchesJson, found, err := db.GetH2HRecord(t1, t2)
 	if err == nil && found {
+		var matches []models.H2HMatchDetail
+		_ = json.Unmarshal([]byte(matchesJson), &matches)
+
 		var record models.H2HRecord
 		// 查询数据库规范键值匹配，如果主客场相反，对调返还胜负和场均进球数据
 		if t1 == teamA {
@@ -232,8 +235,20 @@ func (s *APISportsService) GetH2HRecord(team1, team2 string) (models.H2HRecord, 
 				AwayWins:     aWins,
 				AvgHomeGoals: avgH,
 				AvgAwayGoals: avgA,
+				Matches:      matches,
 			}
 		} else {
+			// 对调 matches 明细
+			reversedMatches := make([]models.H2HMatchDetail, len(matches))
+			for i, m := range matches {
+				reversedMatches[i] = models.H2HMatchDetail{
+					MatchTime: m.MatchTime,
+					HomeTeam:  m.AwayTeam,
+					AwayTeam:  m.HomeTeam,
+					HomeGoals: m.AwayGoals,
+					AwayGoals: m.HomeGoals,
+				}
+			}
 			record = models.H2HRecord{
 				TotalMatches: total,
 				HomeWins:     aWins,
@@ -241,11 +256,23 @@ func (s *APISportsService) GetH2HRecord(team1, team2 string) (models.H2HRecord, 
 				AwayWins:     hWins,
 				AvgHomeGoals: avgA,
 				AvgAwayGoals: avgH,
+				Matches:      reversedMatches,
 			}
 		}
 
 		s.h2hMu.Lock()
 		s.h2hCache[cacheKey] = record
+		// 缓存反向交手数据
+		revMatches := make([]models.H2HMatchDetail, len(record.Matches))
+		for i, m := range record.Matches {
+			revMatches[i] = models.H2HMatchDetail{
+				MatchTime: m.MatchTime,
+				HomeTeam:  m.AwayTeam,
+				AwayTeam:  m.HomeTeam,
+				HomeGoals: m.AwayGoals,
+				AwayGoals: m.HomeGoals,
+			}
+		}
 		s.h2hCache[fmt.Sprintf("%s:%s", t2, t1)] = models.H2HRecord{
 			TotalMatches: record.TotalMatches,
 			HomeWins:     record.AwayWins,
@@ -253,6 +280,7 @@ func (s *APISportsService) GetH2HRecord(team1, team2 string) (models.H2HRecord, 
 			AwayWins:     record.HomeWins,
 			AvgHomeGoals: record.AvgAwayGoals,
 			AvgAwayGoals: record.AvgHomeGoals,
+			Matches:      revMatches,
 		}
 		s.h2hMu.Unlock()
 
@@ -315,6 +343,7 @@ func (s *APISportsService) GetH2HRecord(team1, team2 string) (models.H2HRecord, 
 		var result struct {
 			Response []struct {
 				Fixture struct {
+					Date   string `json:"date"` // 开赛时间
 					Status struct {
 						Short string `json:"short"`
 					} `json:"status"`
@@ -343,6 +372,7 @@ func (s *APISportsService) GetH2HRecord(team1, team2 string) (models.H2HRecord, 
 
 		var totalCount, t1Wins, t2Wins, drawsCount int
 		var t1Goals, t2Goals float64
+		var matchesList []models.H2HMatchDetail
 
 		for _, f := range result.Response {
 			if f.Goals.Home == nil || f.Goals.Away == nil {
@@ -357,7 +387,10 @@ func (s *APISportsService) GetH2HRecord(team1, team2 string) (models.H2HRecord, 
 			gHome := parseFloat(f.Goals.Home)
 			gAway := parseFloat(f.Goals.Away)
 
+			var hName, aName string
 			if f.Teams.Home.ID == id1 {
+				hName = t1
+				aName = t2
 				t1Goals += gHome
 				t2Goals += gAway
 				if f.Teams.Home.Winner {
@@ -368,6 +401,8 @@ func (s *APISportsService) GetH2HRecord(team1, team2 string) (models.H2HRecord, 
 					drawsCount++
 				}
 			} else {
+				hName = t2
+				aName = t1
 				t1Goals += gAway
 				t2Goals += gHome
 				if f.Teams.Away.Winner {
@@ -378,6 +413,14 @@ func (s *APISportsService) GetH2HRecord(team1, team2 string) (models.H2HRecord, 
 					drawsCount++
 				}
 			}
+
+			matchesList = append(matchesList, models.H2HMatchDetail{
+				MatchTime: f.Fixture.Date,
+				HomeTeam:  hName,
+				AwayTeam:  aName,
+				HomeGoals: gHome,
+				AwayGoals: gAway,
+			})
 		}
 
 		var avgGoals1, avgGoals2 float64
@@ -386,10 +429,26 @@ func (s *APISportsService) GetH2HRecord(team1, team2 string) (models.H2HRecord, 
 			avgGoals2 = t2Goals / float64(totalCount)
 		}
 
+		// 序列化明细列表为 JSON 字符串
+		matchesJsonBytes, _ := json.Marshal(matchesList)
+		matchesJson := string(matchesJsonBytes)
+
 		if t1 == teamA {
-			_ = db.SaveH2HRecord(t1, t2, totalCount, t1Wins, drawsCount, t2Wins, avgGoals1, avgGoals2)
+			_ = db.SaveH2HRecord(t1, t2, totalCount, t1Wins, drawsCount, t2Wins, avgGoals1, avgGoals2, matchesJson)
 		} else {
-			_ = db.SaveH2HRecord(t2, t1, totalCount, t2Wins, drawsCount, t1Wins, avgGoals2, avgGoals1)
+			// 若主客相反，将 matchesList 里的每一场主客颠倒后再存入
+			dbMatchesList := make([]models.H2HMatchDetail, len(matchesList))
+			for i, m := range matchesList {
+				dbMatchesList[i] = models.H2HMatchDetail{
+					MatchTime: m.MatchTime,
+					HomeTeam:  m.AwayTeam,
+					AwayTeam:  m.HomeTeam,
+					HomeGoals: m.AwayGoals,
+					AwayGoals: m.HomeGoals,
+				}
+			}
+			dbMatchesJsonBytes, _ := json.Marshal(dbMatchesList)
+			_ = db.SaveH2HRecord(t2, t1, totalCount, t2Wins, drawsCount, t1Wins, avgGoals2, avgGoals1, string(dbMatchesJsonBytes))
 		}
 
 		return models.H2HRecord{
@@ -399,6 +458,7 @@ func (s *APISportsService) GetH2HRecord(team1, team2 string) (models.H2HRecord, 
 			AwayWins:     t2Wins,
 			AvgHomeGoals: avgGoals1,
 			AvgAwayGoals: avgGoals2,
+			Matches:      matchesList,
 		}, nil
 	}
 
