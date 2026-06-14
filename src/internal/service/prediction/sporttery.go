@@ -268,7 +268,7 @@ func (s *SportteryService) GetMatchOdds(homeTeam, awayTeam string, scheduledAt t
 			if timeDiff < 0 {
 				timeDiff = -timeDiff
 			}
-			if timeDiff <= 24*time.Hour {
+			if timeDiff <= 120*time.Hour {
 				return odds
 			}
 		}
