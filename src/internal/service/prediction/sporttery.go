@@ -276,11 +276,22 @@ func (s *SportteryService) GetMatchOdds(homeTeam, awayTeam string, scheduledAt t
 	return OfficialOdds{IsAvailable: false}
 }
 
-// matchTeam 严格英译名称匹配，调用包内 NormalizeTeam 归一化后比对
+// matchTeam 严格英译名称匹配，调用更健壮的 getNormalizedTeamEnName 将官方中文翻译为英文，并进行特殊字符与模糊容错比对
 func matchTeam(localEnName, officialCnName string) bool {
-	localStd := NormalizeTeam(localEnName)
-	officialStd := NormalizeTeam(officialCnName)
-	return localStd != "" && officialStd != "" && localStd == officialStd
+	officialEn := getNormalizedTeamEnName(officialCnName, "")
+	
+	localStd := strings.ToLower(NormalizeTeam(localEnName))
+	officialStd := strings.ToLower(NormalizeTeam(officialEn))
+	
+	localClean := strings.ReplaceAll(strings.ReplaceAll(localStd, " ", ""), "ç", "c")
+	localClean = strings.ReplaceAll(localClean, "ã", "a")
+	localClean = strings.ReplaceAll(localClean, "队", "")
+	
+	officialClean := strings.ReplaceAll(strings.ReplaceAll(officialStd, " ", ""), "ç", "c")
+	officialClean = strings.ReplaceAll(officialClean, "ã", "a")
+	officialClean = strings.ReplaceAll(officialClean, "队", "")
+	
+	return localClean != "" && (localClean == officialClean || strings.Contains(localClean, officialClean) || strings.Contains(officialClean, localClean))
 }
 
 var cnToEnDict = map[string]string{
