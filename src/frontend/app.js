@@ -786,13 +786,13 @@ async function renderLotteryPanel(recommendData = null) {
       recommendData.fivePlays.forEach(play => {
         const cardDisplay = play.playCode === "had" ? "block" : "none";
 
-        const isSafeUnsold = play.safe.odds <= 0 || play.safe.option === "未开售";
-        const safeOptionText = isSafeUnsold ? `<span style="color: var(--text-muted); font-style: italic;">未开售</span>` : `${play.safe.option} <span style="color: var(--neon-green);">@${play.safe.odds.toFixed(2)}</span>`;
-        const safeProbText = isSafeUnsold ? `0.0%` : `${(play.safe.prob * 100).toFixed(1)}%`;
+        const isSafeUnsold = play.safe.odds <= 0 || play.safe.option === "未开售" || play.safe.option === "不可售" || play.safe.option === "--";
+        const safeOptionText = isSafeUnsold ? `<span style="color: var(--text-muted); font-style: italic; font-weight: 500;">不可售</span>` : `${play.safe.option} <span style="color: var(--neon-green);">@${play.safe.odds.toFixed(2)}</span>`;
+        const safeProbText = isSafeUnsold ? `--` : `${(play.safe.prob * 100).toFixed(1)}%`;
 
-        const isAggressiveUnsold = play.aggressive.odds <= 0 || play.aggressive.option === "未开售";
-        const aggressiveOptionText = isAggressiveUnsold ? `<span style="color: var(--text-muted); font-style: italic;">未开售</span>` : `${play.aggressive.option} <span style="color: var(--neon-green);">@${play.aggressive.odds.toFixed(2)}</span>`;
-        const aggressiveProbText = isAggressiveUnsold ? `0.0%` : `${(play.aggressive.prob * 100).toFixed(1)}%`;
+        const isAggressiveUnsold = play.aggressive.odds <= 0 || play.aggressive.option === "未开售" || play.aggressive.option === "不可售" || play.aggressive.option === "--";
+        const aggressiveOptionText = isAggressiveUnsold ? `<span style="color: var(--text-muted); font-style: italic; font-weight: 500;">不可售</span>` : `${play.aggressive.option} <span style="color: var(--neon-green);">@${play.aggressive.odds.toFixed(2)}</span>`;
+        const aggressiveProbText = isAggressiveUnsold ? `--` : `${(play.aggressive.prob * 100).toFixed(1)}%`;
 
         html += `
           <div class="lottery-play-card" id="play-card-${play.playCode}" style="display: ${cardDisplay}; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 6px; padding: 8px; font-size: 12.5px;">

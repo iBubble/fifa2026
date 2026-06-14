@@ -82,10 +82,10 @@ func (s *LotteryService) GenerateFivePlaysAdvice(match models.Match, report *mod
 		var safeOpt PlayOption
 		var aggOpt PlayOption
 
-		// 校验：如果官方已开售其他玩法，但当前常规胜平负未售，标记为未开售并将赔率归零，防止用户购买
+		// 校验：如果官方已开售其他玩法，但当前常规胜平负未售，标记为不可售并将赔率归零，防止用户购买
 		if odds.IsAvailable && oH <= 0.0 {
-			safeOpt = PlayOption{"未开售", 0.0, 0.0, 0.0}
-			aggOpt = PlayOption{"未开售", 0.0, 0.0, 0.0}
+			safeOpt = PlayOption{"不可售", 0.0, 0.0, 0.0}
+			aggOpt = PlayOption{"不可售", 0.0, 0.0, 0.0}
 		} else {
 			if pHome >= pDraw && pHome >= pAway {
 				safeOpt = PlayOption{"主胜", oH, pHome, evH}
@@ -149,10 +149,10 @@ func (s *LotteryService) GenerateFivePlaysAdvice(match models.Match, report *mod
 		var safeOpt PlayOption
 		var aggOpt PlayOption
 
-		// 校验：如果官方已开售其他玩法，但当前让球胜平负未开售，标记为未开售并将赔率归零，防止用户购买
+		// 校验：如果官方已开售其他玩法，但当前让球胜平负未开售，标记为不可售并将赔率归零，防止用户购买
 		if odds.IsAvailable && oRH <= 0.0 {
-			safeOpt = PlayOption{"未开售", 0.0, 0.0, 0.0}
-			aggOpt = PlayOption{"未开售", 0.0, 0.0, 0.0}
+			safeOpt = PlayOption{"不可售", 0.0, 0.0, 0.0}
+			aggOpt = PlayOption{"不可售", 0.0, 0.0, 0.0}
 		} else {
 			if pRHome >= pRDraw && pRHome >= pRAway {
 				safeOpt = PlayOption{fmt.Sprintf("让胜(%d)", gLine), oRH, pRHome, evRH}
