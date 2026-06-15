@@ -89,6 +89,13 @@ function updateSimulationChart(results) {
     yAxis: { data: yData },
     series: [{ data: xData }]
   });
+
+  // 强力防缩水自适应：延迟触发 ECharts 重绘，确保在 DOM 排版彻底稳定后拉伸至真实物理宽度
+  setTimeout(() => {
+    if (simulationChart) {
+      simulationChart.resize();
+    }
+  }, 200);
 }
 
 // 国家英文名到 FlagCDN 二位码的映射字典 (包含英伦三岛的特异性二位码)
@@ -329,7 +336,23 @@ function updateBacktestChart(history) {
   const yData = history.map(h => parseFloat(h.brierScore.toFixed(3)));
   
   backtestChart.setOption({
-    xAxis: { data: xData },
-    series: [{ data: yData }]
+    xAxis: {
+      type: 'category',
+      data: xData
+    },
+    series: [
+      {
+        name: 'Brier Score',
+        type: 'line',
+        data: yData
+      }
+    ]
   });
+
+  // 强力防缩水自适应：延迟触发 ECharts 重绘，确保在 DOM 排版彻底稳定后拉伸至真实物理宽度
+  setTimeout(() => {
+    if (backtestChart) {
+      backtestChart.resize();
+    }
+  }, 200);
 }

@@ -3,6 +3,9 @@
 ## [Unreleased] - 2026-06-16
 
 ### Fixed
+- **解决赛后复盘折线图容器初始物理宽度塌陷与折线空白缺陷**：
+  - 将 [index.html](file:///Users/gemini/Projects/Own/FIFA2026/src/frontend/index.html) 中的图表容器（`#backtest-chart`）及右侧反思框容器的宽度，由原本硬编码的 `50%` 重构为现代弹性伸缩布局 `flex: 1; width: 0`，避免了浏览器在 Flex 排版就绪前计算百分比而返回 `50px` 的渲染错误。
+  - 在 [charts.js](file:///Users/gemini/Projects/Own/FIFA2026/src/frontend/charts.js) 中的 `updateBacktestChart` 与 `updateSimulationChart` 数据更新后，增加了基于 `setTimeout` 200ms 的防缩水自适应异步强力拉伸重绘（`resize()`）补丁，确保图表在数据加载完毕及 DOM 排版稳定后自动被拉伸为真实物理宽度。
 - **彻底根治浏览器强缓存导致的量化投注面板空白与大模型纠偏截断故障**：
   - 在 [main.go](file:///Users/gemini/Projects/Own/FIFA2026/src/main.go) 中注入静态资源强制不缓存（No-Cache）中间件，并在 [index.html](file:///Users/gemini/Projects/Own/FIFA2026/src/frontend/index.html) 中将所有静态脚本版本号强刷至最新版 `?v=20260616_0200`，强制浏览器拉取最新代码，彻底消除了由强缓存引起的旧版 JS 切片属性 `toFixed` 运行时崩溃。
   - 为 [app.js](file:///Users/gemini/Projects/Own/FIFA2026/src/frontend/app.js) 的 `autoFetchAndCalculate` 情报新闻异步请求加入额外的 `try-catch` 容错，并优化了 `renderLotteryPanel` 在处理空数据或接口报错数据时的兜底渲染逻辑，杜绝了面板由于异常默默被清空为“空白”，消除了异常对大模型后台纠偏异步调用链的截断。

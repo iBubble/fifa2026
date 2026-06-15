@@ -1,10 +1,3 @@
-📅 2026-06-16 01:36 (CST)
-
-✅ Done:
-- 重构了 `hafu_verify_test.go` 回测逻辑，直接集成 `LotteryService` 接口与 `GenerateSingleAdvice` 方法，消除了在测试中硬编码 80/20 对冲资金的漏洞。
-- 回测验证德国vs库拉索（主胜率 80.8%）等超强优势局在撤销对冲后恢复 100% 独投，单场收益提升，累计稳妥投资盈亏从 248.00 元修正为真实的 270.20 元。
-- 确认本地 `go test` 回测通过，并重新编译部署后台 Docker 服务。
-
 📅 2026-06-16 01:46 (CST)
 
 ✅ Done:
@@ -19,5 +12,12 @@
 - 加固了 `app.js` 中 `autoFetchAndCalculate` 情报新闻异步请求的容错异常捕获，并优化了 `renderLotteryPanel` 中面对后端空/错结构时的兜底友好错误提示，杜绝面板悄无声息地清空为“空白”；消除了旧版 JS 报错对大模型后台异步调用链的截断。
 - 修复了 `ollama_test.go` 中已过时的超时与反思结果的测试断言冲突，将辅助 `sync_verify.go` 移动到独立的子目录下以彻底消除 package main 多入口重定义报错，确保本地 `go test` 和 `docker-compose --build` 全绿通过并顺利部署上线。
 
-⏳ To-Do:
+📅 2026-06-16 02:22 (CST)
+
+✅ Done (核心突破，限3条极简 bullet):
+- 重构 `index.html`，将精度折线图容器及右侧反思框由硬编码百分比宽度改为弹性伸缩 Flex 布局，防止渲染初期的 50px 宽度塌陷。
+- 在 `charts.js` 的图表渲染中引入基于 `setTimeout` 的异步 `resize()` 重绘机制，确保无论初始化状态如何，图表均能拉伸至实际可用宽度。
+- 本地 `node -c` 前端语法检查无误，并使用 `docker-compose up --build -d` 重建容器，使更新在容器生产环境无缝生效。
+
+⏳ To-Do (待办事项，限3条极简 bullet):
 - 无。
