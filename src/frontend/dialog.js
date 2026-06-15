@@ -38,16 +38,18 @@
       const alertContent = document.createElement("div");
       alertContent.id = "custom-alert-content";
       alertContent.style.cssText = `
-        background: rgba(20, 27, 45, 0.9);
-        border: 1px solid var(--neon-green, #00ff88);
-        box-shadow: 0 0 30px rgba(0, 255, 136, 0.15);
+        background: var(--panel-bg);
+        backdrop-filter: var(--glass-blur);
+        -webkit-backdrop-filter: var(--glass-blur);
+        border: 1px solid var(--panel-border);
+        box-shadow: var(--shadow-glow);
         border-radius: 14px;
         padding: 24px;
         max-width: 420px;
         width: 90%;
         text-align: center;
         animation: alertScaleUp 0.25s forwards cubic-bezier(0.16, 1, 0.3, 1);
-        color: #f0f3f8;
+        color: var(--text-main);
       `;
 
       const title = document.createElement("div");
@@ -66,7 +68,7 @@
         font-size: 13px;
         line-height: 1.6;
         margin-bottom: 20px;
-        color: #8b9bb4;
+        color: var(--text-muted);
       `;
 
       const confirmBtn = document.createElement("button");
@@ -141,16 +143,18 @@
         const confirmContent = document.createElement("div");
         confirmContent.id = "custom-confirm-content";
         confirmContent.style.cssText = `
-          background: rgba(20, 27, 45, 0.9);
-          border: 1px solid var(--neon-purple, #8800ff);
-          box-shadow: 0 0 30px rgba(136, 0, 255, 0.15);
+          background: var(--panel-bg);
+          backdrop-filter: var(--glass-blur);
+          -webkit-backdrop-filter: var(--glass-blur);
+          border: 1px solid var(--panel-border);
+          box-shadow: var(--shadow-glow);
           border-radius: 14px;
           padding: 24px;
           max-width: 420px;
           width: 90%;
           text-align: center;
           animation: alertScaleUp 0.25s forwards cubic-bezier(0.16, 1, 0.3, 1);
-          color: #f0f3f8;
+          color: var(--text-main);
         `;
 
         const title = document.createElement("div");
@@ -169,7 +173,7 @@
           font-size: 13px;
           line-height: 1.6;
           margin-bottom: 20px;
-          color: #8b9bb4;
+          color: var(--text-muted);
         `;
 
         const btnContainer = document.createElement("div");
@@ -184,10 +188,10 @@
         cancelBtn.style.cssText = `
           height: 32px;
           padding: 0 24px;
-          background: rgba(255, 255, 255, 0.05);
-          border: 1px solid rgba(255, 255, 255, 0.08);
+          background: var(--panel-bg);
+          border: 1px solid var(--panel-border);
           border-radius: 6px;
-          color: #8b9bb4;
+          color: var(--text-muted);
           font-weight: 800;
           font-size: 12px;
           cursor: pointer;
@@ -213,12 +217,12 @@
         `;
 
         cancelBtn.onmouseover = () => {
-          cancelBtn.style.background = "rgba(255, 255, 255, 0.1)";
-          cancelBtn.style.color = "white";
+          cancelBtn.style.background = "var(--panel-border)";
+          cancelBtn.style.color = "var(--text-main)";
         };
         cancelBtn.onmouseout = () => {
-          cancelBtn.style.background = "rgba(255, 255, 255, 0.05)";
-          cancelBtn.style.color = "#8b9bb4";
+          cancelBtn.style.background = "var(--panel-bg)";
+          cancelBtn.style.color = "var(--text-muted)";
         };
         okBtn.onmouseover = () => {
           okBtn.style.transform = "translateY(-1px)";

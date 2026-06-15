@@ -21,8 +21,14 @@ func NewBacktestService(elo *EloService, ollama *ai.OllamaService, dc *DixonCole
 	}
 }
 
+var backtestSemaphore = make(chan struct{}, 1)
+
 // ReviewMatch 赛后复盘单场预测精度并自适应进化
 func (s *BacktestService) ReviewMatch(match models.Match, report *models.PredictionReport) (db.DbBacktestReport, error) {
+	// 复盘串行化限流，防止并发把 Ollama 推理队列堵塞
+	backtestSemaphore <- struct{}{}
+	defer func() { <-backtestSemaphore }()
+
 	// 1. 计算 Brier Score
 	var pWin, pDraw, pLoss float64
 	for _, cell := range report.ScoreMatrix {

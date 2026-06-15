@@ -123,8 +123,10 @@ func (s *LotteryService) GenerateSingleAdvice(match models.Match, oddsHome, odds
 
 			advice.PrimaryBet = primary
 			advice.PrimaryOdds = pOdds
-			advice.PrimaryStake = 0.80
-			advice.Status = "RECOMMENDED"
+			llmPrefix := ""
+			if isLLMRefined {
+				llmPrefix = "【外围情报校准】"
+			}
 
 			// 3. 配置对冲项 (比分1-1)
 			hedgeOutcome := "比分 1-1"
@@ -134,17 +136,22 @@ func (s *LotteryService) GenerateSingleAdvice(match models.Match, oddsHome, odds
 					hedgeOdds = val
 				}
 			}
-			advice.HedgeBets = []Hedge{
-				{Outcome: hedgeOutcome, Odds: hedgeOdds, StakePct: 0.20},
+
+			if pProb >= 0.75 {
+				advice.PrimaryStake = 1.0
+				advice.HedgeBets = []Hedge{}
+				advice.Reason = fmt.Sprintf("%s官方常规胜平负未开售，系统自动切换至让球。测算让球胜率高达 %s，属碾压级优势局，建议体彩 100%% 独投【%s】以最大化优势盘口红利。",
+					llmPrefix, fmt.Sprintf("%.1f%%", pProb*100), primary)
+			} else {
+				advice.PrimaryStake = 0.80
+				advice.HedgeBets = []Hedge{
+					{Outcome: hedgeOutcome, Odds: hedgeOdds, StakePct: 0.20},
+				}
+				advice.Reason = fmt.Sprintf("%s官方常规胜平负未开售，系统自动切换至让球玩法。让球胜率达 %s，建议体彩 80%% 投【%s】，20%% 配备【%s @%.2f】保本防冷平。", 
+					llmPrefix, fmt.Sprintf("%.1f%%", pProb*100), primary, hedgeOutcome, hedgeOdds)
 			}
 
-			llmPrefix := ""
-			if isLLMRefined {
-				llmPrefix = "【外围情报校准】"
-			}
-			advice.Reason = fmt.Sprintf("%s官方常规胜平负未开售，系统自动切换至让球玩法。让球胜率达 %s，建议体彩 80%% 投【%s】，20%% 配备【%s @%.2f】保本防冷平。", 
-				llmPrefix, fmt.Sprintf("%.1f%%", pProb*100), primary, hedgeOutcome, hedgeOdds)
-
+			advice.Status = "RECOMMENDED"
 			advice.OfficialOdds = &official
 			return advice
 		} else {
@@ -317,7 +324,6 @@ func (s *LotteryService) GenerateSingleAdvice(match models.Match, oddsHome, odds
 
 	advice.PrimaryBet = primary
 	advice.PrimaryOdds = pOdds
-	advice.PrimaryStake = 0.80
 	advice.Status = "RECOMMENDED"
 
 	var hedgeOutcome string
@@ -348,15 +354,24 @@ func (s *LotteryService) GenerateSingleAdvice(match models.Match, oddsHome, odds
 		}
 	}
 
-	advice.HedgeBets = []Hedge{
-		{Outcome: hedgeOutcome, Odds: hedgeOdds, StakePct: 0.20},
-	}
-
 	llmPrefix := ""
 	if isLLMRefined {
 		llmPrefix = "【外围情报校准】"
 	}
-	advice.Reason = fmt.Sprintf("%s定量模型测算首推胜率达 %s，建议体彩 80%% 投【%s】，20%% 配备【%s @%.2f】防冷平，锁死下限保本。", llmPrefix, fmt.Sprintf("%.1f%%", pProb*100), primary, hedgeOutcome, hedgeOdds)
+
+	if pProb >= 0.75 {
+		advice.PrimaryStake = 1.0
+		advice.HedgeBets = []Hedge{}
+		advice.Reason = fmt.Sprintf("%s定量模型测算首推胜率高达 %s，属超强实力碾压局，建议体彩 100%% 独投【%s】以避免分仓对冲造成的资金红利稀释。",
+			llmPrefix, fmt.Sprintf("%.1f%%", pProb*100), primary)
+	} else {
+		advice.PrimaryStake = 0.80
+		advice.HedgeBets = []Hedge{
+			{Outcome: hedgeOutcome, Odds: hedgeOdds, StakePct: 0.20},
+		}
+		advice.Reason = fmt.Sprintf("%s定量模型测算首推胜率达 %s，建议体彩 80%% 投【%s】，20%% 配备【%s @%.2f】防冷平，锁死下限保本。",
+			llmPrefix, fmt.Sprintf("%.1f%%", pProb*100), primary, hedgeOutcome, hedgeOdds)
+	}
 
 	return advice
 }

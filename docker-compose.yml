@@ -12,8 +12,8 @@ services:
       - PORT=20260
       - OLLAMA_URL=http://host.docker.internal:11434
       - OLLAMA_MODEL=qwen3.6:35b-q4
-      - OLLAMA_PREDICT_TIMEOUT=30
-      - OLLAMA_REVIEW_TIMEOUT=60
+      - OLLAMA_PREDICT_TIMEOUT=120
+      - OLLAMA_REVIEW_TIMEOUT=180
       - HTTP_PROXY=http://host.docker.internal:7897
       - HTTPS_PROXY=http://host.docker.internal:7897
       - NO_PROXY=localhost,127.0.0.1,host.docker.internal

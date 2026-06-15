@@ -25,43 +25,28 @@ graph TD
     C -->|参数定性微调 offsets| D
     D -->|生成归一化联合概率矩阵| E[深度预测报告]
     E -->|10,000次推演| F[蒙特卡洛全赛事模拟]
-    E -->|期望价值 EV > 0 过滤| G[多臂凯利公式最优资金流]
+    E -->|官方五大玩法精算| G[前三稳妥/激进推荐算法]
+    G -->|期望价值 EV > 0 过滤| H[多臂凯利公式最优配资]
     
-    H[后台 LiveSync 常驻同步] -->|时间衰减泊松推进| I[Live 实时比分 / FT 完赛结算]
-    I -->|结算触发复盘| J[Backtest 精度精算]
-    J -->|Brier Score 反馈梯度| K[Elo战力修正 & Dixon-Coles 自动纠偏]
-    K -->|自适应进化调节| D
+    I[后台 LiveSync 常驻同步] -->|时间衰减泊松推进| J[Live 实时比分 / FT 完赛结算]
+    J -->|结算触发复盘| K[Backtest 精度精算]
+    K -->|Brier Score 反馈梯度| L[Elo战力修正 & Dixon-Coles 自动纠偏]
+    L -->|自适应进化调节| D
 ```
 
 ---
 
-## 🌟 核心功能
+## 🌟 核心功能亮点
 
 > [!IMPORTANT]
-> **1. 双变量泊松回归预测 (Dixon-Coles Engine)**
-> - 采用经典的 **Dixon-Coles 算法** 计算两队期望进球率（$\lambda_H$, $\lambda_A$）及平局算子（$\rho$）。
-> - 精算 6x6 比分概率矩阵，有效消除低分截断误差，输出胜平负无偏概率。
+> **1. 官方五大玩法前三精细化精算 (Multi-Option Kelly & EV Selections)**
+> - **排名前三期权推荐**：胜平负、让球胜平负、比分、总进球数、半全场胜平负这官方五大玩法，全面升级为“双通道”前三推荐。稳妥型按照胜率（Probability）降序推荐前三，激进型按照期望价值（Expected Value, EV）降序推荐前三。
+> - **可视化阶梯高亮**：前端渲染界面引入阶梯色差，在激进型中对不同程度的正/负 EV 引入绿色到红色的动态色温高亮，一目了然展现性价比之选。
 
 > [!TIP]
-> **2. 混合型定性偏置修正与 AI 防幻觉机制 (AI Parameter Refiner & Anti-Hallucination)**
-> - **Ollama 原生接口优化**：联动本地 **Ollama 实例**，采用 Native `/api/chat` 原生接口，注入 `"stream": false, "think": false` 深度精简思维链推理，配合 `qwen3:8b` 模型将单次定性偏置响应耗时从 80s+ 极大降低至 **12.6s 内**，并将 `temperature` 设为 0-0.1，实现高确定性推理。
-> - **东道主防幻觉安全锁**：系统提示词强约束“东道主仅限美、加、墨三国”，非此三国对决均视为中立。使用“排位主/排位客”提示词，彻底消除了大模型胡编乱造东道主的幻觉。
-
-> [!NOTE]
-> **3. 前端缓存优先与后台静默计算 (Frontend Cache-First & Silent Background Recalc)**
-> - **极致零延迟切换**：前端基于 `_llmCache` 缓存已解算的预测报告，结合 `_llmPending` 并发去重防止重复发起大模型任务。
-> - **自适应局部刷新**：未命中缓存的赛事由后台静默发起大模型预测。计算完毕后，自动级联更新单场五大玩法投注建议及多场混合过关精算，无白屏或阻断，支持“手动强刷”一键覆写。
-
-> [!IMPORTANT]
-> **4. 布莱尔分数自适应反馈进化 (Online Parameter Tuning)**
-> - 完赛时自动精算 **Brier Score (布莱尔分数)** 校验联合预测误差。
-> - 依据布莱尔误差方向反推修正梯度，在线更新 `rhoOffset` 偏置，实现预测精准度随着完赛场次递增的**闭环自我进化**。
-
-> [!IMPORTANT]
-> **5. 纯量化预测精度复盘与独立走势曲线 (Pure Accuracy Replay & Independent Precision Curves)**
-> - **全面去金钱化**：复盘机制完全剥离本金、投入、收益、ROI等金钱计算，专注于量化模型自身的预测正确率。
-> - **双轴精度曲线与精细化 Leg 钻取**：使用 ECharts 动态初始化，单场复盘绘制“主推累计命中率”与“整体覆盖成功率”，串关支持 Leg 级深度解析与弹窗展示。
-> - **极致交互**：点击复盘按钮直接后台自动结算并弹窗刷新精度图表，彻底取消原生阻碍的 `alert` 提示对话框。
+> **2. 强缓存安全防刷熔断器与前端 try-catch 坚固防线**
+> - **Gin No-Cache 中间件**：后端强制注入静态路由不缓存控制头，搭配 `index.html` 中的 Cache-Busting 版本戳更新（`?v=20260616_0200`），彻底根治了浏览器强缓存加载旧版 JS 导致切片数组属性 `toFixed` 异常运行时崩溃的故障。
+> - **流水线异常熔断隔离**：在 `autoFetchAndCalculate` 计算流的外部 RSS 情报获取模块中引入独立的 `try-catch` 防御，避免了因为新闻接口偶发的网络波动超时而级联截断后续定量预测与 LLM 纠偏异步计算管道的情况。
 
 > [!WARNING]
 > **6. 情报去噪声与物理持久化 (Anti-Hallucination Persistence)**
@@ -113,11 +98,13 @@ graph TD
   其中 $\gamma = 0.005$ 为几率敏感度调节算子（代表 `0.5%` 的偏置比重）。降水（$ShiftPct_b < 0$）几率微升，升水（$ShiftPct_b > 0$）几率微降。调整后的概率通过归一化重新分配整个胜平负概率空间：
   $$P_{\final}(o) = \frac{P_{\shifted}(o)}{\sum_{x \in \mathcal{O}} P_{\shifted}(x)}$$
   修正后的胜平负三元概率，将等比例映射并向下游的比分概率矩阵、总进球数概率及半全场概率空间做全矩阵级传递。
-- **稳妥型决策策略 (Conservative Pick)**：在指定投注玩法的所有可行期权集合 $\mathcal{O}$ 中，选择经过大模型与定量模型解算后，发生概率最高的期权项：
-  $$O_{\conservative} = \arg\max_{o \in \mathcal{O}} P_{\final}(o)$$
-- **激进型决策策略 (Aggressive Pick)**：在指定投注玩法的所有可行期权集合 $\mathcal{O}$ 中，对比官方实时赔率 $Odds(o)$，选择能够最大化单次数学期望价值（EV）的期权项：
-  $$O_{\aggressive} = \arg\max_{o \in \mathcal{O}} \left[ P_{\final}(o) \times Odds(o) - 1 \right]$$
-  *(注：系统隐藏了显示层面上易造成干扰的单场预估收益率，直接以纯粹的决策推荐为导向，移除了传统的单场风控硬过滤。)*
+- **稳妥型前三期权推荐 (Conservative Top-3 Selection)**：在指定投注玩法的所有可行期权集合 $\mathcal{O}$ 中，提取经模型解算后几率最高的排名前三位期权并按降序输出：
+  $$\mathcal{S}_{\conservative}^{(1,2,3)} = \text{Top-3-Descending}_{P_{\final}} \left( o \in \mathcal{O} \right)$$
+- **激进型前三期权推荐 (Aggressive Top-3 EV Selection)**：对比官方实时赔率 $Odds(o)$，精算出每个期权项的单次数学期望价值（EV），并提取 EV 最高的排名前三期权做降序推荐：
+  $$\mathcal{S}_{\aggressive}^{(1,2,3)} = \text{Top-3-Descending}_{\text{EV}} \left( o \in \mathcal{O} \right)$$
+  其中期望值计算公式为：
+  $$\text{EV}(o) = P_{\final}(o) \times Odds(o) - 1.0$$
+  *(注：系统为确保组合推荐的极佳竞技纯粹性，完全隐藏了单场投注金额和收益配比，仅通过精细化降序排列引导决策，并结合阶梯色差在 UI 上进行高亮提示。)*
 
 ### 3. 智能多场混合过关套利精算算法 (EV Joint Optimization & Multi-Leg Kelly)
 针对多场串关组合（$K$ 场比赛串关），系统引入了去抽水联合期望价值精算和多臂凯利公式最优配资：

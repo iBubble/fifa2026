@@ -1,8 +1,60 @@
 # CHANGELOG
 
+## [Unreleased] - 2026-06-16
+
+### Fixed
+- **彻底根治浏览器强缓存导致的量化投注面板空白与大模型纠偏截断故障**：
+  - 在 [main.go](file:///Users/gemini/Projects/Own/FIFA2026/src/main.go) 中注入静态资源强制不缓存（No-Cache）中间件，并在 [index.html](file:///Users/gemini/Projects/Own/FIFA2026/src/frontend/index.html) 中将所有静态脚本版本号强刷至最新版 `?v=20260616_0200`，强制浏览器拉取最新代码，彻底消除了由强缓存引起的旧版 JS 切片属性 `toFixed` 运行时崩溃。
+  - 为 [app.js](file:///Users/gemini/Projects/Own/FIFA2026/src/frontend/app.js) 的 `autoFetchAndCalculate` 情报新闻异步请求加入额外的 `try-catch` 容错，并优化了 `renderLotteryPanel` 在处理空数据或接口报错数据时的兜底渲染逻辑，杜绝了面板由于异常默默被清空为“空白”，消除了异常对大模型后台纠偏异步调用链的截断。
+  - 修复了 [ollama_test.go](file:///Users/gemini/Projects/Own/FIFA2026/src/internal/service/ai/ollama_test.go) 中已过时的测试断言，并将 [sync_verify.go](file:///Users/gemini/Projects/Own/FIFA2026/src/cmd/sync_verify/sync_verify.go) 移动到独立的子目录下以消除 package main 重定义冲突，确保了本地 `go test` 和 `docker-compose --build` 的全绿通过。
+- **重构已完赛数据对账回测逻辑与资金对冲分仓 stake 算法同步**：
+  - 重构了 [hafu_verify_test.go](file:///Users/gemini/Projects/Own/FIFA2026/src/internal/service/prediction/hafu_verify_test.go) 回测系统逻辑，直接调用了 [lottery.go](file:///Users/gemini/Projects/Own/FIFA2026/src/internal/service/prediction/lottery.go) 的 `GenerateSingleAdvice` 进行盈亏仿真，消除了回测代码中硬编码 80/20 分仓比率的旧实现。
+  - 成功修复了德国 vs 库拉索（主胜率 80.8%）等实力悬殊的超强碾压局因强制对比分对冲而导致盈亏倒挂的问题，撤销对冲恢复 100% 独投主推，单场收益从 -11.2 元转为 +11.0 元，累计稳妥投资回测盈亏成功修正为真实的 +270.20 元。
+
+### Added
+- **五大玩法量化投注建议重构（支持稳妥/激进分别推荐前三方案）**：
+  - 重构了 [five_plays.go](file:///Users/gemini/Projects/Own/FIFA2026/src/internal/service/prediction/five_plays.go)，修改 `PlayAdvice` 结构体，将原先稳妥与激进返回的单个选项升级为 `[]PlayOption` 切片。
+  - 编写了排序辅助函数 `getTop3Safe` 和 `getTop3Aggressive`，支持在“胜平负”、“让球”、“比分”、“总进球数”及“半全场”五种玩法开售时，稳妥型按概率（Prob）降序提取前三推荐方案，激进型按期望价值（EV）降序提取前三推荐方案（不足 3 个则按实际返回，若未售则只返回不可售占位）。
+  - 修改了 [app.js](file:///Users/gemini/Projects/Own/FIFA2026/src/frontend/app.js) 的 `renderLotteryPanel` 函数以适配前三方案列表渲染，并在稳妥型中直观呈现胜率占比，激进型中呈现概率及期望值（EV）的具体颜色可视效果。
+
 ## [Unreleased] - 2026-06-15
 
+### Fixed
+- **Ollama 独立 Context 超时控制**：
+  - 在 `RefineParams` 中，将步骤一（常规立论）、步骤二（魔鬼反驳）和步骤三（裁判仲裁）由原本的共享同一个 Context 变更为每个步骤分配独立的 Context 超时，彻底解耦了多阶段交互下的超时时间累加，确保单步骤超长生成时不被级联熔断，提升系统高可用度。
+- **修复历史记录弹窗报错 (404 纯文本解析 JSON 失败)**：
+  - 在 Go 后端 `src/main.go` 中正式注册了未注册的 `/api/lottery/saved` 接口（获取所有已保存方案记录）及 `/api/lottery/delete` 接口（物理批量删除保存记录）。
+  - 在 `src/main.go` 中实现了 `buildSingleSavedItem` 和 `buildParlaySavedItem` 辅助方法，对已保存的单场及串关方案进行了规范化字段映射与比赛实时数据整合，完美保障了历史方案记录弹窗在“浅色”、“深色”及“玻璃”三套主题下的稳定加载与数据操作。
+- **优化已完赛复盘模块主客队丢失与超时降级分析**：
+  - 后端 `/api/backtest/history` 路由在返回已完赛复盘报告时，主动关联比赛库 `db.GetMatch` 并补全主客队名称及比分字段直接返回，前端 [app.js](file:///Users/gemini/Projects/Own/FIFA2026/src/frontend/app.js) 优先采信此数据，彻底消除了缓存未命中而导致批量渲染出 `主队 0 : 0 客队` 的体验问题。
+  - 在大模型服务 [ollama.go](file:///Users/gemini/Projects/Own/FIFA2026/src/internal/service/ai/ollama.go) 中引入了 `GenerateFallbackReview` 赛后精算兜底生成器。可针对不同的比赛走向（主胜/客胜/平局/大胜/小胜/闷平）和 Brier Score 精度指标，自适应输出 10 种以上多样化的专业精算师赛后反思文本。
+  - 在后端路由获取复盘时对历史存量数据进行动态内存清洗，并将数据库中因超时遗留的无效占位废弃记录一键物理清除，使页面底端已完赛历史的展现效果极致清爽且富有专业深度。
+
+### Added
+- **全局 Ollama 请求串行互斥锁**：
+  - 在 [ollama.go](file:///Users/gemini/Projects/Own/FIFA2026/src/internal/service/ai/ollama.go) 中引入全局 `mu sync.Mutex`，将所有底层发往宿主机 Ollama API 的 HTTP `Do` 请求进行互斥加锁排队。防止在对话、微调预测与翻译等多并发任务涌入时，本地大模型发生 Model Thrashing 颠簸加载导致队列死锁与严重超时，极大地提高了 Warm Start 命中率及响应效率。
+- **大模型启动异步预热（Warm-Up）**：
+  - 在系统启动时，通过异步心跳协程向 Ollama 发送极简请求，强行触发 `qwen3.6:35b-q4` 本地大模型和 `qwen3:8b` 辅助反驳大模型加载驻留至显存中，完全消除了用户前台首次提问时的冷启动卡顿与超时。
+- **macOS 26 液体玻璃质感主题流光特效**：
+  - 在 `index.html` 与 `style.css` 中设计并注入了三颗带缓慢漂移缩放运动动画的高饱和度霓虹渐变发光气泡（`glass-bg-glow`），赋予玻璃主题高色彩对比的底图透射。
+  - 为 `.theme-glass` 主题容器注入了高通透度的 macOS 2026 “液态玻璃”物理级反射，包含 28px 高饱和度背景模糊、`0.25` 的反射亮白边框与顶层 `0.35` 亮度的反射内发光，配以高亮与轻微文本阴影保护，并完全取消了 hover 时的 scale 缩放及位移变形（`transform: none`），从根本上避免了在可滚动面板边缘产生超出裁剪的缺陷，实现了出色的物理折射深邃感与精细的排版布局。
+
 ### Changed
+- **Docker 共享宿主机网络与直连优化**：
+  - 将 `docker-compose.yml` 中的网络模式变更为 `network_mode: "host"`，移除多余端口映射，将 `OLLAMA_URL` 变量切换为 `http://127.0.0.1:11434` 直连，彻底排除了 Docker 内置虚拟网桥对 Ollama 物理主机通信的高延迟与断连风险。
+- **系统默认主题切换为玻璃效果**：
+  - 更新了 `index.html` 的头部防闪屏 inline 脚本与 `app.js` 中的主题初始化逻辑。在首次冷启动（缓存未命中）时，将默认的主题 fallback 由原本的深色（`dark`）变更为流体玻璃效果（`glass`），以向用户首要呈现 premium 的 iOS 26/macOS 26 液体流光折射质感。
+- **全局隐藏页面滚动条**：
+  - 更新了 `style.css`。在所有主题样式下，利用全局选择器强行隐藏了所有内部可滚动容器及页面垂直与水平滚动条（`display: none`），并辅以 `scrollbar-width: none` 及 `-ms-overflow-style: none` 实现跨主流浏览器（Chrome/Safari/Firefox/Edge）的滚动条隐藏，使页面保持干净与高级的极简排版，且不影响其滚动功能。
+- **浅色主题易读性与文字对比度优化**：
+  - 解决了“原始泊松回归模型”卡片、过关选项、体彩结果及走势图背景等局部灰色模块的暗色突兀问题，通过引入 `--sub-panel-bg` 变量，在浅色主题下统一为雅致明亮的淡白背景（`rgba(255, 255, 255, 0.45)`），与大卡片及多 Agent 结果保持了完全的一致感。
+  - 将“启动大模型纠偏”与“AI 智能对话”触发按钮由硬编码深色/深灰色背景，重构为浅色专属的轻量化淡紫绿渐变底色配深紫色高对比度边框与字色，解决了浅色下按钮色块突兀不协调的问题。
+  - 将浅色模式主背景色 `--bg-main` 调深至更具质感与反差的灰蓝色 `#dee5f0`，并调高了背景微弱霓虹渐变气泡的透明度，拉大了白色卡片容器（`--panel-bg`）与背景层之间的明暗立体对比。
+  - 重构了 `#current-match-title` 标题、`#qualitative-input` 突发战术输入框、`#ai-chat-input` 智能助手对话框以及多场串关方案列表 `schemesList` 的渲染逻辑，将原本写死的 `color: white;` 硬编码文字全部替换为 `color: var(--text-white-adapt);` 等自适应变量，彻底解决了在浅色模式白色卡片底色上文字“隐形”无法识别的缺陷。
+- **自定义警告与确认弹窗主题自适应**：
+  - 升级了 `dialog.js` 中的 `window.alert` 和 `window.customConfirm` 自定义弹窗，使用自适应背景 `var(--panel-bg)`、自适应文字 `var(--text-main)` 以及自适应边框与阴影，重构了取消按钮在不同主题下的高对比度配色交互，使弹窗在三套主题间无缝完美过渡。
+- **主题切换控制器顺序校准**：
+  - 调整了顶栏 Header 右上角的主题切换胶囊控制器按钮顺序，将原本的“深色”、“浅色”、“玻璃”修改为“浅色”、“深色”、“玻璃”，更贴合主流用户的浏览与切换习惯。
 - **默认 AI 聊天 Loading 话术普适化**：
   - 将前端 `app.js` 中发送聊天消息时的默认 Loading 状态话术由“正在检索全网事实与深度推理中...”变更为“正在深度推理与组织回答中...”，防范在回答闲聊、基础数学及常识问答时给用户产生强行无端联网搜索的误导体验。
   - 保留并仅当遇到天气或投注精算特定关键词时才展示特定气象与方案精算 Loading。

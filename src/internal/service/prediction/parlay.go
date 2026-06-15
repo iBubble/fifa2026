@@ -745,48 +745,9 @@ func (s *ParlayService) getBestSingleChoice(matchID string, playCode string) (st
 		}
 
 	case "hafu":
-		hafuProbs := make(map[string]float64)
-		options := []string{"胜胜", "胜平", "胜负", "平胜", "平平", "平负", "负胜", "负平", "负负"}
-		for _, op := range options {
-			hafuProbs[op] = 0.0
-		}
 		lh := report.RefinedParams.LambdaHome
 		la := report.RefinedParams.LambdaAway
-		lhHalf := lh * 0.5
-		laHalf := la * 0.5
-		lhSecond := lh * 0.5
-		laSecond := la * 0.5
-
-		for hHome := 0; hHome <= 4; hHome++ {
-			for hAway := 0; hAway <= 4; hAway++ {
-				pHalf := s.dcService.ComputePoissonProb(lhHalf, hHome) * s.dcService.ComputePoissonProb(laHalf, hAway)
-				for sHome := 0; sHome <= 4; sHome++ {
-					for sAway := 0; sAway <= 4; sAway++ {
-						pSec := s.dcService.ComputePoissonProb(lhSecond, sHome) * s.dcService.ComputePoissonProb(laSecond, sAway)
-						pJoint := pHalf * pSec
-						var halfState string
-						if hHome > hAway {
-							halfState = "胜"
-						} else if hHome == hAway {
-							halfState = "平"
-						} else {
-							halfState = "负"
-						}
-						fHome := hHome + sHome
-						fAway := hAway + sAway
-						var fullState string
-						if fHome > fAway {
-							fullState = "胜"
-						} else if fHome == fAway {
-							fullState = "平"
-						} else {
-							fullState = "负"
-						}
-						hafuProbs[halfState+fullState] += pJoint
-					}
-				}
-			}
-		}
+		hafuProbs := CalculateRefinedHafuProbs(lh, la, m, odds, s.dcService)
 
 		hafuKeys := map[string]string{
 			"胜胜": "hh", "胜平": "hd", "胜负": "ha",

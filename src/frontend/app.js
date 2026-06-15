@@ -333,7 +333,7 @@ function renderPredictionResult(report) {
       CoTHtml = `
         <div style="background: rgba(255,255,255,0.02); border: 1px dashed var(--panel-border); padding: 12px; border-radius: 6px; text-align: center; font-size: 12px; margin-top: 6px; display: flex; align-items: center; justify-content: center; gap: 10px;">
           <span style="color: var(--text-muted);">💡 纯定量模型结果</span>
-          <button onclick="autoFetchAndCalculate(true)" style="background: linear-gradient(135deg, var(--neon-green), var(--neon-purple)); color: #fff; border: none; border-radius: 4px; padding: 4px 12px; font-size: 11px; cursor: pointer; font-weight: 700;">🔄 启动大模型纠偏</button>
+          <button onclick="autoFetchAndCalculate(true)" class="correct-bias-btn">🔄 启动大模型纠偏</button>
         </div>
       `;
     }
@@ -343,7 +343,7 @@ function renderPredictionResult(report) {
   let html = `
     <div style="display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 8px; width: 100%;">
       <!-- 左列: 纯定量泊松回归 (Dixon-Coles) -->
-      <div style="flex: 1; min-width: 250px; background: rgba(0,0,0,0.18); border: 1px solid var(--panel-border); border-radius: 8px; padding: 10px; display: flex; flex-direction: column; gap: 6px;">
+      <div style="flex: 1; min-width: 250px; background: var(--sub-panel-bg); border: 1px solid var(--panel-border); border-radius: 8px; padding: 10px; display: flex; flex-direction: column; gap: 6px;">
         <h4 style="color: var(--text-main); font-size: 13px; font-weight: 800; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 4px; margin-top: 0; margin-bottom: 4px; display: flex; justify-content: space-between;">
           <span>📐 原始泊松回归模型</span>
           <span style="font-size: 10px; color: var(--text-muted); font-weight: normal;">(不含定性修正)</span>
@@ -357,8 +357,8 @@ function renderPredictionResult(report) {
           `).join("") : `<div style="color:var(--text-muted); font-style:italic;">矩阵未载入</div>`}
         </div>
         <div style="margin-top: 6px; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 6px; display: flex; justify-content: space-between; font-size: 11.5px; color: var(--text-muted);">
-          <span>大球 (Over 2.5): <strong style="color:#fff;">${((report.originalOver2_5Prob || 0)*100).toFixed(1)}%</strong></span>
-          <span>小球 (Under 2.5): <strong style="color:#fff;">${((report.originalUnder2_5Prob || 0)*100).toFixed(1)}%</strong></span>
+          <span>大球 (Over 2.5): <strong style="color:var(--text-white-adapt);">${((report.originalOver2_5Prob || 0)*100).toFixed(1)}%</strong></span>
+          <span>小球 (Under 2.5): <strong style="color:var(--text-white-adapt);">${((report.originalUnder2_5Prob || 0)*100).toFixed(1)}%</strong></span>
         </div>
       </div>
 
@@ -556,9 +556,20 @@ async function autoFetchAndCalculate(forceRecalc = false) {
   const myMatchID = currentMatchID;
 
   try {
-    // 1. 获取最新情报列表并串联
-    const resNews = await fetch(`${API_BASE}/news?matchId=${myMatchID}`);
-    const articles = await resNews.json();
+    // 1. 获取最新情报列表并串联 (加入安全 try-catch 防御)
+    let articles = [];
+    try {
+      const resNews = await fetch(`${API_BASE}/news?matchId=${myMatchID}`);
+      if (resNews.ok) {
+        const data = await resNews.json();
+        if (Array.isArray(data)) {
+          articles = data;
+        }
+      }
+    } catch (e) {
+      console.warn("自动计算流中获取情报失败:", e);
+    }
+    
     const topArticles = articles.slice(0, 3);
     const translatedParts = [];
     for (let art of topArticles) {
@@ -636,24 +647,32 @@ async function autoFetchAndCalculate(forceRecalc = false) {
 
 // 辅助：刷新体彩投注单面板
 async function _refreshLotteryPanel(report, matchId) {
-  const oddsH = parseFloat(document.getElementById("lottery-odds-h").value) || 1.95;
-  const oddsD = parseFloat(document.getElementById("lottery-odds-d").value) || 3.20;
-  const oddsA = parseFloat(document.getElementById("lottery-odds-a").value) || 3.80;
-  let matchIDs = [matchId];
-  const items = Array.from(document.querySelectorAll(".match-item"));
-  for (let item of items) {
-    const mid = item.dataset.matchId;
-    if (mid && mid !== matchId) { matchIDs.push(mid); break; }
-  }
-  const res = await fetch(`${API_BASE}/lottery/recommend`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ matchIds: matchIDs, odds: [oddsH, oddsD, oddsA], predictReport: report })
-  });
-  const data = await res.json();
-  if (currentMatchID === matchId) {
-    lastLotteryData = data;
-    await renderLotteryPanel(data);
+  try {
+    const oddsH = parseFloat(document.getElementById("lottery-odds-h").value) || 1.95;
+    const oddsD = parseFloat(document.getElementById("lottery-odds-d").value) || 3.20;
+    const oddsA = parseFloat(document.getElementById("lottery-odds-a").value) || 3.80;
+    let matchIDs = [matchId];
+    const items = Array.from(document.querySelectorAll(".match-item"));
+    for (let item of items) {
+      const mid = item.dataset.matchId;
+      if (mid && mid !== matchId) { matchIDs.push(mid); break; }
+    }
+    const res = await fetch(`${API_BASE}/lottery/recommend`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ matchIds: matchIDs, odds: [oddsH, oddsD, oddsA], predictReport: report })
+    });
+    const data = await res.json();
+    if (currentMatchID === matchId) {
+      lastLotteryData = data;
+      await renderLotteryPanel(data);
+    }
+  } catch (err) {
+    console.error("量化面板刷新异常:", err);
+    const resDom = document.getElementById("lottery-result");
+    if (resDom) {
+      resDom.innerHTML = `<div style="color:#ff4a4a; font-size:11px; padding:10px;">⚠️ 前端量化建议渲染异常: ${err.message}</div>`;
+    }
   }
 }
 
@@ -794,12 +813,13 @@ document.getElementById("lottery-risk-level").onchange = () => {
 
 async function renderLotteryPanel(recommendData = null) {
   const resultDom = document.getElementById("lottery-result");
-  
-  let html = "";
+  try {
+    let html = "";
   
   if (recommendData) {
-    // 渲染五大核心玩法量化建议
-    if (recommendData.fivePlays && recommendData.fivePlays.length > 0) {
+    if (recommendData.error) {
+      html += `<div style="color: #ff4a4a; font-size: 11px; padding: 10px;">⚠️ 接口请求失败: ${recommendData.error}</div>`;
+    } else if (recommendData.fivePlays && recommendData.fivePlays.length > 0) {
       // 1. 生成 5 个 Tab 切换栏
       html += `
         <div style="margin-bottom: 4px;">
@@ -821,50 +841,93 @@ async function renderLotteryPanel(recommendData = null) {
       recommendData.fivePlays.forEach(play => {
         const cardDisplay = play.playCode === "had" ? "block" : "none";
 
-        const isSafeUnsold = play.safe.odds <= 0 || play.safe.option === "未开售" || play.safe.option === "不可售" || play.safe.option === "--";
-        const safeOptionText = isSafeUnsold ? `<span style="color: var(--text-muted); font-style: italic; font-weight: 500;">不可售</span>` : `${play.safe.option} <span style="color: var(--neon-green);">@${play.safe.odds.toFixed(2)}</span>`;
-        const safeProbText = isSafeUnsold ? `--` : `${(play.safe.prob * 100).toFixed(1)}%`;
-
-        const isAggressiveUnsold = play.aggressive.odds <= 0 || play.aggressive.option === "未开售" || play.aggressive.option === "不可售" || play.aggressive.option === "--";
-        const aggressiveOptionText = isAggressiveUnsold ? `<span style="color: var(--text-muted); font-style: italic; font-weight: 500;">不可售</span>` : `${play.aggressive.option} <span style="color: var(--neon-green);">@${play.aggressive.odds.toFixed(2)}</span>`;
-        const aggressiveProbText = isAggressiveUnsold ? `--` : `${(play.aggressive.prob * 100).toFixed(1)}%`;
-
-        html += `
-          <div class="lottery-play-card" id="play-card-${play.playCode}" style="display: ${cardDisplay}; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 6px; padding: 8px; font-size: 12.5px;">
-            <div style="font-weight: 700; color: #fff; margin-bottom: 6px; display: flex; align-items: center; justify-content: space-between; font-size: 13.5px;">
-              <span>🎫 ${play.playName}</span>
+        let safeHtml = "";
+        const isSafeUnsold = !play.safe || play.safe.length === 0 || play.safe[0].odds <= 0 || play.safe[0].option === "未开售" || play.safe[0].option === "不可售" || play.safe[0].option === "--";
+        if (isSafeUnsold) {
+          safeHtml = `
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+              <span style="color: var(--text-muted); font-size: 10px; display: flex; align-items: center; gap: 4px;">
+                <span style="background: rgba(0, 255, 136, 0.15); color: var(--neon-green); padding: 1px 4px; border-radius: 3px; font-size: 9px; font-weight: bold;">稳妥型</span>
+              </span>
+              <span style="color: var(--text-muted); font-style: italic; font-weight: 500; font-size: 12.5px;">不可售</span>
             </div>
-            
-            <div style="display: flex; flex-direction: column; gap: 5px;">
-              <!-- 稳妥型 -->
-              <div style="display: flex; justify-content: space-between; align-items: center;">
-                <span style="color: var(--text-muted); font-size: 10px; display: flex; align-items: center; gap: 4px;">
-                  <span style="background: rgba(0, 255, 136, 0.15); color: var(--neon-green); padding: 1px 4px; border-radius: 3px; font-size: 9px; font-weight: bold;">稳妥型</span>
-                </span>
-                <span style="color: #fff; font-size: 13.5px; font-weight: 800;">${safeOptionText}</span>
+          `;
+        } else {
+          let listItems = "";
+          play.safe.forEach((opt, idx) => {
+            listItems += `
+              <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px; line-height: 1.4; margin-bottom: 2px;">
+                <span style="color: var(--text-white-adapt); font-weight: 600;">${idx + 1}. ${opt.option} <span style="color: var(--neon-green);">@${opt.odds.toFixed(2)}</span></span>
+                <span style="color: var(--text-muted); font-size: 11px;">几率: <strong style="color: var(--text-white-adapt);">${(opt.prob * 100).toFixed(1)}%</strong></span>
               </div>
-              <div style="color: var(--text-muted); font-size: 11.5px; padding-left: 4px; margin-bottom: 2px;">
-                <span>几率: <strong style="color: #fff;">${safeProbText}</strong></span>
+            `;
+          });
+          safeHtml = `
+            <div style="margin-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.03); padding-bottom: 6px;">
+              <div style="display: flex; align-items: center; gap: 4px; margin-bottom: 4px;">
+                <span style="background: rgba(0, 255, 136, 0.15); color: var(--neon-green); padding: 1px 4px; border-radius: 3px; font-size: 9px; font-weight: bold;">稳妥型 (几率前三)</span>
               </div>
-              
-              <!-- 激进型 -->
-              <div style="display: flex; justify-content: space-between; align-items: center;">
-                <span style="color: var(--text-muted); font-size: 10px; display: flex; align-items: center; gap: 4px;">
-                  <span style="background: rgba(136, 0, 255, 0.15); color: #e2b3ff; padding: 1px 4px; border-radius: 3px; font-size: 9px; font-weight: bold;">激进型</span>
-                </span>
-                <span style="color: #fff; font-size: 13.5px; font-weight: 800;">${aggressiveOptionText}</span>
-              </div>
-              <div style="color: var(--text-muted); font-size: 11.5px; padding-left: 4px;">
-                <span>几率: <strong style="color: #fff;">${aggressiveProbText}</strong></span>
+              <div style="display: flex; flex-direction: column; gap: 2px; padding-left: 4px;">
+                ${listItems}
               </div>
             </div>
-          </div>
-        `;
+          `;
+        }
+
+        let aggressiveHtml = "";
+        const isAggressiveUnsold = !play.aggressive || play.aggressive.length === 0 || play.aggressive[0].odds <= 0 || play.aggressive[0].option === "未开售" || play.aggressive[0].option === "不可售" || play.aggressive[0].option === "--";
+        if (isAggressiveUnsold) {
+          aggressiveHtml = `
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <span style="color: var(--text-muted); font-size: 10px; display: flex; align-items: center; gap: 4px;">
+                <span style="background: rgba(136, 0, 255, 0.15); color: #e2b3ff; padding: 1px 4px; border-radius: 3px; font-size: 9px; font-weight: bold;">激进型</span>
+              </span>
+              <span style="color: var(--text-muted); font-style: italic; font-weight: 500; font-size: 12.5px;">不可售</span>
+            </div>
+          `;
+        } else {
+          let listItems = "";
+          play.aggressive.forEach((opt, idx) => {
+            const evText = opt.ev >= 0 ? `+${opt.ev.toFixed(2)}` : opt.ev.toFixed(2);
+            const evColor = opt.ev >= 0 ? "var(--neon-green)" : "#ff4a4a";
+            listItems += `
+              <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px; line-height: 1.4; margin-bottom: 2px;">
+                <span style="color: var(--text-white-adapt); font-weight: 600;">${idx + 1}. ${opt.option} <span style="color: var(--neon-green);">@${opt.odds.toFixed(2)}</span></span>
+                <span style="color: var(--text-muted); font-size: 11px;">几率: <strong style="color: var(--text-white-adapt);">${(opt.prob * 100).toFixed(1)}%</strong> (EV: <strong style="color: ${evColor};">${evText}</strong>)</span>
+              </div>
+            `;
+          });
+          aggressiveHtml = `
+            <div>
+              <div style="display: flex; align-items: center; gap: 4px; margin-bottom: 4px;">
+                <span style="background: rgba(136, 0, 255, 0.15); color: #e2b3ff; padding: 1px 4px; border-radius: 3px; font-size: 9px; font-weight: bold;">激进型 (期望前三)</span>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 2px; padding-left: 4px;">
+                ${listItems}
+              </div>
+            </div>
+          `;
+        }
+
+            html += `
+              <div class="lottery-play-card" id="play-card-${play.playCode}" style="display: ${cardDisplay}; background: rgba(136, 0, 255, 0.02); border: 1px solid var(--panel-border); border-radius: 6px; padding: 8px; font-size: 12.5px;">
+                <div style="font-weight: 700; color: var(--text-white-adapt); margin-bottom: 6px; display: flex; align-items: center; justify-content: space-between; font-size: 13.5px;">
+                  <span>🎫 ${play.playName}</span>
+                </div>
+                
+                <div style="display: flex; flex-direction: column; gap: 5px;">
+                  ${safeHtml}
+                  ${aggressiveHtml}
+                </div>
+              </div>
+            `;
       });
       html += `
           </div>
         </div>
       `;
+    } else {
+      html += `<div style="color: #ff4a4a; font-size: 11px; padding: 10px;">⚠️ 暂无精算投注数据 (后端未返回五大玩法明细)</div>`;
     }
   } else {
     html += `<div style="margin-bottom: 12px;">● 请在左侧选择比赛，系统将自动生成五大玩法最佳量化投注建议...</div>`;
@@ -960,6 +1023,10 @@ async function renderLotteryPanel(recommendData = null) {
       saveSingleBtn.style.cursor = "not-allowed";
       saveSingleBtn.onclick = null;
     }
+  }
+  } catch (err) {
+    console.error("renderLotteryPanel internal error:", err);
+    resultDom.innerHTML = `<div style="color:#ff4a4a; font-size:11px; padding:10px;">⚠️ 建议渲染逻辑异常: ${err.message}</div>`;
   }
 }
 
@@ -1057,27 +1124,29 @@ async function loadBacktestHistory() {
 
       document.getElementById("backtest-review-text").innerHTML = `
         <strong>[场次复盘]</strong>: Brier精度得分: <span style="color:var(--neon-green); font-weight:600;">${last.brierScore.toFixed(3)}</span><br>
-        <strong>[Elo实力变化]</strong>: 主队 ${homeEloShow} | 客队 ${awayEloShow}<br>
+        <strong>[Elo实力变化]</strong>: ${translateTeamName(last.homeTeam || "主队")} ${last.homeEloDiff >= 0 ? `+${last.homeEloDiff.toFixed(1)}` : last.homeEloDiff.toFixed(1)} | ${translateTeamName(last.awayTeam || "客队")} ${last.awayEloDiff >= 0 ? `+${last.awayEloDiff.toFixed(1)}` : last.awayEloDiff.toFixed(1)}<br>
         <span style="color:var(--text-muted); display:block; margin-top:4px;"><strong>[大模型反思心得]</strong>: "${last.tacticsReview}"</span>
       `;
 
       // 渲染已完赛历史详情卡片列表 (倒序展示最新的已完赛复盘在最上)
       if (historyListDom) {
         historyListDom.innerHTML = history.slice().reverse().map(h => {
-          const matchInfo = matchesMap[h.matchId] || { homeTeam: "主队", awayTeam: "客队", homeScore: 0, awayScore: 0, status: "FT" };
-          const homeCn = translateTeamName(matchInfo.homeTeam);
-          const awayCn = translateTeamName(matchInfo.awayTeam);
+          const matchInfo = matchesMap[h.matchId] || {};
+          const homeCn = translateTeamName(h.homeTeam || matchInfo.homeTeam || "主队");
+          const awayCn = translateTeamName(h.awayTeam || matchInfo.awayTeam || "客队");
+          const homeScore = h.homeScore !== undefined ? h.homeScore : (matchInfo.homeScore || 0);
+          const awayScore = h.awayScore !== undefined ? h.awayScore : (matchInfo.awayScore || 0);
           const hEloDiff = h.homeEloDiff >= 0 ? `+${h.homeEloDiff.toFixed(1)}` : h.homeEloDiff.toFixed(1);
           const aEloDiff = h.awayEloDiff >= 0 ? `+${h.awayEloDiff.toFixed(1)}` : h.awayEloDiff.toFixed(1);
           
           return `
             <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--panel-border); border-radius: 6px; padding: 8px; display: flex; flex-direction: column; gap: 4px; margin-bottom: 6px;">
-              <div style="display: flex; justify-content: space-between; font-weight: 600; color: white;">
-                <span>${homeCn} ${matchInfo.homeScore} : ${matchInfo.awayScore} ${awayCn}</span>
+              <div style="display: flex; justify-content: space-between; font-weight: 600; color: var(--text-white-adapt);">
+                <span>${homeCn} ${homeScore} : ${awayScore} ${awayCn}</span>
                 <span style="color: var(--neon-green); font-size: 10px;">Brier: ${h.brierScore.toFixed(3)}</span>
               </div>
               <div style="font-size: 10px; color: var(--text-muted);">
-                Elo变化: 主队 ${hEloDiff} | 客队 ${aEloDiff}
+                Elo变化: ${homeCn} ${hEloDiff} | ${awayCn} ${aEloDiff}
               </div>
               <div style="font-size: 10px; color: var(--text-muted); background: rgba(136,0,255,0.04); border-left: 2px solid var(--neon-purple); padding: 4px 6px; border-radius: 2px; margin-top: 2px; line-height: 1.4;">
                 <strong>复盘反思:</strong> "${h.tacticsReview}"
@@ -1194,7 +1263,7 @@ function updateParlayOptions(count) {
     opts.forEach(opt => {
       const checkedAttr = opt.checked ? "checked" : "";
       subDiv.innerHTML += `
-        <label style="display: inline-flex; align-items: center; gap: 3px; cursor: pointer; color: white;">
+        <label style="display: inline-flex; align-items: center; gap: 3px; cursor: pointer; color: var(--text-white-adapt);">
           <input type="radio" name="parlay-sub-opt" value="${opt.value}" ${checkedAttr} style="accent-color: var(--neon-green); cursor: pointer;"> ${opt.label}
         </label>
       `;
@@ -1203,7 +1272,7 @@ function updateParlayOptions(count) {
     for (let i = 2; i <= count; i++) {
       const checkedAttr = i === count ? "checked" : "";
       subDiv.innerHTML += `
-        <label style="display: inline-flex; align-items: center; gap: 3px; cursor: pointer; color: white;">
+        <label style="display: inline-flex; align-items: center; gap: 3px; cursor: pointer; color: var(--text-white-adapt);">
           <input type="checkbox" name="parlay-sub-opt" value="${i}" ${checkedAttr} style="accent-color: var(--neon-green); cursor: pointer;"> ${i}串1
         </label>
       `;
@@ -1340,7 +1409,7 @@ document.getElementById("generate-parlay-btn").onclick = async () => {
         });
       }
       schemesList.innerHTML = `
-        <div style="grid-column: 1 / -1; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:25px 10px; text-align:center; background: rgba(0,0,0,0.2); border-radius: 12px; border: 1px dashed var(--panel-border); width: 100%;">
+        <div style="grid-column: 1 / -1; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:25px 10px; text-align:center; background: var(--sub-panel-bg); border-radius: 12px; border: 1px dashed var(--panel-border); width: 100%;">
           <span style="font-size: 28px; margin-bottom: 8px;">🛡️</span>
           <h3 style="color: #ff4a4a; margin-bottom: 6px; font-size: 13px; font-weight:700;">智能量化风控防御系统已拦截</h3>
           <p style="font-size:11px; color: var(--text-muted); max-width: 480px; line-height: 1.5; margin-bottom: 12px; padding: 0 10px;">
@@ -1407,7 +1476,7 @@ document.getElementById("generate-parlay-btn").onclick = async () => {
         schemesList.innerHTML += `
           <div class="${cardClass}" style="opacity: 0.65; filter: grayscale(80%);">
             <div class="scheme-header">
-              <span style="font-size:13px; font-weight:800; color:white;">${p.parlayType}</span>
+              <span style="font-size:13px; font-weight:800; color:var(--text-white-adapt);">${p.parlayType}</span>
               <span class="scheme-badge" style="background:#ff4a4a; color:white;">${badgeText}</span>
             </div>
             
@@ -1460,7 +1529,7 @@ document.getElementById("generate-parlay-btn").onclick = async () => {
       schemesList.innerHTML += `
         <div class="${cardClass}">
           <div class="scheme-header">
-            <span style="font-size:13px; font-weight:800; color:white;">${p.parlayType}</span>
+            <span style="font-size:13px; font-weight:800; color:var(--text-white-adapt);">${p.parlayType}</span>
             <span class="scheme-badge">${badgeText}</span>
           </div>
           
@@ -1480,7 +1549,7 @@ document.getElementById("generate-parlay-btn").onclick = async () => {
             </div>
             <div class="scheme-payout-row">
               <span style="color:var(--text-muted);">总投注方案</span>
-              <strong style="color:white;">${p.winsCount || 1} 注 (${(p.cost || 2.0).toFixed(0)} 元)</strong>
+              <strong style="color:var(--text-white-adapt);">${p.winsCount || 1} 注 (${(p.cost || 2.0).toFixed(0)} 元)</strong>
             </div>
             <div class="scheme-payout-row">
               <span style="color:var(--text-muted);">极限最高奖金</span>
@@ -1492,7 +1561,7 @@ document.getElementById("generate-parlay-btn").onclick = async () => {
             </div>
             <div class="scheme-payout-row">
               <span style="color:var(--text-muted);">建议配资比例</span>
-              <strong style="color:white;">${(p.kellyStake * 100).toFixed(1)}%</strong>
+              <strong style="color:var(--text-white-adapt);">${(p.kellyStake * 100).toFixed(1)}%</strong>
             </div>
           </div>
 
@@ -1933,6 +2002,7 @@ async function showParlayHistory() {
 
 // 绑定所有的复盘与关闭交互事件
 window.addEventListener("DOMContentLoaded", () => {
+  initThemeSwitcher();
   // 绑定历史记录查看按钮
   const historySingleBtn = document.getElementById("history-single-btn");
   if (historySingleBtn) {
@@ -2361,4 +2431,48 @@ function removeChatBubble(bubbleId) {
   if (bubble) bubble.remove();
 }
 // ==================== 智能对话组件逻辑结束 ====================
+
+// ==================== 全局多主题切换器控制逻辑 ====================
+function initThemeSwitcher() {
+  const switcher = document.getElementById("global-theme-switcher");
+  if (!switcher) return;
+
+  const buttons = switcher.querySelectorAll(".theme-switch-btn");
+  
+  // 1. 初始化激活状态高亮
+  const savedTheme = localStorage.getItem("selected_theme") || "glass";
+  buttons.forEach(btn => {
+    if (btn.getAttribute("data-theme") === savedTheme) {
+      btn.classList.add("active");
+    } else {
+      btn.classList.remove("active");
+    }
+  });
+
+  // 2. 绑定点击事件分流
+  buttons.forEach(btn => {
+    btn.onclick = () => {
+      const theme = btn.getAttribute("data-theme");
+      
+      // 更新高亮类名
+      buttons.forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+
+      // 切换根节点类名并写缓存
+      document.documentElement.className = "theme-" + theme;
+      localStorage.setItem("selected_theme", theme);
+
+      // 3. 自动触发 ECharts 重新加载与网格对比度重绘
+      if (typeof initSimulationChart === "function") {
+        initSimulationChart();
+      }
+      if (typeof initBacktestChart === "function") {
+        initBacktestChart();
+      }
+
+      console.log(`[Theme] 成功切换至主题: theme-${theme}`);
+    };
+  });
+}
+
 

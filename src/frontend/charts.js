@@ -11,7 +11,13 @@ function initSimulationChart() {
     simulationChart.dispose();
   }
   
-  simulationChart = echarts.init(chartDom, 'dark');
+  const savedTheme = localStorage.getItem('selected_theme') || 'dark';
+  const isLight = savedTheme === 'light';
+  
+  simulationChart = echarts.init(chartDom, isLight ? null : 'dark');
+  
+  const splitLineColor = isLight ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.05)';
+  const textColor = isLight ? '#334155' : '#8b9bb4';
   
   const option = {
     backgroundColor: 'transparent',
@@ -30,14 +36,16 @@ function initSimulationChart() {
       type: 'value',
       axisLine: { show: false },
       axisTick: { show: false },
-      splitLine: { lineStyle: { color: 'rgba(255,255,255,0.05)' } }
+      splitLine: { lineStyle: { color: splitLineColor } },
+      axisLabel: { color: textColor, fontSize: 10 }
     },
     yAxis: {
       type: 'category',
       inverse: true,
       data: ['巴西', '法国', '西班牙', '阿根廷', '德国', '英格兰', '葡萄牙', '荷兰'],
       axisLine: { show: false },
-      axisTick: { show: false }
+      axisTick: { show: false },
+      axisLabel: { color: textColor, fontSize: 10 }
     },
     series: [
       {
@@ -55,7 +63,9 @@ function initSimulationChart() {
           show: true,
           position: 'right',
           formatter: '{c}%',
-          color: '#00ff88'
+          color: isLight ? '#00b368' : '#00ff88',
+          fontSize: 10,
+          fontWeight: 'bold'
         }
       }
     ]
@@ -250,7 +260,13 @@ function initBacktestChart() {
     backtestChart.dispose();
   }
   
-  backtestChart = echarts.init(chartDom, 'dark');
+  const savedTheme = localStorage.getItem('selected_theme') || 'dark';
+  const isLight = savedTheme === 'light';
+  
+  backtestChart = echarts.init(chartDom, isLight ? null : 'dark');
+  
+  const splitLineColor = isLight ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.05)';
+  const textColor = isLight ? '#334155' : '#8b9bb4';
   
   const option = {
     backgroundColor: 'transparent',
@@ -269,14 +285,16 @@ function initBacktestChart() {
       type: 'category',
       data: [],
       axisLine: { show: false },
-      axisTick: { show: false }
+      axisTick: { show: false },
+      axisLabel: { color: textColor, fontSize: 10 }
     },
     yAxis: {
       type: 'value',
       min: 0,
       max: 2.0,
       axisLine: { show: false },
-      splitLine: { lineStyle: { color: 'rgba(255,255,255,0.05)' } }
+      splitLine: { lineStyle: { color: splitLineColor } },
+      axisLabel: { color: textColor, fontSize: 10 }
     },
     series: [
       {
@@ -285,16 +303,16 @@ function initBacktestChart() {
         smooth: true,
         data: [],
         lineStyle: {
-          color: '#8800ff',
+          color: isLight ? '#7a00e6' : '#8800ff',
           width: 2
         },
         itemStyle: {
-          color: '#00ff88'
+          color: isLight ? '#00b368' : '#00ff88'
         },
         areaStyle: {
           color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: 'rgba(136,0,255,0.25)' },
-            { offset: 1, color: 'rgba(136,0,255,0)' }
+            { offset: 0, color: isLight ? 'rgba(122,0,230,0.18)' : 'rgba(136,0,255,0.25)' },
+            { offset: 1, color: isLight ? 'rgba(122,0,230,0)' : 'rgba(136,0,255,0)' }
           ])
         }
       }
