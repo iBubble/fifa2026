@@ -755,6 +755,368 @@ h3 {
   100% { transform: translate(60px, -60px) scale(0.82); }
 }
 
+/* ==================== 赛程积分表弹窗专有 CSS ==================== */
+.tab-content {
+  animation: fadeIn 0.3s forwards;
+}
+.modal-tab-btn {
+  transition: all 0.3s;
+}
+.modal-tab-btn.active {
+  color: var(--neon-green) !important;
+  border-bottom-color: var(--neon-green) !important;
+}
+
+/* 小组积分与赛程卡片 */
+.group-card {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: all 0.3s;
+}
+.group-card:hover {
+  border-color: var(--neon-purple);
+  box-shadow: 0 4px 16px rgba(136, 0, 255, 0.15);
+}
+.group-card h4 {
+  font-size: 14px;
+  color: var(--text-white-adapt);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  padding-bottom: 6px;
+  margin: 0;
+}
+.group-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+.group-table th, .group-table td {
+  padding: 4px;
+  text-align: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+.group-table th {
+  color: var(--text-muted);
+  font-weight: normal;
+}
+.group-table td.team-name {
+  text-align: left;
+  font-weight: 600;
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.group-table tr.top-2 {
+  color: var(--neon-green);
+}
+.group-matches-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 5px;
+}
+.group-match-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10.5px;
+  padding: 4px 6px;
+  background: rgba(0, 0, 0, 0.12);
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.02);
+}
+.group-match-row span.match-time {
+  color: var(--text-muted);
+}
+.group-match-row span.match-score {
+  font-weight: bold;
+  color: var(--neon-green);
+}
+
+/* 淘汰赛对阵图 Grid */
+.bracket-container {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  min-width: 100%;
+  width: 100%;
+  gap: 6px;
+  height: 600px;
+  padding: 5px;
+}
+.bracket-column {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+  height: 100%;
+  width: 115px;
+}
+.bracket-column.center-column {
+  width: 130px;
+  justify-content: center;
+  gap: 15px;
+  align-items: center;
+}
+.bracket-round-title {
+  text-align: center;
+  font-size: 10px;
+  font-weight: 800;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  margin-bottom: 6px;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.1);
+  padding-bottom: 4px;
+}
+.bracket-match-card {
+  background: rgba(20, 27, 45, 0.7);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  padding: 4px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  position: relative;
+  transition: all 0.3s;
+}
+.bracket-match-card:hover {
+  border-color: var(--neon-green);
+  box-shadow: 0 0 10px rgba(0, 255, 136, 0.25);
+}
+.bracket-match-card.final-match {
+  border: 1.5px solid var(--neon-purple);
+  box-shadow: 0 0 12px rgba(136, 0, 255, 0.2);
+}
+.bracket-match-card.final-match:hover {
+  border-color: var(--neon-green);
+  box-shadow: 0 0 16px rgba(0, 255, 136, 0.4);
+}
+.bracket-match-info {
+  display: flex;
+  justify-content: space-between;
+  font-size: 9px;
+  color: var(--text-muted);
+}
+.bracket-team-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+.bracket-team-line.winner {
+  color: var(--neon-green);
+}
+.bracket-team-line.loser {
+  color: var(--text-muted);
+  opacity: 0.6;
+}
+.bracket-team-line.placeholder {
+  color: var(--text-muted);
+  font-style: italic;
+  font-weight: normal;
+}
+.bracket-team-score {
+  font-weight: bold;
+}
+.trophy-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+}
+.trophy-image {
+  height: 80px;
+  width: auto;
+  filter: drop-shadow(0 0 12px rgba(255, 215, 0, 0.5));
+  animation: floatGold 3s infinite ease-in-out;
+}
+@keyframes floatGold {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
+/* 赛程积分表弹窗 Tab 背景图片与磨砂混合效果 */
+#tab-group-stage {
+  position: relative;
+  background-image: linear-gradient(rgba(11, 15, 23, 0.92), rgba(11, 15, 23, 0.92)), url('group_stage_bg.png');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  border-radius: 12px;
+  padding: 16px;
+  min-height: 450px;
+}
+
+#tab-knockout-stage {
+  position: relative;
+  background-image: linear-gradient(rgba(11, 15, 23, 0.92), rgba(11, 15, 23, 0.92)), url('knockout_stage_bg.png');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  border-radius: 12px;
+  padding: 16px;
+  min-height: 450px;
+}
+
+/* 浅色主题下的背景混合适配 */
+.theme-light #tab-group-stage {
+  background-image: linear-gradient(rgba(222, 229, 240, 0.92), rgba(222, 229, 240, 0.92)), url('group_stage_bg.png');
+}
+
+.theme-light #tab-knockout-stage {
+  background-image: linear-gradient(rgba(222, 229, 240, 0.92), rgba(222, 229, 240, 0.92)), url('knockout_stage_bg.png');
+}
+
+/* 浅色主题下的赛程积分表弹窗适配 */
+.theme-light #schedule-standings-modal.modal-overlay {
+  background: rgba(220, 225, 235, 0.65) !important;
+}
+
+.theme-light #schedule-standings-modal .modal-content {
+  background: rgba(255, 255, 255, 0.85) !important;
+  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.08), 0 0 20px rgba(0, 168, 84, 0.1) !important;
+}
+
+.theme-light #schedule-standings-modal .modal-header {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.theme-light #schedule-standings-modal .modal-header h2 {
+  color: var(--neon-green) !important;
+  background: none;
+  -webkit-background-clip: unset;
+  -webkit-text-fill-color: unset;
+  text-shadow: none;
+}
+
+.theme-light #schedule-standings-modal .modal-tabs {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.theme-light #schedule-standings-modal .modal-tab-btn {
+  color: var(--text-muted);
+}
+
+.theme-light #schedule-standings-modal .modal-tab-btn.active {
+  color: var(--neon-green) !important;
+  border-bottom-color: var(--neon-green) !important;
+}
+
+.theme-light .group-card {
+  background: rgba(255, 255, 255, 0.6) !important;
+  border-color: rgba(0, 0, 0, 0.06) !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.02);
+}
+
+.theme-light .group-card:hover {
+  border-color: var(--neon-purple) !important;
+  box-shadow: 0 4px 16px rgba(122, 0, 230, 0.1) !important;
+}
+
+.theme-light .group-card h4 {
+  color: var(--text-main) !important;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.theme-light .group-table th {
+  color: var(--text-muted) !important;
+}
+
+.theme-light .group-table td {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.03);
+}
+
+.theme-light .group-table tr.top-2 {
+  color: var(--neon-green) !important;
+}
+
+.theme-light .group-match-row {
+  background: rgba(0, 0, 0, 0.03) !important;
+  border: 1px solid rgba(0, 0, 0, 0.02) !important;
+  color: var(--text-main) !important;
+}
+
+.theme-light .group-match-row span.match-time {
+  color: var(--text-muted) !important;
+}
+
+.theme-light .group-match-row span.match-score {
+  color: var(--neon-green) !important;
+}
+
+.theme-light .bracket-round-title {
+  color: var(--text-muted) !important;
+  border-bottom: 1px dashed rgba(0, 0, 0, 0.08) !important;
+}
+
+.theme-light .bracket-match-card {
+  background: rgba(255, 255, 255, 0.75) !important;
+  border-color: rgba(0, 0, 0, 0.08) !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
+}
+
+.theme-light .bracket-match-card:hover {
+  border-color: var(--neon-green) !important;
+  box-shadow: 0 0 10px rgba(0, 168, 84, 0.15) !important;
+}
+
+.theme-light .bracket-match-card.final-match {
+  border: 1.5px solid var(--neon-purple) !important;
+  box-shadow: 0 0 12px rgba(122, 0, 230, 0.1) !important;
+}
+
+.theme-light .bracket-match-card.final-match:hover {
+  border-color: var(--neon-green) !important;
+  box-shadow: 0 0 16px rgba(0, 168, 84, 0.25) !important;
+}
+
+.theme-light .bracket-match-info {
+  color: var(--text-muted) !important;
+}
+
+.theme-light .bracket-team-line {
+  color: var(--text-main) !important;
+}
+
+.theme-light .bracket-team-line.winner {
+  color: var(--neon-green) !important;
+}
+
+.theme-light .bracket-team-line.loser {
+  color: var(--text-muted) !important;
+  opacity: 0.7;
+}
+
+.theme-light .bracket-team-line.placeholder {
+  color: var(--text-muted) !important;
+}
+
+.theme-light .bracket-team-score {
+  color: var(--text-main) !important;
+}
+
+.theme-light .bracket-team-line.winner .bracket-team-score {
+  color: var(--neon-green) !important;
+}
+
+.theme-light .trophy-image {
+  filter: drop-shadow(0 0 12px rgba(255, 215, 0, 0.35));
+}
+
+.theme-light #schedule-standings-modal .modal-footer {
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  color: var(--text-muted) !important;
+}
+
+
+
 
 
 

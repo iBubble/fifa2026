@@ -2,6 +2,7 @@ const API_BASE = "/api";
 let currentMatchID = "";
 let currentPredictions = null; // 保存当前比赛测算出的投注项
 let matchesMap = {}; // 保存比赛映射用于复盘历史翻译
+let allMatchesData = []; // 保存所有比赛的数据用于赛程积分计算
 
 let lastNewsFingerprint = "";
 let lastOddsFingerprint = "";
@@ -13,6 +14,7 @@ async function loadMatches(skipAutoSelect = false) {
   try {
     const res = await fetch(`${API_BASE}/matches`);
     const matches = await res.json();
+    allMatchesData = matches;
     const listDom = document.getElementById("match-list");
     const activeMatchIDBefore = currentMatchID;
 
@@ -496,6 +498,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // 初始化智能对话组件相关的交互事件
   initAIChat();
+
+  // 初始化赛程积分表事件绑定
+  initScheduleStandings();
 });
 
 // 全自动倒计时精算流
@@ -2472,6 +2477,249 @@ function initThemeSwitcher() {
 
       console.log(`[Theme] 成功切换至主题: theme-${theme}`);
     };
+  });
+}
+
+// ==================== 赛程积分表专有交互与计算 ====================
+function initScheduleStandings() {
+  const btn = document.getElementById("schedule-standings-btn");
+  const modal = document.getElementById("schedule-standings-modal");
+  const closeBtn = document.getElementById("close-schedule-standings-btn");
+  if (!btn || !modal) return;
+  btn.onclick = () => {
+    modal.style.display = "flex";
+    renderScheduleStandings();
+  };
+  closeBtn.onclick = () => { modal.style.display = "none"; };
+  const tabBtns = modal.querySelectorAll(".modal-tab-btn");
+  tabBtns.forEach(tabBtn => {
+    tabBtn.onclick = () => {
+      tabBtns.forEach(b => {
+        b.classList.remove("active");
+        b.style.color = "var(--text-muted)";
+        b.style.borderBottomColor = "transparent";
+      });
+      tabBtn.classList.add("active");
+      tabBtn.style.color = "var(--neon-green)";
+      tabBtn.style.borderBottomColor = "var(--neon-green)";
+      const targetTab = tabBtn.getAttribute("data-tab");
+      modal.querySelectorAll(".tab-content").forEach(content => {
+        content.style.display = "none";
+      });
+      document.getElementById("tab-" + targetTab).style.display = "block";
+    };
+  });
+}
+
+function renderScheduleStandings() {
+  if (!allMatchesData || allMatchesData.length === 0) return;
+  const groups = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L"];
+  const standings = {};
+  groups.forEach(g => { standings[g] = {}; });
+  allMatchesData.forEach(m => {
+    if (m.group && groups.includes(m.group)) {
+      const g = m.group;
+      if (!standings[g][m.homeTeam]) {
+        standings[g][m.homeTeam] = { name: m.homeTeam, played: 0, wins: 0, draws: 0, losses: 0, goalsFor: 0, goalsAgainst: 0, goalDiff: 0, points: 0 };
+      }
+      if (!standings[g][m.awayTeam]) {
+        standings[g][m.awayTeam] = { name: m.awayTeam, played: 0, wins: 0, draws: 0, losses: 0, goalsFor: 0, goalsAgainst: 0, goalDiff: 0, points: 0 };
+      }
+      if (m.status === "FT") {
+        const h = standings[g][m.homeTeam], a = standings[g][m.awayTeam];
+        h.played++; a.played++;
+        h.goalsFor += m.homeScore; h.goalsAgainst += m.awayScore;
+        a.goalsFor += m.awayScore; a.goalsAgainst += m.homeScore;
+        if (m.homeScore > m.awayScore) {
+          h.wins++; a.losses++; h.points += 3;
+        } else if (m.homeScore === m.awayScore) {
+          h.draws++; a.draws++; h.points += 1; a.points += 1;
+        } else {
+          h.losses++; a.wins++; a.points += 3;
+        }
+      }
+    }
+  });
+  const groupsContainer = document.getElementById("groups-container");
+  groupsContainer.innerHTML = "";
+  groups.forEach(g => {
+    const teams = Object.values(standings[g]);
+    if (teams.length === 0) {
+      const teamSet = new Set();
+      allMatchesData.forEach(m => { if (m.group === g) { teamSet.add(m.homeTeam); teamSet.add(m.awayTeam); } });
+      teamSet.forEach(tName => { teams.push({ name: tName, played: 0, wins: 0, draws: 0, losses: 0, goalsFor: 0, goalsAgainst: 0, goalDiff: 0, points: 0 }); });
+    }
+    teams.forEach(t => { t.goalDiff = t.goalsFor - t.goalsAgainst; });
+    teams.sort((x, y) => {
+      if (y.points !== x.points) return y.points - x.points;
+      if (y.goalDiff !== x.goalDiff) return y.goalDiff - x.goalDiff;
+      return y.goalsFor - x.goalsFor;
+    });
+    const groupMatches = allMatchesData.filter(m => m.group === g);
+    const card = document.createElement("div");
+    card.className = "group-card";
+    let tableRows = "";
+    teams.forEach((t, idx) => {
+      const isTop2 = idx < 2 ? "class='top-2'" : "";
+      tableRows += `
+        <tr ${isTop2}>
+          <td>${idx + 1}</td>
+          <td class="team-name" title="${translateTeamNameText(t.name)}">${translateTeamName(t.name)}</td>
+          <td>${t.played}</td>
+          <td>${t.wins}/${t.draws}/${t.losses}</td>
+          <td>${t.goalsFor}/${t.goalsAgainst}</td>
+          <td>${t.goalDiff >= 0 ? "+" + t.goalDiff : t.goalDiff}</td>
+          <td style="font-weight: 800;">${t.points}</td>
+        </tr>
+      `;
+    });
+    let matchesRows = "";
+    groupMatches.forEach(gm => {
+      const date = new Date(gm.scheduledAt);
+      const timeStr = date.toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+      const homeCn = translateTeamName(gm.homeTeam);
+      const awayCn = translateTeamName(gm.awayTeam);
+      let statusOrScore = gm.status === "FT" ? `<span class="match-score">${gm.homeScore} - ${gm.awayScore}</span>` : (gm.status === "Live" ? `<span class="match-score" style="color: red; animation: blink 1s infinite;">${gm.homeScore} - ${gm.awayScore} (直播)</span>` : `<span class="match-time">${timeStr}</span>`);
+      matchesRows += `
+        <div class="group-match-row">
+          <span style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${homeCn} vs ${awayCn}</span>
+          ${statusOrScore}
+        </div>
+      `;
+    });
+    card.innerHTML = `
+      <h4>Group ${g} (${g}组)</h4>
+      <table class="group-table">
+        <thead>
+          <tr><th>#</th><th style="text-align: left;">球队</th><th>赛</th><th>胜/平/负</th><th>得/失</th><th>净</th><th>分</th></tr>
+        </thead>
+        <tbody>${tableRows}</tbody>
+      </table>
+      <div style="font-size: 11px; font-weight: 800; color: var(--text-muted); border-top: 1px solid rgba(255, 255, 255, 0.04); padding-top: 6px; margin-top: 4px;">📅 小组赛程对阵</div>
+      <div class="group-matches-list">${matchesRows}</div>
+    `;
+    groupsContainer.appendChild(card);
+  });
+  renderBracketTree();
+}
+
+function renderBracketTree() {
+  const bracketContainer = document.getElementById("bracket-container");
+  bracketContainer.innerHTML = "";
+  const columnsConfig = [
+    { title: "1/16 决赛", matches: [73, 74, 75, 76, 77, 78, 79, 80] },
+    { title: "1/8 决赛", matches: [89, 90, 91, 92] },
+    { title: "1/4 决赛", matches: [97, 98] },
+    { title: "半决赛", matches: [101] },
+    { title: "决赛 & 季军赛", matches: [104, 103], isCenter: true },
+    { title: "半决赛", matches: [102] },
+    { title: "1/4 决赛", matches: [99, 100] },
+    { title: "1/8 决赛", matches: [93, 94, 95, 96] },
+    { title: "1/16 决赛", matches: [81, 82, 83, 84, 85, 86, 87, 88] }
+  ];
+  const knockoutPlaceholders = {
+    "wc2026_m73": { home: "A组第一", away: "C/D/E组第三" },
+    "wc2026_m74": { home: "B组第一", away: "A/C/D组第三" },
+    "wc2026_m75": { home: "C组第二", away: "I组第二" },
+    "wc2026_m76": { home: "E组第一", away: "A/B/C/D组第三" },
+    "wc2026_m77": { home: "F组第一", away: "A/B/C/D组第三" },
+    "wc2026_m78": { home: "A组第二", away: "C组第二" },
+    "wc2026_m79": { home: "B组第二", away: "F组第二" },
+    "wc2026_m80": { home: "D组第一", away: "B/E/F组第三" },
+    "wc2026_m81": { home: "G组第一", away: "A/E/H组第三" },
+    "wc2026_m82": { home: "H组第一", away: "B/F/G组第三" },
+    "wc2026_m83": { home: "I组第一", away: "C/D/E组第三" },
+    "wc2026_m84": { home: "J组第一", away: "F/G/H组第三" },
+    "wc2026_m85": { home: "K组第一", away: "I/J/L组第三" },
+    "wc2026_m86": { home: "L组第一", away: "H/I/J组第三" },
+    "wc2026_m87": { home: "E组第二", away: "F组第二" },
+    "wc2026_m88": { home: "G组第二", away: "H组第二" },
+    "wc2026_m89": { home: "73场胜者", away: "75场胜者" },
+    "wc2026_m90": { home: "74场胜者", away: "77场胜者" },
+    "wc2026_m91": { home: "76场胜者", away: "78场胜者" },
+    "wc2026_m92": { home: "79场胜者", away: "80场胜者" },
+    "wc2026_m93": { home: "81场胜者", away: "83场胜者" },
+    "wc2026_m94": { home: "82场胜者", away: "84场胜者" },
+    "wc2026_m95": { home: "85场胜者", away: "87场胜者" },
+    "wc2026_m96": { home: "86场胜者", away: "88场胜者" },
+    "wc2026_m97": { home: "89场胜者", away: "90场胜者" },
+    "wc2026_m98": { home: "91场胜者", away: "92场胜者" },
+    "wc2026_m99": { home: "93场胜者", away: "94场胜者" },
+    "wc2026_m100": { home: "95场胜者", away: "96场胜者" },
+    "wc2026_m101": { home: "97场胜者", away: "98场胜者" },
+    "wc2026_m102": { home: "99场胜者", away: "100场胜者" },
+    "wc2026_m103": { home: "101场败者", away: "102场败者" },
+    "wc2026_m104": { home: "101场胜者", away: "102场胜者" }
+  };
+
+  columnsConfig.forEach(cfg => {
+    const colDom = document.createElement("div");
+    colDom.className = cfg.isCenter ? "bracket-column center-column" : "bracket-column";
+    
+    if (cfg.isCenter) {
+      const trophy = document.createElement("div");
+      trophy.className = "trophy-container";
+      trophy.innerHTML = `
+        <img class="trophy-image" src="/static/WorldCup.webp" alt="大力神杯">
+      `;
+      colDom.appendChild(trophy);
+    }
+
+    const titleDom = document.createElement("div");
+    titleDom.className = "bracket-round-title";
+    titleDom.innerText = cfg.title;
+    colDom.appendChild(titleDom);
+
+    cfg.matches.forEach(mNum => {
+      const mId = "wc2026_m" + mNum;
+      const m = allMatchesData.find(x => x.id === mId);
+      if (!m) return;
+
+      const isFinal = mNum === 104;
+      const is3rd = mNum === 103;
+
+      const card = document.createElement("div");
+      card.className = isFinal ? "bracket-match-card final-match" : "bracket-match-card";
+      
+      const homePl = knockoutPlaceholders[mId]?.home || "等待晋级";
+      const awayPl = knockoutPlaceholders[mId]?.away || "等待晋级";
+
+      const hasHome = m.homeTeam !== "0" && m.homeTeam !== "";
+      const homeName = hasHome ? translateTeamName(m.homeTeam) : homePl;
+      const homeClass = !hasHome ? "bracket-team-line placeholder" : (m.status === "FT" && m.homeScore > m.awayScore ? "bracket-team-line winner" : (m.status === "FT" && m.homeScore < m.awayScore ? "bracket-team-line loser" : "bracket-team-line"));
+
+      const hasAway = m.awayTeam !== "0" && m.awayTeam !== "";
+      const awayName = hasAway ? translateTeamName(m.awayTeam) : awayPl;
+      const awayClass = !hasAway ? "bracket-team-line placeholder" : (m.status === "FT" && m.awayScore > m.homeScore ? "bracket-team-line winner" : (m.status === "FT" && m.awayScore < m.homeScore ? "bracket-team-line loser" : "bracket-team-line"));
+
+      const scoreHtml = m.status === "FT" || m.status === "Live" 
+        ? { home: m.homeScore, away: m.awayScore }
+        : { home: "-", away: "-" };
+
+      const timeLabel = new Date(m.scheduledAt).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+      const statusLabel = m.status === "FT" ? "已完赛" : (m.status === "Live" ? "直播中" : timeLabel);
+      const statusColor = m.status === "Live" ? "color: red;" : "";
+
+      const matchLabel = isFinal ? "决赛" : (is3rd ? "季军赛" : `场次 ${mNum}`);
+
+      card.innerHTML = `
+        <div class="bracket-match-info">
+          <span>${matchLabel}</span>
+          <span style="${statusColor}">${statusLabel}</span>
+        </div>
+        <div class="${homeClass}">
+          <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 75px;">${homeName}</span>
+          <span class="bracket-team-score">${scoreHtml.home}</span>
+        </div>
+        <div class="${awayClass}">
+          <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 75px;">${awayName}</span>
+          <span class="bracket-team-score">${scoreHtml.away}</span>
+        </div>
+      `;
+      colDom.appendChild(card);
+    });
+
+    bracketContainer.appendChild(colDom);
   });
 }
 
