@@ -2,6 +2,11 @@
 
 ## [Unreleased] - 2026-06-17
 
+### Fixed
+- **彻底根治 Docker 共享卷与 SQLite WAL 模式冲突导致的历史曲线丢失故障**：
+  - 在 [db.go](file:///Users/gemini/Projects/Own/FIFA2026/src/internal/db/db.go) 中，将 SQLite 数据库初始化时的 `PRAGMA journal_mode=WAL;` 重构为 `PRAGMA journal_mode=TRUNCATE;`，避免了 WAL 模式在 Docker 挂载宿主机目录时，因宿主机-容器底层共享内存映射（`mmap`）支持缺陷而频繁触发 `disk I/O error` 崩溃。
+  - 此项改动使 `/api/matches` 和 `/api/backtest/history` 路由接口摆脱了 500 报错，使前端 ECharts Brier Score 趋势曲线和完赛历史明细得以正常渲染。
+
 ### Added
 - **2026 世界杯赛程积分表与淘汰赛对阵树弹窗 (World Cup Brackets & Standings Modal)**：
   - 在主界面 Header 添加按钮入口，点击触发高保真磨砂玻璃模态弹窗。

@@ -2,9 +2,11 @@ package db
 
 import (
 	"database/sql"
+	"fifa2026/src/internal/models"
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	_ "modernc.org/sqlite"
 )
@@ -24,8 +26,8 @@ func Init(dataDir string) error {
 		return fmt.Errorf("打开SQLite数据库失败: %w", err)
 	}
 
-	// 开启高并发 WAL 模式与忙等待超时
-	_, _ = DB.Exec("PRAGMA journal_mode=WAL;")
+	// 开启高并发 TRUNCATE 模式与忙等待超时（避免 WAL 模式下的 mmap 在 Docker 共享挂载卷中触发 I/O 错误）
+	_, _ = DB.Exec("PRAGMA journal_mode=TRUNCATE;")
 	_, _ = DB.Exec("PRAGMA busy_timeout=5000;")
 
 	if err := DB.Ping(); err != nil {
@@ -208,7 +210,16 @@ func createTables() error {
 			fifa_ranking INTEGER NOT NULL DEFAULT 0,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		);`,
+
+		`CREATE TABLE IF NOT EXISTS system_parameters (
+			key TEXT PRIMARY KEY,
+			value TEXT NOT NULL,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		);`,
 	}
+
+	// 强刷重建全新的系统参数表以确保 value 支持字符串格式
+	_, _ = DB.Exec("DROP TABLE IF EXISTS system_parameters;")
 
 	for _, query := range queries {
 		if _, err := DB.Exec(query); err != nil {
@@ -335,4 +346,72 @@ func FuzzySearchLocalData(query string) ([]string, error) {
 	}
 
 	return results, nil
+}
+
+// SaveSystemConfig 保存系统配置项 (支持字符串)
+func SaveSystemConfig(key string, val string) error {
+	query := `INSERT INTO system_parameters (key, value) VALUES (?, ?)
+		ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP`
+	_, err := DB.Exec(query, key, val)
+	return err
+}
+
+// GetSystemConfig 获取系统配置项 (支持字符串)
+func GetSystemConfig(key string) (string, bool, error) {
+	query := `SELECT value FROM system_parameters WHERE key = ?`
+	row := DB.QueryRow(query, key)
+	var val string
+	err := row.Scan(&val)
+	if err == sql.ErrNoRows {
+		return "", false, nil
+	} else if err != nil {
+		return "", false, err
+	}
+	return val, true, nil
+}
+
+// SaveSystemParam 保存浮点型系统参数
+func SaveSystemParam(key string, val float64) error {
+	return SaveSystemConfig(key, fmt.Sprintf("%.6f", val))
+}
+
+// GetSystemParam 获取浮点型系统参数
+func GetSystemParam(key string) (float64, bool, error) {
+	str, found, err := GetSystemConfig(key)
+	if err != nil || !found {
+		return 0, found, err
+	}
+	var val float64
+	_, errScan := fmt.Sscanf(str, "%f", &val)
+	if errScan != nil {
+		return 0, false, errScan
+	}
+	return val, true, nil
+}
+
+// GetMatchesByDate 获取指定日期（本地时区 "YYYY-MM-DD"）的所有赛事记录
+func GetMatchesByDate(dateStr string) ([]models.Match, error) {
+	query := `SELECT id, tournament_id, home_team, away_team, match_group, scheduled_at, status, home_score, away_score, venue 
+		FROM matches WHERE strftime('%Y-%m-%d', scheduled_at, 'localtime') = ?`
+	rows, err := DB.Query(query, dateStr)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var matches []models.Match
+	for rows.Next() {
+		var m models.Match
+		var schedStr string
+		err := rows.Scan(&m.ID, &m.TournamentID, &m.HomeTeam, &m.AwayTeam, &m.Group, &schedStr, &m.Status, &m.HomeScore, &m.AwayScore, &m.Venue)
+		if err != nil {
+			return nil, err
+		}
+		m.ScheduledAt, _ = time.Parse(time.RFC3339, schedStr)
+		if m.ScheduledAt.IsZero() {
+			m.ScheduledAt, _ = time.Parse("2006-01-02 15:04:05", schedStr)
+		}
+		matches = append(matches, m)
+	}
+	return matches, nil
 }

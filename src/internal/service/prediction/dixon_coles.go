@@ -3,6 +3,7 @@ package prediction
 import (
 	"fifa2026/src/internal/db"
 	"fifa2026/src/internal/models"
+	"fmt"
 	"math"
 	"strings"
 	"time"
@@ -14,6 +15,12 @@ type DixonColesService struct {
 	rhoOffset        float64
 	lambdaHomeOffset float64
 	lambdaAwayOffset float64
+
+	// 可配置优化预测参数
+	NormDivulator    float64
+	DiffMultiplier   float64
+	H2hMultiplier    float64
+	InitialRho       float64
 }
 
 func NewDixonColesService(elo *EloService, apiSports *APISportsService) *DixonColesService {
@@ -23,10 +30,31 @@ func NewDixonColesService(elo *EloService, apiSports *APISportsService) *DixonCo
 		rhoOffset:        0.0,
 		lambdaHomeOffset: 0.0,
 		lambdaAwayOffset: 0.0,
+		NormDivulator:    1.10,
+		DiffMultiplier:   0.20,
+		H2hMultiplier:    0.05,
+		InitialRho:       -0.08,
 	}
+	s.LoadParametersFromDB()
 	s.RecalculateRhoOffset()
 	s.RecalculateLambdaOffset()
 	return s
+}
+
+// LoadParametersFromDB 从数据库载入系统调优参数，若存在则覆盖默认硬编码
+func (s *DixonColesService) LoadParametersFromDB() {
+	if val, found, err := db.GetSystemParam("NormDivulator"); err == nil && found {
+		s.NormDivulator = val
+	}
+	if val, found, err := db.GetSystemParam("DiffMultiplier"); err == nil && found {
+		s.DiffMultiplier = val
+	}
+	if val, found, err := db.GetSystemParam("H2hMultiplier"); err == nil && found {
+		s.H2hMultiplier = val
+	}
+	if val, found, err := db.GetSystemParam("InitialRho"); err == nil && found {
+		s.InitialRho = val
+	}
 }
 
 // CalculateParams 根据两队当前 Elo 计算 Dixon-Coles 初始期望参数（包含自适应偏移）
@@ -71,9 +99,9 @@ func (s *DixonColesService) CalculateParamsWithoutOffset(homeTeam, awayTeam stri
 	featH := s.elo.GetFeature(homeTeam)
 	featA := s.elo.GetFeature(awayTeam)
 
-	// 计算基础进球概率倾向 (几何平均数以平衡两队攻防，除以 1.05 归一化以适度释放进球率，回归大盘平均期望)
-	baseH := math.Sqrt(featH.AvgGoalsScored * featA.AvgGoalsConceded) / 1.05
-	baseA := math.Sqrt(featA.AvgGoalsScored * featH.AvgGoalsConceded) / 1.05
+	// 计算基础进球概率倾向 (几何平均数以平衡两队攻防，使用 NormDivulator 归一化以适度释放进球率，回归大盘平均期望)
+	baseH := math.Sqrt(featH.AvgGoalsScored * featA.AvgGoalsConceded) / s.NormDivulator
+	baseA := math.Sqrt(featA.AvgGoalsScored * featH.AvgGoalsConceded) / s.NormDivulator
 
 	// 融入 api-football 历史直接交锋记录 (H2H) 场均进球数并与模型大盘进球率进行自适应加权混合
 	var h2hDiff float64
@@ -172,13 +200,13 @@ func (s *DixonColesService) CalculateParamsWithoutOffset(homeTeam, awayTeam stri
 	homeAdv := 0.0
 
 	// 最终复合进球期望 Lambda：将基础攻防与实时 Elo 实力差的指数级加权调节相叠加
-	lambdaH := baseH * math.Exp(homeAdv + 0.35*diff)
-	lambdaA := baseA * math.Exp(-homeAdv - 0.35*diff)
+	lambdaH := baseH * math.Exp(homeAdv + s.DiffMultiplier*diff)
+	lambdaA := baseA * math.Exp(-homeAdv - s.DiffMultiplier*diff)
 
 	// 如果存在历史交战统计，继续叠加上胜率克制修正系数
 	if hasH2H {
-		lambdaH = lambdaH * (1.0 + 0.15*h2hDiff)
-		lambdaA = lambdaA * (1.0 - 0.15*h2hDiff)
+		lambdaH = lambdaH * (1.0 + s.H2hMultiplier*h2hDiff)
+		lambdaA = lambdaA * (1.0 - s.H2hMultiplier*h2hDiff)
 	}
 
 	// 对最终 Lambda 期望加入 2.8 的上限阀值，防止高分段计算发生数学溢出
@@ -190,7 +218,7 @@ func (s *DixonColesService) CalculateParamsWithoutOffset(homeTeam, awayTeam stri
 	}
 
 	// 经典平局相关系数初始值
-	rho := -0.08
+	rho := s.InitialRho
 	if hasH2H && totalH2HMatches >= 3 {
 		if drawRate >= 0.35 {
 			// 平局倾向强：负向加深 rho，强化 0-0/1-1 概率倾向
@@ -445,4 +473,109 @@ func (s *DixonColesService) RecalculateLambdaOffset() {
 
 	s.lambdaHomeOffset = homeOffset
 	s.lambdaAwayOffset = awayOffset
+}
+
+// OptimizeParameters 执行已完赛比赛数据与预测概率的网格搜索，寻找最优预测参数并持久化与热更新
+func (s *DixonColesService) OptimizeParameters() (float64, float64, float64, float64, float64, error) {
+	// 1. 获取所有已完赛的比赛
+	rows, err := db.DB.Query("SELECT id, home_team, away_team, home_score, away_score, venue, scheduled_at FROM matches WHERE status = 'FT' ORDER BY scheduled_at ASC")
+	if err != nil {
+		return 0, 0, 0, 0, 0, err
+	}
+	defer rows.Close()
+
+	var matches []models.Match
+	for rows.Next() {
+		var m models.Match
+		var schedStr string
+		err := rows.Scan(&m.ID, &m.HomeTeam, &m.AwayTeam, &m.HomeScore, &m.AwayScore, &m.Venue, &schedStr)
+		if err == nil {
+			m.Status = "FT"
+			m.ScheduledAt, _ = time.Parse(time.RFC3339, schedStr)
+			if m.ScheduledAt.IsZero() {
+				m.ScheduledAt, _ = time.Parse("2006-01-02 15:04:05", schedStr)
+			}
+			matches = append(matches, m)
+		}
+	}
+
+	if len(matches) == 0 {
+		return 0, 0, 0, 0, 0, fmt.Errorf("未找到任何已完赛比赛，无法执行参数反省优化")
+	}
+
+	bestBrier := 999.0
+	var bestNormDiv, bestDiffMult, bestH2hMult, bestRho float64
+
+	normDivs := []float64{0.95, 1.00, 1.05, 1.10}
+	diffMults := []float64{0.20, 0.25, 0.30, 0.35, 0.40, 0.45}
+	h2hMults := []float64{0.05, 0.10, 0.15, 0.20}
+	rhos := []float64{-0.03, -0.05, -0.08, -0.10, -0.12}
+
+	for _, nd := range normDivs {
+		for _, dm := range diffMults {
+			for _, hm := range h2hMults {
+				for _, r := range rhos {
+					// 备份当前参数并临时修改以跑仿真
+					originalNd, originalDm, originalHm, originalR := s.NormDivulator, s.DiffMultiplier, s.H2hMultiplier, s.InitialRho
+					s.NormDivulator, s.DiffMultiplier, s.H2hMultiplier, s.InitialRho = nd, dm, hm, r
+
+					var totalBrier float64
+					for _, m := range matches {
+						params := s.CalculateParamsWithVenue(m.HomeTeam, m.AwayTeam, m.Venue)
+						matrix, _, _ := s.GenerateProbabilityMatrix(params)
+						var pH, pD, pA float64
+						for _, cell := range matrix {
+							if cell.HomeScore > cell.AwayScore {
+								pH += cell.Prob
+							} else if cell.HomeScore == cell.AwayScore {
+								pD += cell.Prob
+							} else {
+								pA += cell.Prob
+							}
+						}
+
+						var oH, oD, oA float64
+						if m.HomeScore > m.AwayScore {
+							oH = 1.0
+						} else if m.HomeScore == m.AwayScore {
+							oD = 1.0
+						} else {
+							oA = 1.0
+						}
+						totalBrier += math.Pow(pH-oH, 2) + math.Pow(pD-oD, 2) + math.Pow(pA-oA, 2)
+					}
+
+					avgBrier := totalBrier / float64(len(matches))
+					if avgBrier < bestBrier {
+						bestBrier = avgBrier
+						bestNormDiv = nd
+						bestDiffMult = dm
+						bestH2hMult = hm
+						bestRho = r
+					}
+
+					// 恢复原参数
+					s.NormDivulator, s.DiffMultiplier, s.H2hMultiplier, s.InitialRho = originalNd, originalDm, originalHm, originalR
+				}
+			}
+		}
+	}
+
+	// 2. 将最优参数保存入库
+	_ = db.SaveSystemParam("NormDivulator", bestNormDiv)
+	_ = db.SaveSystemParam("DiffMultiplier", bestDiffMult)
+	_ = db.SaveSystemParam("H2hMultiplier", bestH2hMult)
+	_ = db.SaveSystemParam("InitialRho", bestRho)
+
+	// 3. 热更新当前内存中的参数，使其立即在主业务中生效
+	s.NormDivulator = bestNormDiv
+	s.DiffMultiplier = bestDiffMult
+	s.H2hMultiplier = bestH2hMult
+	s.InitialRho = bestRho
+
+	// 重新执行学习率修正逻辑
+	s.RecalculateRhoOffset()
+	s.RecalculateLambdaOffset()
+
+	return bestNormDiv, bestDiffMult, bestH2hMult, bestRho, bestBrier, nil
 }

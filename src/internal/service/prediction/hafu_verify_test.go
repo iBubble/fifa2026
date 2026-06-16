@@ -347,3 +347,98 @@ func checkHit(h, a int, option string) bool {
 	return false
 }
 
+func TestOptimizeParams(t *testing.T) {
+	dataDir := "../../../../data/db"
+	_ = db.Init(dataDir)
+	defer db.Close()
+	db.InitTeamTranslations()
+	eloService, _ := NewEloService("../../../../data/seasons/history_features.json")
+	sportteryService := NewSportteryService()
+	rows, _ := db.DB.Query("SELECT id, home_team, away_team, home_score, away_score, venue, scheduled_at FROM matches WHERE status = 'FT' ORDER BY scheduled_at ASC")
+	defer rows.Close()
+	var matches []models.Match
+	for rows.Next() {
+		var m models.Match
+		var schedStr string
+		_ = rows.Scan(&m.ID, &m.HomeTeam, &m.AwayTeam, &m.HomeScore, &m.AwayScore, &m.Venue, &schedStr)
+		m.Status = "FT"
+		m.ScheduledAt, _ = time.Parse(time.RFC3339, schedStr)
+		if m.ScheduledAt.IsZero() {
+			m.ScheduledAt, _ = time.Parse("2006-01-02 15:04:05", schedStr)
+		}
+		matches = append(matches, m)
+	}
+	bestBrier := 999.0
+	var bestNormDiv, bestDiffMult, bestH2hMult, bestRho, bestSafePnl, bestAggPnl, bestSafeHitRate float64
+	normDivs := []float64{0.95, 1.00, 1.05, 1.10}
+	diffMults := []float64{0.20, 0.25, 0.30, 0.35, 0.40, 0.45}
+	h2hMults := []float64{0.05, 0.10, 0.15, 0.20}
+	rhos := []float64{-0.03, -0.05, -0.08, -0.10, -0.12}
+	for _, nd := range normDivs {
+		for _, dm := range diffMults {
+			for _, hm := range h2hMults {
+				for _, r := range rhos {
+					dcService := NewDixonColesService(eloService, nil)
+					dcService.NormDivulator, dcService.DiffMultiplier, dcService.H2hMultiplier, dcService.InitialRho = nd, dm, hm, r
+					dcService.RecalculateRhoOffset()
+					dcService.RecalculateLambdaOffset()
+					lotteryService := NewLotteryService(dcService, sportteryService)
+					var totalBrier, totalSafePnl, totalAggPnl float64
+					var totalSafeHits, totalRecommends int
+					for _, m := range matches {
+						params := dcService.CalculateParamsWithVenue(m.HomeTeam, m.AwayTeam, m.Venue)
+						matrix, _, _ := dcService.GenerateProbabilityMatrix(params)
+						var pH, pD, pA float64
+						for _, cell := range matrix {
+							if cell.HomeScore > cell.AwayScore { pH += cell.Prob } else if cell.HomeScore == cell.AwayScore { pD += cell.Prob } else { pA += cell.Prob }
+						}
+						var oH, oD, oA float64
+						if m.HomeScore > m.AwayScore { oH = 1.0 } else if m.HomeScore == m.AwayScore { oD = 1.0 } else { oA = 1.0 }
+						totalBrier += math.Pow(pH-oH, 2) + math.Pow(pD-oD, 2) + math.Pow(pA-oA, 2)
+						odds := sportteryService.GetMatchOdds(m.HomeTeam, m.AwayTeam, m.ScheduledAt)
+						if !odds.IsAvailable || odds.HomeOdds <= 0.0 {
+							odds = OfficialOdds{HomeOdds: math.Round(0.90/pH*100)/100.0, DrawOdds: math.Round(0.90/pD*100)/100.0, AwayOdds: math.Round(0.90/pA*100)/100.0, IsAvailable: true}
+						}
+						sportteryService.mu.Lock()
+						if sportteryService.cachedOdds == nil { sportteryService.cachedOdds = make(map[string]OfficialOdds) }
+						odds.MatchTime = m.ScheduledAt
+						sportteryService.cachedOdds[m.HomeTeam+"_"+m.AwayTeam] = odds
+						sportteryService.mu.Unlock()
+						advice := lotteryService.GenerateSingleAdvice(m, 0, 0, 0, nil)
+						if advice.Status == "RECOMMENDED" {
+							totalRecommends++
+							safeHit := checkHit(m.HomeScore, m.AwayScore, advice.PrimaryBet)
+							safePnl := 0.0
+							if safeHit {
+								totalSafeHits++
+								safePnl = (100.0 * advice.PrimaryStake * advice.PrimaryOdds) - 100.0
+							} else {
+								hedgeHit := false
+								if len(advice.HedgeBets) > 0 {
+									hedgeHit = checkHit(m.HomeScore, m.AwayScore, advice.HedgeBets[0].Outcome)
+									if hedgeHit { safePnl = (100.0 * advice.HedgeBets[0].StakePct * advice.HedgeBets[0].Odds) - 100.0 }
+								}
+								if !hedgeHit { safePnl = -100.0 }
+							}
+							totalSafePnl += safePnl
+						}
+						evH, evD, evA := pH*odds.HomeOdds-1.0, pD*odds.DrawOdds-1.0, pA*odds.AwayOdds-1.0
+						aggBet, aggOdds, maxEV := "主胜 (3)", odds.HomeOdds, evH
+						if evD > maxEV { aggBet, aggOdds, maxEV = "平局 (1)", odds.DrawOdds, evD }
+						if evA > maxEV { aggBet, aggOdds = "客胜 (0)", odds.AwayOdds }
+						aggPnl := -100.0
+						if checkHit(m.HomeScore, m.AwayScore, aggBet) { aggPnl = (100.0 * aggOdds) - 100.0 }
+						totalAggPnl += aggPnl
+					}
+					avgBrier := totalBrier / float64(len(matches))
+					if avgBrier < bestBrier {
+						bestBrier, bestNormDiv, bestDiffMult, bestH2hMult, bestRho, bestSafePnl, bestAggPnl = avgBrier, nd, dm, hm, r, totalSafePnl, totalAggPnl
+						if totalRecommends > 0 { bestSafeHitRate = float64(totalSafeHits) / float64(totalRecommends) }
+					}
+				}
+			}
+		}
+	}
+	fmt.Printf("\n🏆 【最优预测参数网格搜索结果】\n- **最小平均 Brier Score**: %.6f\n- **最优归一化分母 (NormDivulator)**: %.2f\n- **最优实力差系数 (DiffMultiplier)**: %.2f\n- **最优交锋修正系数 (H2hMultiplier)**: %.2f\n- **最优初始平局系数 (InitialRho)**: %.2f\n- **对应稳妥主推命中率**: %.2f%%\n- **对应稳妥累计收益**: %.2f 元\n- **对应激进累计收益**: %.2f 元\n", bestBrier, bestNormDiv, bestDiffMult, bestH2hMult, bestRho, bestSafeHitRate*100, bestSafePnl, bestAggPnl)
+}
+

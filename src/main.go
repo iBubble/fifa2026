@@ -1058,6 +1058,23 @@ func main() {
 		// 删除已保存的方案
 		api.POST("/lottery/delete", handleDeleteLotteryPlans)
 
+		// 手动触发已完赛复盘参数网格搜索与热更新优化接口
+		api.POST("/backtest/optimize", func(c *gin.Context) {
+			nd, dm, hm, r, bs, err := dcService.OptimizeParameters()
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+			c.JSON(http.StatusOK, gin.H{
+				"status":         "success",
+				"NormDivulator":  nd,
+				"DiffMultiplier": dm,
+				"H2hMultiplier":  hm,
+				"InitialRho":     r,
+				"BrierScore":     bs,
+			})
+		})
+
 		// 拉取所有已完赛复盘报告历史数据，供大屏绘制 Brier Score 曲线
 		api.GET("/backtest/history", func(c *gin.Context) {
 			reports, err := db.GetBacktestReports()
@@ -1239,8 +1256,10 @@ func main() {
 
 		tickerNews := time.NewTicker(10 * time.Minute)      // 每 10 分钟自动拉取一次外围情报
 		tickerSporttery := time.NewTicker(30 * time.Minute) // 每 30 分钟自动拉取一次体彩赔率
+		tickerOptimize := time.NewTicker(5 * time.Minute)   // 每 5 分钟自检一次是否需要进行每日赛后参数优化
 		defer tickerNews.Stop()
 		defer tickerSporttery.Stop()
+		defer tickerOptimize.Stop()
 
 		for {
 			select {
@@ -1257,6 +1276,9 @@ func main() {
 				log.Println("[Background Job] ✅ 体彩官方赔率数据自动更新成功，缓存已刷新")
 				// 每次赔率刷新后，顺便自检并预温一次 H2H
 				prewarmH2HForIncomingMatches(apiSportsService)
+			case <-tickerOptimize.C:
+				// 自适应判定当天所有比赛是否全部完赛，并在最后一场赛后 1 小时自动运行预测参数优化与反省
+				checkAndRunDailyOptimization(dcService)
 			}
 		}
 	}()
@@ -1703,6 +1725,78 @@ func buildOfflineFallbackReply(match models.Match, userMessage string) string {
 	sb.WriteString(fmt.Sprintf("当前为您锁定的赛事是 **%s vs %s**。关于您咨询的问题：“*%s*”\n\n", match.HomeTeam, match.AwayTeam, userMessage))
 	sb.WriteString("该比赛的 Dixon-Coles 泊松仿真模型参数及赔率数据已成功在左侧加载结算。由于本地 Ollama 深度分类模型响应挂起，请点击右上角清除会话并稍后重试，或直接参照概率面板决策。")
 	return sb.String()
+}
+
+// checkAndRunDailyOptimization 自适应判定当天所有比赛是否全部完赛，并在最后一场赛后 1 小时自动运行预测参数优化与反省
+func checkAndRunDailyOptimization(dcService *prediction.DixonColesService) {
+	now := time.Now()
+	localDate := now.Format("2006-01-02")
+
+	// 1. 获取当天的所有比赛（本地时区）
+	matches, err := db.GetMatchesByDate(localDate)
+	if err != nil || len(matches) == 0 {
+		return // 今天没有安排赛事，直接返回
+	}
+
+	// 2. 检查当天所有的比赛是否都已经是完赛（FT）状态，并找出最后开赛的那场比赛
+	allFinished := true
+	var latestStart time.Time
+	var latestMatch models.Match
+	for _, m := range matches {
+		if m.Status != "FT" {
+			allFinished = false
+		}
+		if m.ScheduledAt.After(latestStart) {
+			latestStart = m.ScheduledAt
+			latestMatch = m
+		}
+	}
+
+	if !allFinished {
+		return // 仍有比赛正在进行或未开赛
+	}
+
+	// 3. 触发时机：最后一场比赛后 1 小时开始
+	// 小组赛（A-L）没有加时赛，通常在开赛 2 小时后完赛，完赛后 1 小时即为开赛后 3 小时；
+	// 淘汰赛（R32, R16, QF, SF, 3RD, FINAL）可能包含加时赛和点球大战，通常在开赛 3 小时后完赛，完赛后 1 小时即为开赛后 4 小时。
+	isKnockout := false
+	knockoutGroups := map[string]bool{
+		"R32": true, "R16": true, "QF": true, "SF": true, "3RD": true, "FINAL": true,
+	}
+	if knockoutGroups[latestMatch.Group] {
+		isKnockout = true
+	}
+
+	var offset time.Duration
+	if isKnockout {
+		offset = 4 * time.Hour // 淘汰赛：开赛后 3 小时完赛 + 1 小时 = 4 小时
+	} else {
+		offset = 3 * time.Hour // 小组赛：开赛后 2 小时完赛 + 1 小时 = 3 小时
+	}
+
+	triggerTime := latestStart.Add(offset)
+	if now.Before(triggerTime) {
+		return // 还没到最后一场比赛完赛 1 小时，跳过
+	}
+
+	// 4. 检查是否在今天已经执行过优化
+	lastOptDate, found, errQuery := db.GetSystemConfig("LastOptimizedDate")
+	if errQuery == nil && found && lastOptDate == localDate {
+		return // 今天已完成优化
+	}
+
+	// 5. 条件满足，启动参数优化与自反省
+	log.Printf("[Self-Reflect Job] 🚀 检测到今日 %s 的所有比赛已全部完赛且已过 1 小时，开始自适应优化参数...", localDate)
+	nd, dm, hm, r, bs, errOpt := dcService.OptimizeParameters()
+	if errOpt != nil {
+		log.Printf("[Self-Reflect Job] ❌ 自动调参失败: %v", errOpt)
+		return
+	}
+
+	// 记录今日已完成调参
+	_ = db.SaveSystemConfig("LastOptimizedDate", localDate)
+	log.Printf("[Self-Reflect Job] ✅ 赛后优化完成并持久化！新参数: NormDivulator=%.2f, DiffMultiplier=%.2f, H2hMultiplier=%.2f, InitialRho=%.2f, BrierScore=%.6f",
+		nd, dm, hm, r, bs)
 }
 
 
