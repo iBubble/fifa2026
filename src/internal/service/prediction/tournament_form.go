@@ -4,6 +4,7 @@ import (
 	"fifa2026/src/internal/db"
 	"fmt"
 	"math"
+	"sort"
 	"time"
 )
 
@@ -212,3 +213,84 @@ func calcGroupStandings(group string) []standingEntry {
 
 	return standings
 }
+
+// GroupStandingRow 小组积分榜单行数据结构
+type GroupStandingRow struct {
+	Team         string `json:"team"`
+	Played       int    `json:"played"`
+	Won          int    `json:"won"`
+	Drawn        int    `json:"drawn"`
+	Lost         int    `json:"lost"`
+	GoalsFor     int    `json:"goalsFor"`
+	GoalsAgainst int    `json:"goalsAgainst"`
+	GoalDiff     int    `json:"goalDiff"`
+	Points       int    `json:"points"`
+}
+
+// CalculateGroupStandings 计算指定小组的当前积分榜并排序
+func CalculateGroupStandings(group string) ([]GroupStandingRow, error) {
+	matches, err := db.GetMatchesByGroup("fifa_2026", group)
+	if err != nil {
+		return nil, err
+	}
+
+	teamsMap := make(map[string]*GroupStandingRow)
+	for _, m := range matches {
+		if _, ok := teamsMap[m.HomeTeam]; !ok {
+			teamsMap[m.HomeTeam] = &GroupStandingRow{Team: m.HomeTeam}
+		}
+		if _, ok := teamsMap[m.AwayTeam]; !ok {
+			teamsMap[m.AwayTeam] = &GroupStandingRow{Team: m.AwayTeam}
+		}
+
+		if m.Status == "FT" {
+			hRow := teamsMap[m.HomeTeam]
+			aRow := teamsMap[m.AwayTeam]
+
+			hRow.Played++
+			aRow.Played++
+			hRow.GoalsFor += m.HomeScore
+			hRow.GoalsAgainst += m.AwayScore
+			aRow.GoalsFor += m.AwayScore
+			aRow.GoalsAgainst += m.HomeScore
+
+			if m.HomeScore > m.AwayScore {
+				hRow.Won++
+				hRow.Points += 3
+				aRow.Lost++
+			} else if m.HomeScore == m.AwayScore {
+				hRow.Drawn++
+				hRow.Points += 1
+				aRow.Drawn++
+				aRow.Points += 1
+			} else {
+				aRow.Won++
+				aRow.Points += 3
+				hRow.Lost++
+			}
+		}
+	}
+
+	var list []GroupStandingRow
+	for _, row := range teamsMap {
+		row.GoalDiff = row.GoalsFor - row.GoalsAgainst
+		list = append(list, *row)
+	}
+
+	// 排序规则：积分 -> 净胜球 -> 进球数 -> 队名
+	sort.Slice(list, func(i, j int) bool {
+		if list[i].Points != list[j].Points {
+			return list[i].Points > list[j].Points
+		}
+		if list[i].GoalDiff != list[j].GoalDiff {
+			return list[i].GoalDiff > list[j].GoalDiff
+		}
+		if list[i].GoalsFor != list[j].GoalsFor {
+			return list[i].GoalsFor > list[j].GoalsFor
+		}
+		return list[i].Team < list[j].Team
+	})
+
+	return list, nil
+}
+

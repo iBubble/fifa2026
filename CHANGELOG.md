@@ -2,12 +2,8 @@
 
 ## [Unreleased] - 2026-06-17
 
-### Fixed
-- **彻底根治 Docker 共享卷与 SQLite WAL 模式冲突导致的历史曲线丢失故障**：
-  - 在 [db.go](file:///Users/gemini/Projects/Own/FIFA2026/src/internal/db/db.go) 中，将 SQLite 数据库初始化时的 `PRAGMA journal_mode=WAL;` 重构为 `PRAGMA journal_mode=TRUNCATE;`，避免了 WAL 模式在 Docker 挂载宿主机目录时，因宿主机-容器底层共享内存映射（`mmap`）支持缺陷而频繁触发 `disk I/O error` 崩溃。
-  - 此项改动使 `/api/matches` 和 `/api/backtest/history` 路由接口摆脱了 500 报错，使前端 ECharts Brier Score 趋势曲线和完赛历史明细得以正常渲染。
-
 ### Added
+- **小组积分榜实时计算 (CalculateGroupStandings)**：在 [tournament_form.go](file:///Users/gemini/Projects/Own/FIFA2026/src/internal/service/prediction/tournament_form.go) 中实现了 `CalculateGroupStandings` 接口，根据完赛数据自动计算并按积分、净胜球、进球数及队名排序，作为大模型检索或前台使用的数据基础。
 - **2026 世界杯赛程积分表与淘汰赛对阵树弹窗 (World Cup Brackets & Standings Modal)**：
   - 在主界面 Header 添加按钮入口，点击触发高保真磨砂玻璃模态弹窗。
   - **小组赛**：自动解析完备的赛程列表，基于完备的实战结算状态（`"FT"`）实时自动汇总计算并按照“积分 > 净胜球 > 进球数”的多维排序规则对 12 个小组进行降序排序与绿色突显。
@@ -17,7 +13,19 @@
   - 用 `generate_image` 绘制了 2 张高清科技风主题背景图。小组赛 Tab 引入了数据图表融合科技球场的背景；淘汰赛 Tab 引入了大力神杯融合树状对阵线条的背景。
   - 均在 [style.css](file:///Users/gemini/Projects/Own/FIFA2026/src/frontend/style.css) 中应用并结合 `linear-gradient` 半透明渐变涂层与背景融合，在保证极高视觉档次的同时确保了文字的高清晰度。
 
+### Fixed
+- **彻底根治 Docker 共享卷与 SQLite WAL 模式冲突导致历史曲线丢失故障**：
+  - 在 [db.go](file:///Users/gemini/Projects/Own/FIFA2026/src/internal/db/db.go) 中，将 SQLite 数据库初始化时的 `PRAGMA journal_mode=WAL;` 重构为 `PRAGMA journal_mode=TRUNCATE;`，避免了 WAL 模式在 Docker 挂载宿主机目录时，因宿主机-容器底层共享内存映射（`mmap`）支持缺陷而频繁触发 `disk I/O error` 崩溃。
+  - 此项改动使 `/api/matches` 和 `/api/backtest/history` 路由接口摆脱了 500 报错，使前端 ECharts Brier Score 趋势曲线和完赛历史明细得以正常渲染。
+- **比分同步 API JSON 反序列化与网络防抖修正**：
+  - 修正了 [worldcup26_sync.go](file:///Users/gemini/Projects/Own/FIFA2026/src/internal/service/prediction/worldcup26_sync.go) 中的 `WC26Game` 反序列化字段映射标签（`home_team_name_en` 等），并增加了 `WC26Response` 外层包裹以适配真实的 API 响应结构，解决了完赛比分同步无数据写入的隐患。
+  - 将 API 请求超时放宽至 35s 并置 `Connection: close` 头信息，规避了代理引发的频繁 EOF 连接重置阻断。
+
 ### Changed
+- **智能拦截与数据注入规避 AI 决策助手幻觉**：
+  - 在 [main.go](file:///Users/gemini/Projects/Own/FIFA2026/src/main.go) 中重构本地检索（`local_search`）决策分支。当查询意图包含“积分、排名、出线、小组、夺冠”等信息时，实时计算最新的 12 个小组真实积分榜并提取蒙特卡洛模拟期望概率（配合中文翻译队名），直接拼装成 Observation 输入，彻底消除了 AI 对当前完赛排名与预测数据的答非所问与胡乱猜测。
+- **每日首次页面访问触发全量赛事推演机制**：
+  - 在 `/api/matches` 中引入了基于 `LastSimulatedDate` 的防抖拦截，每天首个用户访问页面时原子性抢占，在后台拉起协程异步执行已完赛比分同步及 10,000 次蒙特卡洛全赛事模拟，并将结果缓存于系统配置表，避免了在主定时器任务中高频重复执行，减轻了后台计算资源负载。
 - **右列面板间距对称与高度自适应重构 (Right-Column Gaps & Flex Adaptability)**：
   - 移除了右列“中国体彩量化投注建议”和“智能多场混合过关精算”大面板中硬编码的 inline 布局样式，改为 `flex: 1` 和 `flex: 1.2` 自适应伸缩及最小高度设置。
   - 移除了所有冗余的 margin 样式，完全由 `.right-col` 容器声明的 `gap: 16px` 来分配两个大卡片之间的间距，使其在垂直方向的物理间隔与左侧完全对称对齐，且底部在各种视口下完美平齐。

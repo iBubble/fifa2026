@@ -18,10 +18,15 @@ type WorldCup26SyncService struct {
 	mu     sync.RWMutex
 }
 
+// WC26Response worldcup26.ir API 的外层包装对象
+type WC26Response struct {
+	Games []WC26Game `json:"games"`
+}
+
 // WC26Game worldcup26.ir API 返回的单场比赛数据
 type WC26Game struct {
-	HomeTeam    string `json:"home_team"`
-	AwayTeam    string `json:"away_team"`
+	HomeTeam    string `json:"home_team_name_en"`
+	AwayTeam    string `json:"away_team_name_en"`
 	HomeScore   int    `json:"home_score,string"`
 	AwayScore   int    `json:"away_score,string"`
 	Finished    string `json:"finished"`    // "TRUE" / "FALSE"
@@ -32,28 +37,36 @@ type WC26Game struct {
 
 func NewWorldCup26SyncService() *WorldCup26SyncService {
 	return &WorldCup26SyncService{
-		client: &http.Client{Timeout: 10 * time.Second},
+		client: &http.Client{Timeout: 35 * time.Second},
 	}
 }
 
 // FetchGames 从 worldcup26.ir 获取所有比赛数据
 func (s *WorldCup26SyncService) FetchGames() ([]WC26Game, error) {
-	resp, err := s.client.Get("https://worldcup26.ir/get/games")
+	req, err := http.NewRequest("GET", "https://worldcup26.ir/get/games", nil)
+	if err != nil {
+		return nil, fmt.Errorf("创建请求失败: %w", err)
+	}
+
+	req.Close = true
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+
+	resp, err := s.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("worldcup26.ir 请求失败: %w", err)
 	}
 	defer resp.Body.Close()
 
-	var games []WC26Game
-	if err := json.NewDecoder(resp.Body).Decode(&games); err != nil {
+	var wrapper WC26Response
+	if err := json.NewDecoder(resp.Body).Decode(&wrapper); err != nil {
 		return nil, fmt.Errorf("worldcup26.ir JSON 解析失败: %w", err)
 	}
 
 	s.mu.Lock()
-	s.cache = games
+	s.cache = wrapper.Games
 	s.mu.Unlock()
 
-	return games, nil
+	return wrapper.Games, nil
 }
 
 // SyncFinishedMatches 将已完赛比赛的比分同步到本地 DB

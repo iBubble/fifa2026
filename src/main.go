@@ -102,6 +102,25 @@ func main() {
 	{
 		// 赛事列表与赛程，并在每次加载时自动触发未复盘已完赛场次的异步复盘
 		api.GET("/matches", func(c *gin.Context) {
+			// 每天第一次页面被访问时，异步触发比分同步与蒙特卡洛全赛事模拟推演并刷新缓存
+			go func() {
+				today := time.Now().Format("2006-01-02")
+				lastDate, found, err := db.GetSystemConfig("LastSimulatedDate")
+				if err != nil {
+					return
+				}
+				if !found || lastDate != today {
+					_ = db.SaveSystemConfig("LastSimulatedDate", today)
+					log.Printf("[MonteCarlo] 🎲 检测到今日 (%s) 首次页面访问，触发完赛数据同步与蒙特卡洛后台推演...", today)
+					go func() {
+						wcSync := prediction.NewWorldCup26SyncService()
+						if _, errSync := wcSync.SyncFinishedMatches(); errSync != nil {
+							log.Printf("[MonteCarlo] ⚠️ 模拟前同步完赛比分异常: %v", errSync)
+						}
+						runAndCacheMonteCarlo(mcSimulator)
+					}()
+				}
+			}()
 			// 判断是否已有竞彩比赛，执行动态抓取与同步
 			hasSporttery := false
 			initialMatches, errInit := db.GetMatchesByTournament("fifa_2026")
@@ -495,12 +514,37 @@ func main() {
 							observation = "全网搜索失败: " + errSearch.Error()
 						}
 					case "local_search":
-						obsList, errLocal := db.FuzzySearchLocalData(call.Query)
-						if errLocal == nil {
-							observation = strings.Join(obsList, "\n")
-						} else {
-							observation = "本地搜索失败: " + errLocal.Error()
+						isStandingsQuery := false
+						qLower := strings.ToLower(call.Query)
+						if strings.Contains(qLower, "积分") || 
+							strings.Contains(qLower, "排名") || 
+							strings.Contains(qLower, "小组") || 
+							strings.Contains(qLower, "出线") || 
+							strings.Contains(qLower, "夺冠") || 
+							strings.Contains(qLower, "standing") || 
+							strings.Contains(qLower, "group") || 
+							strings.Contains(qLower, "rank") {
+							isStandingsQuery = true
 						}
+
+						var obsList []string
+						if isStandingsQuery {
+							// 1. 获取已赛积分榜
+							standingsObs := buildGroupStandingsObservation()
+							obsList = append(obsList, standingsObs)
+
+							// 2. 获取蒙特卡洛预测概率
+							mcObs := buildMonteCarloObservation(call.Query)
+							obsList = append(obsList, mcObs)
+						}
+
+						dbObsList, errLocal := db.FuzzySearchLocalData(call.Query)
+						if errLocal == nil {
+							obsList = append(obsList, dbObsList...)
+						} else {
+							obsList = append(obsList, "本地模糊搜索失败: "+errLocal.Error())
+						}
+						observation = strings.Join(obsList, "\n")
 					default:
 						observation = "未识别的工具名称"
 					}
@@ -1254,12 +1298,22 @@ func main() {
 		// 执行最临近 4 场未完赛比赛的 H2H 后台静默预热
 		prewarmH2HForIncomingMatches(apiSportsService)
 
+		// 自动执行首次完赛比分同步
+		wcSync := prediction.NewWorldCup26SyncService()
+		if synced, err := wcSync.SyncFinishedMatches(); err != nil {
+			log.Printf("[Background Job] ⚠️ 首次完赛比分同步异常: %v", err)
+		} else {
+			log.Printf("[Background Job] ✅ 首次完赛比分同步成功，已同步 %d 场比赛", synced)
+		}
+
 		tickerNews := time.NewTicker(10 * time.Minute)      // 每 10 分钟自动拉取一次外围情报
 		tickerSporttery := time.NewTicker(30 * time.Minute) // 每 30 分钟自动拉取一次体彩赔率
 		tickerOptimize := time.NewTicker(5 * time.Minute)   // 每 5 分钟自检一次是否需要进行每日赛后参数优化
+		tickerWorldCupSync := time.NewTicker(5 * time.Minute) // 每 5 分钟同步一次完赛比分与刷新预测概率
 		defer tickerNews.Stop()
 		defer tickerSporttery.Stop()
 		defer tickerOptimize.Stop()
+		defer tickerWorldCupSync.Stop()
 
 		for {
 			select {
@@ -1279,6 +1333,14 @@ func main() {
 			case <-tickerOptimize.C:
 				// 自适应判定当天所有比赛是否全部完赛，并在最后一场赛后 1 小时自动运行预测参数优化与反省
 				checkAndRunDailyOptimization(dcService)
+			case <-tickerWorldCupSync.C:
+				log.Println("[Background Job] ⏳ 正在自动同步已完赛比分...")
+				wcSync := prediction.NewWorldCup26SyncService()
+				if synced, err := wcSync.SyncFinishedMatches(); err != nil {
+					log.Printf("[Background Job] ⚠️ 自动同步完赛比分异常: %v", err)
+				} else {
+					log.Printf("[Background Job] ✅ 自动同步完赛比分成功，已同步 %d 场比赛", synced)
+				}
 			}
 		}
 	}()
@@ -1797,6 +1859,106 @@ func checkAndRunDailyOptimization(dcService *prediction.DixonColesService) {
 	_ = db.SaveSystemConfig("LastOptimizedDate", localDate)
 	log.Printf("[Self-Reflect Job] ✅ 赛后优化完成并持久化！新参数: NormDivulator=%.2f, DiffMultiplier=%.2f, H2hMultiplier=%.2f, InitialRho=%.2f, BrierScore=%.6f",
 		nd, dm, hm, r, bs)
+}
+
+// buildGroupStandingsObservation 格式化当前已赛的真实积分榜数据作为 Observation 事实
+func buildGroupStandingsObservation() string {
+	var sb strings.Builder
+	sb.WriteString("=== 2026世界杯当前已完赛真实小组积分榜 (本地实时计算) ===\n")
+	groups := []string{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L"}
+	for _, g := range groups {
+		list, err := prediction.CalculateGroupStandings(g)
+		if err != nil {
+			continue
+		}
+		sb.WriteString(fmt.Sprintf("【%s组】:\n", g))
+		for idx, row := range list {
+			sb.WriteString(fmt.Sprintf("  %d. %s | 已赛:%d 胜:%d 平:%d 负:%d 进/失:%d/%d 净胜球:%d 积分:%d\n",
+				idx+1, row.Team, row.Played, row.Won, row.Drawn, row.Lost, row.GoalsFor, row.GoalsAgainst, row.GoalDiff, row.Points))
+		}
+	}
+	return sb.String()
+}
+
+// buildMonteCarloObservation 格式化蒙特卡洛模拟预测概率并支持特定球队检索
+func buildMonteCarloObservation(query string) string {
+	resultsJSON, found, err := db.GetSystemConfig("montecarlo_results")
+	if err != nil || !found || resultsJSON == "" {
+		return "--- 蒙特卡洛全量预测概率 (MonteCarlo) ---\n暂无预测数据缓存。\n"
+	}
+
+	var results []models.SimulationResult
+	if err := json.Unmarshal([]byte(resultsJSON), &results); err != nil {
+		return "--- 蒙特卡洛全量预测概率 (MonteCarlo) ---\n预测数据解析失败。\n"
+	}
+
+	var sb strings.Builder
+	sb.WriteString("=== 2026世界杯蒙特卡洛预测期望 (夺冠概率前12名) ===\n")
+	limit := 12
+	if len(results) < limit {
+		limit = len(results)
+	}
+	for i := 0; i < limit; i++ {
+		res := results[i]
+		cnName := res.TeamName
+		if tTrans, errTrans := db.GetTeamTranslation(res.TeamName); errTrans == nil && tTrans.CnName != "" {
+			cnName = tTrans.CnName
+		}
+		sb.WriteString(fmt.Sprintf("  %d. %s (%s) | 夺冠概率:%.2f%% | 决赛概率:%.2f%% | 四强概率:%.2f%% | 八强概率:%.2f%% | 16强概率:%.2f%% | 小组出线概率:%.2f%%\n",
+			i+1, cnName, res.TeamName, res.WinnerProb, res.FinalProb, res.SemiProb, res.QuarterProb, res.Round16Prob, res.GroupOutProb))
+	}
+
+	// 查找并展示匹配 query 的特定球队预测期望
+	sb.WriteString("=== 匹配的特定球队预测期望 ===\n")
+	foundSpecific := false
+	for _, res := range results {
+		cnName := res.TeamName
+		if tTrans, errTrans := db.GetTeamTranslation(res.TeamName); errTrans == nil && tTrans.CnName != "" {
+			cnName = tTrans.CnName
+		}
+		if strings.Contains(query, cnName) || strings.Contains(strings.ToLower(res.TeamName), strings.ToLower(query)) {
+			sb.WriteString(fmt.Sprintf("  - %s (%s) | 小组出线概率:%.2f%% | 16强:%.2f%% | 八强:%.2f%% | 四强:%.2f%% | 决赛:%.2f%% | 夺冠:%.2f%%\n",
+				cnName, res.TeamName, res.GroupOutProb, res.Round16Prob, res.QuarterProb, res.SemiProb, res.FinalProb, res.WinnerProb))
+			foundSpecific = true
+		}
+	}
+	if !foundSpecific {
+		sb.WriteString("未在查询中直接匹配到特定球队的特定预测概率，请参照夺冠前12名概率表。\n")
+	}
+
+	return sb.String()
+}
+
+// runAndCacheMonteCarlo 将蒙特卡洛全赛事模拟运行一次并序列化存入系统参数缓存中
+func runAndCacheMonteCarlo(mcSimulator *prediction.MonteCarloSimulator) {
+	log.Println("[MonteCarlo Job] 🎲 开始运行蒙特卡洛全量赛事模拟推演并刷新缓存...")
+	fileData, err := os.ReadFile("./data/seasons/fifa_2026.json")
+	if err != nil {
+		log.Printf("[MonteCarlo Job] ❌ 读取世界杯分组配置失败: %v", err)
+		return
+	}
+	var rawSeason struct {
+		Groups map[string][]string `json:"groups"`
+	}
+	if err := json.Unmarshal(fileData, &rawSeason); err != nil {
+		log.Printf("[MonteCarlo Job] ❌ 解析分组配置失败: %v", err)
+		return
+	}
+
+	// 运行 10,000 次蒙特卡洛模拟
+	results := mcSimulator.SimulateTournament(rawSeason.Groups, 10000)
+	resultsBytes, errMarshal := json.Marshal(results)
+	if errMarshal != nil {
+		log.Printf("[MonteCarlo Job] ❌ 序列化模拟结果失败: %v", errMarshal)
+		return
+	}
+
+	errSave := db.SaveSystemConfig("montecarlo_results", string(resultsBytes))
+	if errSave != nil {
+		log.Printf("[MonteCarlo Job] ❌ 保存模拟结果至系统配置表失败: %v", errSave)
+	} else {
+		log.Println("[MonteCarlo Job] ✅ 蒙特卡洛模拟完成，已成功缓存至数据库 system_parameters")
+	}
 }
 
 
