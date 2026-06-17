@@ -16,7 +16,7 @@ func initTeamTranslationsPartC() {
 		{EnName: "Jordan", CnName: "约旦", FlagCode: "jo", InitialElo: 1560, AvgGoalsScored: 1.00, AvgGoalsConceded: 1.30, CleanSheetRate: 0.22, ApiTeamID: 5579, Aliases: []string{"JOR", "约旦队"}, FifaRanking: 75},
 		// ── Group K ──
 		{EnName: "Portugal", CnName: "葡萄牙", FlagCode: "pt", InitialElo: 1820, AvgGoalsScored: 1.80, AvgGoalsConceded: 1.05, CleanSheetRate: 0.34, ApiTeamID: 27, Aliases: []string{"POR", "葡萄牙队"}, FifaRanking: 7},
-		{EnName: "Democratic Republic of the Congo", CnName: "民主刚果", FlagCode: "cd", InitialElo: 1540, AvgGoalsScored: 1.00, AvgGoalsConceded: 1.40, CleanSheetRate: 0.20, ApiTeamID: 5575, Aliases: []string{"COD", "DR Congo", "刚果民主共和国", "刚果（金）", "民主刚果队"}, FifaRanking: 72},
+		{EnName: "Democratic Republic of the Congo", CnName: "刚果金", FlagCode: "cd", InitialElo: 1540, AvgGoalsScored: 1.00, AvgGoalsConceded: 1.40, CleanSheetRate: 0.20, ApiTeamID: 5575, Aliases: []string{"COD", "DR Congo", "刚果民主共和国", "刚果（金）", "民主刚果", "民主刚果队"}, FifaRanking: 72},
 		{EnName: "Uzbekistan", CnName: "乌兹别克斯坦", FlagCode: "uz", InitialElo: 1580, AvgGoalsScored: 1.10, AvgGoalsConceded: 1.20, CleanSheetRate: 0.25, ApiTeamID: 5583, Aliases: []string{"UZB", "乌兹别克斯坦队"}, FifaRanking: 58},
 		{EnName: "Colombia", CnName: "哥伦比亚", FlagCode: "co", InitialElo: 1740, AvgGoalsScored: 1.50, AvgGoalsConceded: 1.10, CleanSheetRate: 0.33, ApiTeamID: 2383, Aliases: []string{"COL", "哥伦比亚队"}, FifaRanking: 12},
 		// ── Group L ──

@@ -265,7 +265,7 @@ func translateTeam(enName string) string {
 		// J 组
 		"Argentina": "阿根廷", "Algeria": "阿尔及利亚", "Austria": "奥地利", "Jordan": "约旦",
 		// K 组
-		"Portugal": "葡萄牙", "Democratic Republic of the Congo": "民主刚果", "Uzbekistan": "乌兹别克斯坦", "Colombia": "哥伦比亚",
+		"Portugal": "葡萄牙", "Democratic Republic of the Congo": "刚果金", "Uzbekistan": "乌兹别克斯坦", "Colombia": "哥伦比亚",
 		// L 组
 		"England": "英格兰", "Croatia": "克罗地亚", "Ghana": "加纳", "Panama": "巴拿马",
 	}

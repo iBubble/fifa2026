@@ -320,7 +320,7 @@ var cnToEnDict = map[string]string{
 	"塞内加尔": "Senegal", "伊拉克": "Iraq", "挪威": "Norway",
 	"奥地利": "Austria", "约旦": "Jordan",
 	"民主刚果": "Democratic Republic of the Congo", "刚果（金）": "Democratic Republic of the Congo",
-	"刚果民主共和国": "Democratic Republic of the Congo",
+	"刚果民主共和国": "Democratic Republic of the Congo", "刚果金": "Democratic Republic of the Congo",
 	"乌兹别克斯坦": "Uzbekistan",
 }
 

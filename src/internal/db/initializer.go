@@ -59,10 +59,17 @@ func ImportInitialData(seasonsFilePath, featuresFilePath string) error {
 	// 5. 导入 JSON 文件中的所有比赛，但在导入前检查并保护已经完赛的 FT 赛事
 	for _, m := range rawSeason.Matches {
 		var existingStatus string
-		err := DB.QueryRow("SELECT status FROM matches WHERE id = ?", m.ID).Scan(&existingStatus)
+		var existingHomeScore, existingAwayScore int
+		err := DB.QueryRow("SELECT status, home_score, away_score FROM matches WHERE id = ?", m.ID).Scan(&existingStatus, &existingHomeScore, &existingAwayScore)
+		
+		status := m.Status
+		homeScore := 0
+		awayScore := 0
+		
 		if err == nil && existingStatus == "FT" {
-			// 如果已经完赛，保护其完赛历史比分
-			continue
+			status = "FT"
+			homeScore = existingHomeScore
+			awayScore = existingAwayScore
 		}
 
 		scheduledTime, err := time.Parse(time.RFC3339, m.ScheduledAt)
@@ -77,7 +84,9 @@ func ImportInitialData(seasonsFilePath, featuresFilePath string) error {
 			AwayTeam:     m.AwayTeam,
 			Group:        m.Group,
 			ScheduledAt:  scheduledTime,
-			Status:       m.Status,
+			Status:       status,
+			HomeScore:    homeScore,
+			AwayScore:    awayScore,
 			Venue:        m.Venue,
 		}
 		if err := SaveMatch(matchObj); err != nil {

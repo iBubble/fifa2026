@@ -60,7 +60,7 @@ func TestSelfCheck(t *testing.T) {
 
 		congo, err := db.GetTeamTranslation("Democratic Republic of the Congo")
 		if err != nil {
-			t.Fatalf("查询民主刚果翻译失败: %v", err)
+			t.Fatalf("查询刚果金翻译失败: %v", err)
 		}
 		hasAlias := false
 		for _, alias := range congo.Aliases {
@@ -70,7 +70,7 @@ func TestSelfCheck(t *testing.T) {
 			}
 		}
 		if !hasAlias {
-			t.Errorf("民主刚果别名必须包含 '刚果民主共和国'")
+			t.Errorf("刚果金别名必须包含 '刚果民主共和国'")
 		}
 		t.Logf("[SelfCheck] ✅ FIFA 排名与百度百科别名检验通过")
 	})

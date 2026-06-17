@@ -24,6 +24,7 @@ type LiveSyncService struct {
 	dcService         *DixonColesService
 	backtestService   *BacktestService
 	ollamaService     *ai.OllamaService
+	wcSyncService     *WorldCup26SyncService
 	mu                sync.Mutex
 	listeners         []chan string
 	listenersMu       sync.Mutex
@@ -42,6 +43,7 @@ func NewLiveSyncService(dc *DixonColesService, backtest *BacktestService, ollama
 		dcService:         dc,
 		backtestService:   backtest,
 		ollamaService:     ollama,
+		wcSyncService:     NewWorldCup26SyncService(),
 		listeners:         make([]chan string, 0),
 		rolledBackMatches: make(map[string]RolledBackMatch),
 	}
@@ -295,6 +297,16 @@ func (s *LiveSyncService) SyncMatches() {
 			}
 		}
 	}
+
+	// 异步调用 worldcup26.ir 完赛同步，弥补部分场次完赛比分延迟
+	if s.wcSyncService != nil {
+		go func() {
+			if synced, errSync := s.wcSyncService.SyncFinishedMatches(); errSync == nil && synced > 0 {
+				s.broadcast("match_update")
+				log.Printf("[LiveSync] 🏆 worldcup26.ir 完赛同步成功，更新了 %d 场比赛并广播", synced)
+			}
+		}()
+	}
 }
 
 // Global team normalized dictionary mapping various names to standard db team names (48 nations in 2026 World Cup)
@@ -361,7 +373,7 @@ var teamDictionary = map[string]string{
 
 	// Group K
 	"葡萄牙": "Portugal", "Portugal": "Portugal",
-	"民主刚果": "Democratic Republic of the Congo", "DR Congo": "Democratic Republic of the Congo", "Democratic Republic of the Congo": "Democratic Republic of the Congo", "刚果民主共和国": "Democratic Republic of the Congo", "刚果（金）": "Democratic Republic of the Congo",
+	"民主刚果": "Democratic Republic of the Congo", "刚果金": "Democratic Republic of the Congo", "DR Congo": "Democratic Republic of the Congo", "Democratic Republic of the Congo": "Democratic Republic of the Congo", "刚果民主共和国": "Democratic Republic of the Congo", "刚果（金）": "Democratic Republic of the Congo",
 	"乌兹别克斯坦": "Uzbekistan", "Uzbekistan": "Uzbekistan",
 	"哥伦比亚": "Colombia", "Colombia": "Colombia",
 

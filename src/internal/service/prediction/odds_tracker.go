@@ -109,7 +109,7 @@ func translateTeam(enName string) string {
 		"Egypt": "埃及", "New Zealand": "新西兰", "Cape Verde": "佛得角",
 		"Senegal": "塞内加尔", "Iraq": "伊拉克", "Norway": "挪威",
 		"Austria": "奥地利", "Jordan": "约旦",
-		"Democratic Republic of the Congo": "民主刚果", "Uzbekistan": "乌兹别克斯坦",
+		"Democratic Republic of the Congo": "刚果金", "Uzbekistan": "乌兹别克斯坦",
 	}
 	if cn, ok := dict[enName]; ok {
 		return cn

@@ -16,7 +16,7 @@ c2e = {
     "西班牙": "Spain", "佛得角": "Cape Verde", "沙特阿拉伯": "Saudi Arabia", "乌拉圭": "Uruguay",
     "法国": "France", "塞内加尔": "Senegal", "伊拉克": "Iraq", "挪威": "Norway",
     "阿根廷": "Argentina", "阿尔及利亚": "Algeria", "奥地利": "Austria", "约旦": "Jordan",
-    "葡萄牙": "Portugal", "民主刚果": "Democratic Republic of the Congo", "乌兹别克斯坦": "Uzbekistan", "哥伦比亚": "Colombia",
+    "葡萄牙": "Portugal", "刚果金": "Democratic Republic of the Congo", "乌兹别克斯坦": "Uzbekistan", "哥伦比亚": "Colombia",
     "英格兰": "England", "克罗地亚": "Croatia", "加纳": "Ghana", "巴拿马": "Panama"
 }
 
@@ -185,6 +185,12 @@ def rebuild():
     inserted = 0
     for m in new_matches:
         if m["id"] in ('wc2026_m1', 'wc2026_m2', 'wc2026_m3', 'wc2026_m4'):
+            # 对于前4场已赛完的比赛，更新其静态字段以纠正组别
+            cursor.execute("""
+                UPDATE matches 
+                SET match_group = ?, home_team = ?, away_team = ?, venue = ?, scheduled_at = ?
+                WHERE id = ?
+            """, (m["group"], m["homeTeam"], m["awayTeam"], m["venue"], m["db_time"], m["id"]))
             continue
         cursor.execute("""
             INSERT INTO matches (id, tournament_id, home_team, away_team, match_group, scheduled_at, status, home_score, away_score, venue)

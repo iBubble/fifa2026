@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fifa2026/src/internal/db"
 	"fifa2026/src/internal/models"
 	"fmt"
 	"log"
@@ -62,6 +63,11 @@ func NewOllamaService(apiURL, model string) *OllamaService {
 
 // RefineParams 交叉推理：接收定量泊松参数与定性因子，请求本地大模型输出修正偏置 JSON
 func (s *OllamaService) RefineParams(match models.Match, eloDiff float64, p models.DixonColesParams, info string) (models.LLMRefineOffsets, error) {
+	homeCn := getTeamCnName(match.HomeTeam)
+	awayCn := getTeamCnName(match.AwayTeam)
+	homeLabel := fmt.Sprintf("%s(%s)", homeCn, match.HomeTeam)
+	awayLabel := fmt.Sprintf("%s(%s)", awayCn, match.AwayTeam)
+
 	// 步骤一：常规立论阶段 (使用 35B 模型)
 	step1Prompt := fmt.Sprintf(`作为足球精算常规立论专家，根据以下数据 and 情报，提出需要修正的偏置参数（初始值）及常规立论正面理由(proponentOpinion，60字中文)。
 规则：仅当USA/Canada/Mexico本土作战时主队lambdaOffset可+0.08~+0.15；核心伤停/被高估时lambdaOffset必须-0.15~-0.05；防守平局/冷门时rhoOffset必须-0.08~-0.04；非东道主三国的队禁止主场优势偏置。
@@ -71,7 +77,7 @@ func (s *OllamaService) RefineParams(match models.Match, eloDiff float64, p mode
 
 严格输出JSON无markdown:
 {"lambdaHomeOffset":0.0,"lambdaAwayOffset":0.0,"rhoOffset":0.0,"proponentOpinion":"60字正面理由"}
-/no_think`, match.TournamentID, match.Venue, match.HomeTeam, match.AwayTeam, eloDiff, p.LambdaHome, p.LambdaAway, p.Rho, info)
+/no_think`, match.TournamentID, match.Venue, homeLabel, awayLabel, eloDiff, p.LambdaHome, p.LambdaAway, p.Rho, info)
 
 	var offsets models.LLMRefineOffsets
 	ctx1, cancel1 := context.WithTimeout(context.Background(), s.predictTimeout)
@@ -94,7 +100,7 @@ func (s *OllamaService) RefineParams(match models.Match, eloDiff float64, p mode
 
 严格输出JSON无markdown:
 {"critiqueAnalysis":"60字魔鬼反驳"}
-/no_think`, offsets.LambdaHomeOffset, offsets.LambdaAwayOffset, offsets.RhoOffset, proponentOpinion, match.HomeTeam, match.AwayTeam, match.Venue, info)
+/no_think`, offsets.LambdaHomeOffset, offsets.LambdaAwayOffset, offsets.RhoOffset, proponentOpinion, homeLabel, awayLabel, match.Venue, info)
 
 	critiqueAnalysis := "注意防范平局陷阱以及客队高抗压下的反击坚韧度。"
 	ctx2, cancel2 := context.WithTimeout(context.Background(), s.predictTimeout)
@@ -160,10 +166,15 @@ func (s *OllamaService) RefineParams(match models.Match, eloDiff float64, p mode
 
 // ReviewPrediction 对过去的预测做出反思，输出简短的中文赛后精算纠偏心得
 func (s *OllamaService) ReviewPrediction(match models.Match, brierScore float64, priorTactics string, homeScore, awayScore int) (string, error) {
+	homeCn := getTeamCnName(match.HomeTeam)
+	awayCn := getTeamCnName(match.AwayTeam)
+	homeLabel := fmt.Sprintf("%s(%s)", homeCn, match.HomeTeam)
+	awayLabel := fmt.Sprintf("%s(%s)", awayCn, match.AwayTeam)
+
 	prompt := fmt.Sprintf(`赛后纠偏专家。赛事:%s %s VS %s 赛果:%d:%d BS:%.4f 先前分析:"%s"
 用60字中文总结预测误差原因和修正建议。
 /no_think
-`, match.TournamentID, match.HomeTeam, match.AwayTeam, homeScore, awayScore, brierScore, priorTactics)
+`, match.TournamentID, homeLabel, awayLabel, homeScore, awayScore, brierScore, priorTactics)
 
 	payload := map[string]interface{}{
 		"model": s.model,
@@ -678,4 +689,20 @@ func (s *OllamaService) WarmUp() {
 
 		log.Println("[Ollama] 🎉 大模型后台异步预热流程执行完毕")
 	}()
+}
+
+func getTeamCnName(enName string) string {
+	t, err := db.GetTeamTranslation(enName)
+	if err == nil && t.CnName != "" {
+		return t.CnName
+	}
+	fallback := map[string]string{
+		"Austria":                          "奥地利",
+		"Saudi Arabia":                     "沙特阿拉伯",
+		"Democratic Republic of the Congo": "刚果金",
+	}
+	if cn, ok := fallback[enName]; ok {
+		return cn
+	}
+	return enName
 }

@@ -13,9 +13,10 @@ import (
 
 // WorldCup26SyncService 从 worldcup26.ir 同步实时比分
 type WorldCup26SyncService struct {
-	client *http.Client
-	cache  []WC26Game
-	mu     sync.RWMutex
+	client        *http.Client
+	cache         []WC26Game
+	lastFetchTime time.Time
+	mu            sync.RWMutex
 }
 
 // WC26Response worldcup26.ir API 的外层包装对象
@@ -43,6 +44,22 @@ func NewWorldCup26SyncService() *WorldCup26SyncService {
 
 // FetchGames 从 worldcup26.ir 获取所有比赛数据
 func (s *WorldCup26SyncService) FetchGames() ([]WC26Game, error) {
+	s.mu.RLock()
+	// 若缓存不为空且距离上一次拉取成功少于1分钟，直接读缓存，防止高频防抖API被封禁
+	if len(s.cache) > 0 && time.Since(s.lastFetchTime) < 1*time.Minute {
+		defer s.mu.RUnlock()
+		return s.cache, nil
+	}
+	s.mu.RUnlock()
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// 双重锁检查
+	if len(s.cache) > 0 && time.Since(s.lastFetchTime) < 1*time.Minute {
+		return s.cache, nil
+	}
+
 	req, err := http.NewRequest("GET", "https://worldcup26.ir/get/games", nil)
 	if err != nil {
 		return nil, fmt.Errorf("创建请求失败: %w", err)
@@ -62,9 +79,8 @@ func (s *WorldCup26SyncService) FetchGames() ([]WC26Game, error) {
 		return nil, fmt.Errorf("worldcup26.ir JSON 解析失败: %w", err)
 	}
 
-	s.mu.Lock()
 	s.cache = wrapper.Games
-	s.mu.Unlock()
+	s.lastFetchTime = time.Now()
 
 	return wrapper.Games, nil
 }
@@ -98,7 +114,7 @@ func (s *WorldCup26SyncService) SyncFinishedMatches() (int, error) {
 		}
 
 		for _, m := range matches {
-			if m.HomeTeam == homeTeam && m.AwayTeam == awayTeam && m.Status != "FT" {
+			if m.HomeTeam == homeTeam && m.AwayTeam == awayTeam && (m.Status != "FT" || m.HomeScore != g.HomeScore || m.AwayScore != g.AwayScore) {
 				// 仅更新比分和状态
 				err := db.UpdateMatchScore(m.ID, g.HomeScore, g.AwayScore, "FT")
 				if err == nil {

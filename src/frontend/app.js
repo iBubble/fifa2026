@@ -145,6 +145,12 @@ async function loadMatches(skipAutoSelect = false) {
       countdownSeconds = defaultIntervalSeconds;
       updateCountdownDisplay();
     }
+
+    // 如果赛程积分表弹窗当前是打开状态，自动重绘以实现比分变动后积分表与对阵图动态刷新
+    const standingsModal = document.getElementById("schedule-standings-modal");
+    if (standingsModal && standingsModal.style.display === "flex") {
+      renderScheduleStandings();
+    }
   } catch (err) {
     console.error("加载赛程失败:", err);
   }
@@ -2618,33 +2624,33 @@ function renderBracketTree() {
     { title: "1/16 决赛", matches: [81, 82, 83, 84, 85, 86, 87, 88] }
   ];
   const knockoutPlaceholders = {
-    "wc2026_m73": { home: "A组第一", away: "C/D/E组第三" },
-    "wc2026_m74": { home: "B组第一", away: "A/C/D组第三" },
-    "wc2026_m75": { home: "C组第二", away: "I组第二" },
-    "wc2026_m76": { home: "E组第一", away: "A/B/C/D组第三" },
-    "wc2026_m77": { home: "F组第一", away: "A/B/C/D组第三" },
-    "wc2026_m78": { home: "A组第二", away: "C组第二" },
-    "wc2026_m79": { home: "B组第二", away: "F组第二" },
-    "wc2026_m80": { home: "D组第一", away: "B/E/F组第三" },
-    "wc2026_m81": { home: "G组第一", away: "A/E/H组第三" },
-    "wc2026_m82": { home: "H组第一", away: "B/F/G组第三" },
-    "wc2026_m83": { home: "I组第一", away: "C/D/E组第三" },
-    "wc2026_m84": { home: "J组第一", away: "F/G/H组第三" },
-    "wc2026_m85": { home: "K组第一", away: "I/J/L组第三" },
-    "wc2026_m86": { home: "L组第一", away: "H/I/J组第三" },
-    "wc2026_m87": { home: "E组第二", away: "F组第二" },
-    "wc2026_m88": { home: "G组第二", away: "H组第二" },
-    "wc2026_m89": { home: "73场胜者", away: "75场胜者" },
-    "wc2026_m90": { home: "74场胜者", away: "77场胜者" },
+    "wc2026_m73": { home: "A组第二", away: "B组第二" },
+    "wc2026_m74": { home: "E组第一", away: "A/B/C/D/F组第三" },
+    "wc2026_m75": { home: "F组第一", away: "C组第二" },
+    "wc2026_m76": { home: "C组第一", away: "F组第二" },
+    "wc2026_m77": { home: "I组第一", away: "C/D/F/G/H组第三" },
+    "wc2026_m78": { home: "E组第二", away: "I组第二" },
+    "wc2026_m79": { home: "A组第一", away: "C/E/F/H/I组第三" },
+    "wc2026_m80": { home: "L组第一", away: "E/H/I/J/K组第三" },
+    "wc2026_m81": { home: "D组第一", away: "B/E/F/I/J组第三" },
+    "wc2026_m82": { home: "G组第一", away: "A/E/H/I/J组第三" },
+    "wc2026_m83": { home: "K组第二", away: "L组第二" },
+    "wc2026_m84": { home: "H组第一", away: "J组第二" },
+    "wc2026_m85": { home: "B组第一", away: "E/F/G/I/J组第三" },
+    "wc2026_m86": { home: "J组第一", away: "H组第二" },
+    "wc2026_m87": { home: "K组第一", away: "D/E/I/J/L组第三" },
+    "wc2026_m88": { home: "D组第二", away: "G组第二" },
+    "wc2026_m89": { home: "74场胜者", away: "77场胜者" },
+    "wc2026_m90": { home: "73场胜者", away: "75场胜者" },
     "wc2026_m91": { home: "76场胜者", away: "78场胜者" },
     "wc2026_m92": { home: "79场胜者", away: "80场胜者" },
-    "wc2026_m93": { home: "81场胜者", away: "83场胜者" },
-    "wc2026_m94": { home: "82场胜者", away: "84场胜者" },
-    "wc2026_m95": { home: "85场胜者", away: "87场胜者" },
-    "wc2026_m96": { home: "86场胜者", away: "88场胜者" },
+    "wc2026_m93": { home: "83场胜者", away: "84场胜者" },
+    "wc2026_m94": { home: "81场胜者", away: "82场胜者" },
+    "wc2026_m95": { home: "86场胜者", away: "88场胜者" },
+    "wc2026_m96": { home: "85场胜者", away: "87场胜者" },
     "wc2026_m97": { home: "89场胜者", away: "90场胜者" },
-    "wc2026_m98": { home: "91场胜者", away: "92场胜者" },
-    "wc2026_m99": { home: "93场胜者", away: "94场胜者" },
+    "wc2026_m98": { home: "93场胜者", away: "94场胜者" },
+    "wc2026_m99": { home: "91场胜者", away: "92场胜者" },
     "wc2026_m100": { home: "95场胜者", away: "96场胜者" },
     "wc2026_m101": { home: "97场胜者", away: "98场胜者" },
     "wc2026_m102": { home: "99场胜者", away: "100场胜者" },
