@@ -76,8 +76,12 @@ func (s *MultiKellyService) AllocateMultiBets(bets []models.ValueBet, bankroll f
 		scale = maxTotalExposure / sumKelly
 	}
 
+	maxSingle := 0.20
+	if riskFraction <= 0.25 {
+		maxSingle = 0.05 // 在低风险偏好设置下，单笔最大头寸强制收紧至 5% 防范回撤
+	}
 	for i := range activeBets {
-		activeBets[i].KellyStake = math.Min(activeBets[i].KellyStake*scale, 0.20) // 单笔注单最高暴露 20%
+		activeBets[i].KellyStake = math.Min(activeBets[i].KellyStake*scale, maxSingle)
 	}
 
 	return activeBets

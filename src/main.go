@@ -179,7 +179,7 @@ func main() {
 								defer underReviewMatches.Delete(m.ID)
 								log.Printf("[Server] 比赛 %s 异步复盘 Goroutine 开始执行...", m.ID)
 								params := dcService.CalculateParams(m.HomeTeam, m.AwayTeam)
-								matrix, over25, under25 := dcService.GenerateProbabilityMatrix(params)
+								matrix, over25, under25 := dcService.GenerateProbabilityMatrixWithTeams(params, m.HomeTeam, m.AwayTeam)
 								r := models.PredictionReport{
 									MatchID:        m.ID,
 									OriginalParams: params,
@@ -308,6 +308,31 @@ func main() {
 				diff := eloService.GetElo(match.HomeTeam) - eloService.GetElo(match.AwayTeam)
 				offsets, err := ollamaService.RefineParams(match, diff, params, qualitativeInfo)
 				if err == nil {
+					// 优化改进方案 2.1：引入名气惩罚因子 (Reputation Decay Factor)
+					// 对高名气（Elo > 1650 或夺冠过）但首战不胜的球队，其正向偏置扣减 30%
+					if offsets.LambdaHomeOffset > 0 {
+						feat := eloService.GetFeature(match.HomeTeam)
+						if feat.InitialElo > 1650 || feat.Titles > 0 {
+							var ftCount, winCount int
+							_ = db.DB.QueryRow("SELECT COUNT(*), SUM(CASE WHEN (home_team = ? AND home_score > away_score) OR (away_team = ? AND away_score > home_score) THEN 1 ELSE 0 END) FROM matches WHERE status = 'FT' AND (home_team = ? OR away_team = ?)", 
+								match.HomeTeam, match.HomeTeam, match.HomeTeam, match.HomeTeam).Scan(&ftCount, &winCount)
+							if ftCount > 0 && winCount == 0 {
+								offsets.LambdaHomeOffset *= 0.70
+							}
+						}
+					}
+					if offsets.LambdaAwayOffset > 0 {
+						feat := eloService.GetFeature(match.AwayTeam)
+						if feat.InitialElo > 1650 || feat.Titles > 0 {
+							var ftCount, winCount int
+							_ = db.DB.QueryRow("SELECT COUNT(*), SUM(CASE WHEN (home_team = ? AND home_score > away_score) OR (away_team = ? AND away_score > home_score) THEN 1 ELSE 0 END) FROM matches WHERE status = 'FT' AND (home_team = ? OR away_team = ?)", 
+								match.AwayTeam, match.AwayTeam, match.AwayTeam, match.AwayTeam).Scan(&ftCount, &winCount)
+							if ftCount > 0 && winCount == 0 {
+								offsets.LambdaAwayOffset *= 0.70
+							}
+						}
+					}
+
 					refined.LambdaHome = params.LambdaHome + offsets.LambdaHomeOffset
 					refined.LambdaAway = params.LambdaAway + offsets.LambdaAwayOffset
 					refined.Rho = params.Rho + offsets.RhoOffset
@@ -322,8 +347,8 @@ func main() {
 				}
 			}
 
-			// 计算比分概率矩阵与大小球概率（纠偏平滑后）
-			matrix, over25, under25 := dcService.GenerateProbabilityMatrix(refined)
+			// 计算比分概率矩阵与大小球概率（纠偏平滑后，支持方差校准）
+			matrix, over25, under25 := dcService.GenerateProbabilityMatrixWithTeams(refined, match.HomeTeam, match.AwayTeam)
 
 			// 获取当前比赛的赔率
 			odds := sportteryService.GetMatchOdds(match.HomeTeam, match.AwayTeam, match.ScheduledAt)
@@ -394,8 +419,73 @@ func main() {
 				under25 = newUnder25
 			}
 
+			// 让球胜平负盘口 (HHAD) 辛氏去抽水共识融合校准
+			if odds.IsAvailable && odds.HhadHomeOdds > 0.0 && odds.HhadDrawOdds > 0.0 && odds.HhadAwayOdds > 0.0 {
+				hhadProbs, _, errHhad := shinService.DevigOdds([]float64{odds.HhadHomeOdds, odds.HhadDrawOdds, odds.HhadAwayOdds})
+				if errHhad == nil && len(hhadProbs) >= 3 {
+					var sumDCHhadHome, sumDCHhadDraw, sumDCHhadAway float64
+					for _, cell := range matrix {
+						diff := cell.HomeScore - cell.AwayScore + odds.GoalLine
+						if diff > 0 {
+							sumDCHhadHome += cell.Prob
+						} else if diff == 0 {
+							sumDCHhadDraw += cell.Prob
+						} else {
+							sumDCHhadAway += cell.Prob
+						}
+					}
+
+					weightMarket := 0.15
+					weightModel := 0.85
+
+					finalHhadHome := weightMarket*hhadProbs[0] + weightModel*sumDCHhadHome
+					finalHhadDraw := weightMarket*hhadProbs[1] + weightModel*sumDCHhadDraw
+					finalHhadAway := weightMarket*hhadProbs[2] + weightModel*sumDCHhadAway
+
+					for i := range matrix {
+						diff := matrix[i].HomeScore - matrix[i].AwayScore + odds.GoalLine
+						if diff > 0 {
+							if sumDCHhadHome > 0 {
+								matrix[i].Prob = matrix[i].Prob * (finalHhadHome / sumDCHhadHome)
+							}
+						} else if diff == 0 {
+							if sumDCHhadDraw > 0 {
+								matrix[i].Prob = matrix[i].Prob * (finalHhadDraw / sumDCHhadDraw)
+							}
+						} else {
+							if sumDCHhadAway > 0 {
+								matrix[i].Prob = matrix[i].Prob * (finalHhadAway / sumDCHhadAway)
+							}
+						}
+					}
+
+					// 重新进行归一化以保证总体概率和为 1
+					total := 0.0
+					for _, cell := range matrix {
+						total += cell.Prob
+					}
+					if total > 0 {
+						for i := range matrix {
+							matrix[i].Prob /= total
+						}
+					}
+				}
+			}
+
+			// 最终再次重新累加更新校准后的大球与小球概率，保障各盘口预测逻辑自洽
+			var finalOver25, finalUnder25 float64
+			for _, cell := range matrix {
+				if cell.HomeScore+cell.AwayScore > 2 {
+					finalOver25 += cell.Prob
+				} else {
+					finalUnder25 += cell.Prob
+				}
+			}
+			over25 = finalOver25
+			under25 = finalUnder25
+
 			// 计算纯定量 Dixon-Coles 原始数学比分矩阵及大小球概率（左半部分）
-			origMatrix, origOver25, origUnder25 := dcService.GenerateProbabilityMatrix(params)
+			origMatrix, origOver25, origUnder25 := dcService.GenerateProbabilityMatrixWithTeams(params, match.HomeTeam, match.AwayTeam)
 
 			report := models.PredictionReport{
 				MatchID:              req.MatchID,

@@ -84,6 +84,24 @@ func (s *ParlayService) RecommendParlay(matchIds []string, parlayMode string, pa
 	// 强制物理真实延迟1.2秒，营造出服务器模型深度迭代解矩阵的过程，且不会让前端请求超时
 	time.Sleep(1200 * time.Millisecond)
 
+	// 优化改进方案 3.1：串关拦截与动态限额 (Parlay Limiter)
+	// 在小组赛第一、二轮（以完赛场次 < 48 场作为判定标准），系统将默认拦截 3 串 1 及以上的过关推荐
+	var finishedCount int
+	_ = db.DB.QueryRow("SELECT COUNT(*) FROM matches WHERE status = 'FT'").Scan(&finishedCount)
+	if finishedCount < 48 {
+		hasLargeParlay := false
+		for _, opt := range parlayOptions {
+			var mVal int
+			if _, errScan := fmt.Sscanf(opt, "%dx", &mVal); errScan == nil && mVal >= 3 {
+				hasLargeParlay = true
+				break
+			}
+		}
+		if hasLargeParlay {
+			return nil, fmt.Errorf("【风控拦截】当前处于小组赛前期（第二轮及之前），冷门频发。为控制回撤，系统已禁用 3 串 1 及以上的过关推荐，建议主攻量化单场或 2 串 1 稳妥组合。")
+		}
+	}
+
 	resp := &ParlayResponse{
 		Excluded:    []ExcludedMatch{},
 		Recommended: []RecommendedBet{},

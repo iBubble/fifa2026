@@ -302,6 +302,75 @@ func (s *DixonColesService) GenerateProbabilityMatrix(p models.DixonColesParams)
 	return matrix, over2_5, under2_5
 }
 
+// GenerateProbabilityMatrixWithTeams 带有球队战术标签的大小球方差校准概率矩阵生成
+func (s *DixonColesService) GenerateProbabilityMatrixWithTeams(p models.DixonColesParams, homeTeam, awayTeam string) ([]models.ScoreProbability, float64, float64) {
+	matrix, over2_5, under2_5 := s.GenerateProbabilityMatrix(p)
+
+	// 根据两队的战术标签做大小球概率方差校准
+	featH := s.elo.GetFeature(homeTeam)
+	featA := s.elo.GetFeature(awayTeam)
+
+	// 战术标签匹配，直接从 Description 字段分析
+	descH := strings.ToLower(featH.Description)
+	descA := strings.ToLower(featA.Description)
+
+	isDefensiveH := strings.Contains(descH, "防守") || strings.Contains(descH, "零封") || strings.Contains(descH, "大巴")
+	isDefensiveA := strings.Contains(descA, "防守") || strings.Contains(descA, "零封") || strings.Contains(descA, "大巴")
+	isOffensiveH := strings.Contains(descH, "进攻") || strings.Contains(descH, "火力") || strings.Contains(descH, "边路狂飙") || strings.Contains(descH, "狂飙")
+	isOffensiveA := strings.Contains(descA, "进攻") || strings.Contains(descA, "火力") || strings.Contains(descA, "边路狂飙") || strings.Contains(descA, "狂飙")
+
+	// 1. 如果双方都偏防守，大幅拉高闷平、低分概率，削减大小球
+	if isDefensiveH && isDefensiveA {
+		// 削减 over2_5 概率 20% 并对 under2_5 补偿
+		overAdjustment := over2_5 * 0.20
+		over2_5 -= overAdjustment
+		under2_5 += overAdjustment
+
+		// 调整比分矩阵中的概率
+		for i, cell := range matrix {
+			totalScore := cell.HomeScore + cell.AwayScore
+			if totalScore > 2 {
+				matrix[i].Prob = cell.Prob * 0.80
+			} else {
+				// 低进球比分等比获得补偿
+				if under2_5-overAdjustment > 0 {
+					matrix[i].Prob = cell.Prob * (under2_5 / (under2_5 - overAdjustment))
+				}
+			}
+		}
+	} else if isOffensiveH && isOffensiveA {
+		// 2. 双方都偏进攻，上调 over2_5 概率 15%
+		underAdjustment := under2_5 * 0.15
+		under2_5 -= underAdjustment
+		over2_5 += underAdjustment
+
+		for i, cell := range matrix {
+			totalScore := cell.HomeScore + cell.AwayScore
+			if totalScore <= 2 {
+				matrix[i].Prob = cell.Prob * 0.85
+			} else {
+				if over2_5-underAdjustment > 0 {
+					matrix[i].Prob = cell.Prob * (over2_5 / (over2_5 - underAdjustment))
+				}
+			}
+		}
+	}
+
+	// 重新归一化，确保总体概率和等于 1
+	total := 0.0
+	for _, cell := range matrix {
+		total += cell.Prob
+	}
+	if total > 0 {
+		for i := range matrix {
+			matrix[i].Prob /= total
+		}
+	}
+
+	return matrix, over2_5, under2_5
+}
+
+
 func factorial(n int) int {
 	if n <= 0 {
 		return 1

@@ -281,6 +281,53 @@ func (s *SportteryService) GetMatchOdds(homeTeam, awayTeam string, scheduledAt t
 		}
 	}
 	log.Printf("[Sporttery] ❌ 未匹配到任何官方赔率: %s vs %s", homeTeam, awayTeam)
+
+	// 2026 世界杯模拟赔率降级保护与仿真器
+	if scheduledAt.Year() == 2026 {
+		log.Printf("[Sporttery] 🔮 激活 2026 世界杯赔率仿真器: %s vs %s", homeTeam, awayTeam)
+
+		// 默认赔率兜底
+		hOdds, dOdds, aOdds := 2.00, 3.20, 3.20
+		gl := -1
+		hhOdds, hdOdds, haOdds := 3.90, 3.40, 1.68
+
+		hClean := strings.ReplaceAll(homeTeam, " ", "")
+		aClean := strings.ReplaceAll(awayTeam, " ", "")
+		key := hClean + "_" + aClean
+
+		switch key {
+		case "CzechRepublic_SouthAfrica", "Czech_SouthAfrica", "CzechRepublic_SouthfRICA":
+			hOdds, dOdds, aOdds = 1.68, 3.40, 4.15
+			gl = -1
+			hhOdds, hdOdds, haOdds = 3.10, 3.35, 1.98
+		case "Switzerland_BosniaandHerzegovina", "Switzerland_Bosnia":
+			hOdds, dOdds, aOdds = 1.85, 3.15, 3.80
+			gl = -1
+			hhOdds, hdOdds, haOdds = 3.65, 3.25, 1.82
+		case "Canada_Qatar":
+			hOdds, dOdds, aOdds = 2.05, 3.20, 3.15
+			gl = -1
+			hhOdds, hdOdds, haOdds = 4.10, 3.55, 1.62
+		case "Mexico_SouthKorea", "Mexico_Korea":
+			hOdds, dOdds, aOdds = 1.95, 3.10, 3.45
+			gl = -1
+			hhOdds, hdOdds, haOdds = 3.85, 3.35, 1.75
+		}
+
+		return OfficialOdds{
+			HomeOdds:     hOdds,
+			DrawOdds:     dOdds,
+			AwayOdds:     aOdds,
+			GoalLine:     gl,
+			HhadHomeOdds: hhOdds,
+			HhadDrawOdds: hdOdds,
+			HhadAwayOdds: haOdds,
+			IsAvailable:  true,
+			IsSimulation: true,
+			MatchTime:    scheduledAt,
+		}
+	}
+
 	return OfficialOdds{IsAvailable: false}
 }
 
