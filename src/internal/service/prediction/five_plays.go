@@ -8,10 +8,12 @@ import (
 )
 
 type PlayAdvice struct {
-	PlayCode   string       `json:"playCode"`
-	PlayName   string       `json:"playName"`
-	Safe       []PlayOption `json:"safe"`
-	Aggressive []PlayOption `json:"aggressive"`
+	PlayCode        string       `json:"playCode"`
+	PlayName        string       `json:"playName"`
+	Safe            []PlayOption `json:"safe"`
+	Aggressive      []PlayOption `json:"aggressive"`
+	SingleAvailable bool         `json:"singleAvailable"`
+	SingleTip       string       `json:"singleTip"`
 }
 
 type PlayOption struct {
@@ -21,7 +23,7 @@ type PlayOption struct {
 	EV     float64 `json:"ev"`
 }
 
-func (s *LotteryService) GenerateFivePlaysAdvice(match models.Match, report *models.PredictionReport) []PlayAdvice {
+func (s *LotteryService) GenerateFivePlaysAdvice(match models.Match, report *models.PredictionReport, isSingleHad bool) []PlayAdvice {
 	var matrix []models.ScoreProbability
 	var lh, la float64
 	if report != nil {
@@ -45,11 +47,11 @@ func (s *LotteryService) GenerateFivePlaysAdvice(match models.Match, report *mod
 	odds := s.sportteryService.GetMatchOdds(match.HomeTeam, match.AwayTeam, match.ScheduledAt)
 	if !odds.IsAvailable {
 		var advices []PlayAdvice
-		advices = append(advices, PlayAdvice{"had", "胜平负", []PlayOption{{"不可售", 0.0, 0.0, 0.0}}, []PlayOption{{"不可售", 0.0, 0.0, 0.0}}})
-		advices = append(advices, PlayAdvice{"hhad", "让球胜平负", []PlayOption{{"不可售", 0.0, 0.0, 0.0}}, []PlayOption{{"不可售", 0.0, 0.0, 0.0}}})
-		advices = append(advices, PlayAdvice{"crs", "比分", []PlayOption{{"不可售", 0.0, 0.0, 0.0}}, []PlayOption{{"不可售", 0.0, 0.0, 0.0}}})
-		advices = append(advices, PlayAdvice{"ttg", "总进球数", []PlayOption{{"不可售", 0.0, 0.0, 0.0}}, []PlayOption{{"不可售", 0.0, 0.0, 0.0}}})
-		advices = append(advices, PlayAdvice{"hafu", "半全场胜平负", []PlayOption{{"不可售", 0.0, 0.0, 0.0}}, []PlayOption{{"不可售", 0.0, 0.0, 0.0}}})
+		advices = append(advices, PlayAdvice{"had", "胜平负", []PlayOption{{"不可售", 0.0, 0.0, 0.0}}, []PlayOption{{"不可售", 0.0, 0.0, 0.0}}, false, "玩法当前未开售"})
+		advices = append(advices, PlayAdvice{"hhad", "让球胜平负", []PlayOption{{"不可售", 0.0, 0.0, 0.0}}, []PlayOption{{"不可售", 0.0, 0.0, 0.0}}, false, "玩法当前未开售"})
+		advices = append(advices, PlayAdvice{"crs", "比分", []PlayOption{{"不可售", 0.0, 0.0, 0.0}}, []PlayOption{{"不可售", 0.0, 0.0, 0.0}}, false, "玩法当前未开售"})
+		advices = append(advices, PlayAdvice{"ttg", "总进球数", []PlayOption{{"不可售", 0.0, 0.0, 0.0}}, []PlayOption{{"不可售", 0.0, 0.0, 0.0}}, false, "玩法当前未开售"})
+		advices = append(advices, PlayAdvice{"hafu", "半全场胜平负", []PlayOption{{"不可售", 0.0, 0.0, 0.0}}, []PlayOption{{"不可售", 0.0, 0.0, 0.0}}, false, "玩法当前未开售"})
 		return advices
 	}
 
@@ -94,7 +96,17 @@ func (s *LotteryService) GenerateFivePlaysAdvice(match models.Match, report *mod
 			aggOpts = getTop3Aggressive(optsAgg)
 		}
 
-		advices = append(advices, PlayAdvice{"had", "胜平负", safeOpts, aggOpts})
+		var singleTip string
+		isSingleAvailable := odds.HadSingle
+		if len(safeOpts) > 0 && safeOpts[0].Option == "不可售" {
+			isSingleAvailable = false
+			singleTip = "玩法当前未开售"
+		} else if odds.HadSingle {
+			singleTip = "支持单场购买（已开售单关）"
+		} else {
+			singleTip = "仅限过关（未开售单关，无法单场购买）"
+		}
+		advices = append(advices, PlayAdvice{"had", "胜平负", safeOpts, aggOpts, isSingleAvailable, singleTip})
 	}
 
 	// 2. 让球胜平负 (hhad)
@@ -142,7 +154,17 @@ func (s *LotteryService) GenerateFivePlaysAdvice(match models.Match, report *mod
 			copy(optsAgg, opts)
 			aggOpts = getTop3Aggressive(optsAgg)
 		}
-		advices = append(advices, PlayAdvice{"hhad", "让球胜平负", safeOpts, aggOpts})
+		var singleTip string
+		isSingleAvailable := odds.HadSingle
+		if len(safeOpts) > 0 && safeOpts[0].Option == "不可售" {
+			isSingleAvailable = false
+			singleTip = "玩法当前未开售"
+		} else if odds.HadSingle {
+			singleTip = "支持单场购买（已开售单关）"
+		} else {
+			singleTip = "仅限过关（未开售单关，无法单场购买）"
+		}
+		advices = append(advices, PlayAdvice{"hhad", "让球胜平负", safeOpts, aggOpts, isSingleAvailable, singleTip})
 	}
 	// 3. 比分 (crs)
 	{
@@ -201,7 +223,15 @@ func (s *LotteryService) GenerateFivePlaysAdvice(match models.Match, report *mod
 				aggOpts = getTop3Aggressive(optsAgg)
 			}
 		}
-		advices = append(advices, PlayAdvice{"crs", "比分", safeOpts, aggOpts})
+		var singleTip string
+		isSingleAvailable := true
+		if len(safeOpts) > 0 && safeOpts[0].Option == "不可售" {
+			isSingleAvailable = false
+			singleTip = "玩法当前未开售"
+		} else {
+			singleTip = "支持单场购买（默认开售单关）"
+		}
+		advices = append(advices, PlayAdvice{"crs", "比分", safeOpts, aggOpts, isSingleAvailable, singleTip})
 	}
 
 	// 4. 总进球数 (ttg)
@@ -253,7 +283,15 @@ func (s *LotteryService) GenerateFivePlaysAdvice(match models.Match, report *mod
 				aggOpts = getTop3Aggressive(optsAgg)
 			}
 		}
-		advices = append(advices, PlayAdvice{"ttg", "总进球数", safeOpts, aggOpts})
+		var singleTip string
+		isSingleAvailable := true
+		if len(safeOpts) > 0 && safeOpts[0].Option == "不可售" {
+			isSingleAvailable = false
+			singleTip = "玩法当前未开售"
+		} else {
+			singleTip = "支持单场购买（默认开售单关）"
+		}
+		advices = append(advices, PlayAdvice{"ttg", "总进球数", safeOpts, aggOpts, isSingleAvailable, singleTip})
 	}
 
 	// 5. 半全场胜平负 (hafu)
@@ -298,7 +336,15 @@ func (s *LotteryService) GenerateFivePlaysAdvice(match models.Match, report *mod
 				aggOpts = getTop3Aggressive(optsAgg)
 			}
 		}
-		advices = append(advices, PlayAdvice{"hafu", "半全场胜平负", safeOpts, aggOpts})
+		var singleTip string
+		isSingleAvailable := true
+		if len(safeOpts) > 0 && safeOpts[0].Option == "不可售" {
+			isSingleAvailable = false
+			singleTip = "玩法当前未开售"
+		} else {
+			singleTip = "支持单场购买（默认开售单关）"
+		}
+		advices = append(advices, PlayAdvice{"hafu", "半全场胜平负", safeOpts, aggOpts, isSingleAvailable, singleTip})
 	}
 
 	return advices

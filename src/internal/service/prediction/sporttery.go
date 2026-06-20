@@ -26,6 +26,8 @@ type OfficialOdds struct {
 	IsAvailable  bool               `json:"isAvailable"`
 	IsSimulation bool               `json:"isSimulation"`
 	MatchTime    time.Time          `json:"matchTime"`
+	HadSingle    bool               `json:"hadSingle"`
+	HhadSingle   bool               `json:"hhadSingle"`
 }
 
 
@@ -139,6 +141,10 @@ func (s *SportteryService) executeFetch() {
 					LeagueAllName   string `json:"leagueAllName"`
 					HomeTeamAbbEnName string `json:"homeTeamAbbEnName"`
 					AwayTeamAbbEnName string `json:"awayTeamAbbEnName"`
+					PoolList []struct {
+						PoolCode string `json:"poolCode"`
+						Single   int    `json:"single"`
+					} `json:"poolList"`
 					Had             struct {
 						H string `json:"h"`
 						D string `json:"d"`
@@ -223,6 +229,17 @@ func (s *SportteryService) executeFetch() {
 			// 执行熔断器校验
 			isCircuitBroken := checkOddsCircuitBreaker(h, d, a, oldH, oldD, oldA)
 
+			hadSingle := false
+			hhadSingle := false
+			for _, p := range m.PoolList {
+				if p.PoolCode == "HAD" && p.Single == 1 {
+					hadSingle = true
+				}
+				if p.PoolCode == "HHAD" && p.Single == 1 {
+					hhadSingle = true
+				}
+			}
+
 			s.cachedOdds[key] = OfficialOdds{
 				HomeOdds:     h,
 				DrawOdds:     d,
@@ -236,6 +253,8 @@ func (s *SportteryService) executeFetch() {
 				HafuOdds:     hafuOdds,
 				IsAvailable:  (h > 0.0 || hh > 0.0 || len(crsOdds) > 0) && !isCircuitBroken,
 				MatchTime:    matchTime,
+				HadSingle:    hadSingle,
+				HhadSingle:   hhadSingle,
 			}
 
 			if isCircuitBroken && h > 0.0 {

@@ -73,6 +73,7 @@ type ParlayResponse struct {
 	Excluded    []ExcludedMatch  `json:"excluded"`
 	Recommended []RecommendedBet `json:"recommended"`
 	Parlays     []ParlayAdvice   `json:"parlays"`
+	Warning     string           `json:"warning,omitempty"`
 }
 
 // bankersRound 银行家舍入法 (四舍六入五双)
@@ -85,9 +86,10 @@ func (s *ParlayService) RecommendParlay(matchIds []string, parlayMode string, pa
 	time.Sleep(1200 * time.Millisecond)
 
 	// 优化改进方案 3.1：串关拦截与动态限额 (Parlay Limiter)
-	// 在小组赛第一、二轮（以完赛场次 < 48 场作为判定标准），系统将默认拦截 3 串 1 及以上的过关推荐
+	// 在小组赛第一、二轮（以完赛场次 < 48 场作为判定标准），系统将提示 3 串 1 及以上的风险警示
 	var finishedCount int
 	_ = db.DB.QueryRow("SELECT COUNT(*) FROM matches WHERE status = 'FT'").Scan(&finishedCount)
+	var warningMsg string
 	if finishedCount < 48 {
 		hasLargeParlay := false
 		for _, opt := range parlayOptions {
@@ -98,7 +100,7 @@ func (s *ParlayService) RecommendParlay(matchIds []string, parlayMode string, pa
 			}
 		}
 		if hasLargeParlay {
-			return nil, fmt.Errorf("【风控拦截】当前处于小组赛前期（第二轮及之前），冷门频发。为控制回撤，系统已禁用 3 串 1 及以上的过关推荐，建议主攻量化单场或 2 串 1 稳妥组合。")
+			warningMsg = "当前处于小组赛前期（第二轮及之前），冷门频发。为控制回撤，系统建议主攻 2 串 1 或单关，但已遵照您的要求生成了 3 串 1 及以上的高串关精算，请在实单中注意防范高波动风险。"
 		}
 	}
 
@@ -106,6 +108,7 @@ func (s *ParlayService) RecommendParlay(matchIds []string, parlayMode string, pa
 		Excluded:    []ExcludedMatch{},
 		Recommended: []RecommendedBet{},
 		Parlays:     []ParlayAdvice{},
+		Warning:     warningMsg,
 	}
 
 	for _, id := range matchIds {

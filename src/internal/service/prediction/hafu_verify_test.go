@@ -186,7 +186,7 @@ func TestBacktestVerify(t *testing.T) {
 		sportteryService.mu.Unlock()
 
 		// 调用真实系统服务生成推荐
-		advice := lotteryService.GenerateSingleAdvice(m, 0, 0, 0, nil)
+		advice := lotteryService.GenerateSingleAdvice(m, 0, 0, 0, nil, false)
 
 		isRecommended := advice.Status == "RECOMMENDED"
 		primaryBet := advice.PrimaryBet
@@ -404,7 +404,7 @@ func TestOptimizeParams(t *testing.T) {
 						odds.MatchTime = m.ScheduledAt
 						sportteryService.cachedOdds[m.HomeTeam+"_"+m.AwayTeam] = odds
 						sportteryService.mu.Unlock()
-						advice := lotteryService.GenerateSingleAdvice(m, 0, 0, 0, nil)
+						advice := lotteryService.GenerateSingleAdvice(m, 0, 0, 0, nil, false)
 						if advice.Status == "RECOMMENDED" {
 							totalRecommends++
 							safeHit := checkHit(m.HomeScore, m.AwayScore, advice.PrimaryBet)

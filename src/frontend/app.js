@@ -507,6 +507,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // 初始化赛程积分表事件绑定
   initScheduleStandings();
+
+  // 初始化智能投注方案建议弹窗
+  initBetAdvice();
 });
 
 // 全自动倒计时精算流
@@ -920,12 +923,19 @@ async function renderLotteryPanel(recommendData = null) {
           `;
         }
 
+            const singleBadge = play.singleAvailable 
+              ? `<span style="background: rgba(0, 255, 136, 0.15); color: var(--neon-green); padding: 1px 4px; border-radius: 3px; font-size: 9.5px; font-weight: bold; border: 0.5px solid var(--neon-green);">单关已开售</span>`
+              : `<span style="background: rgba(255, 170, 0, 0.15); color: #ffaa00; padding: 1px 4px; border-radius: 3px; font-size: 9.5px; font-weight: bold; border: 0.5px solid #ffaa00;">仅限过关</span>`;
+
+            const singleWarningBar = "";
+
             html += `
               <div class="lottery-play-card" id="play-card-${play.playCode}" style="display: ${cardDisplay}; background: rgba(136, 0, 255, 0.02); border: 1px solid var(--panel-border); border-radius: 6px; padding: 8px; font-size: 12.5px;">
                 <div style="font-weight: 700; color: var(--text-white-adapt); margin-bottom: 6px; display: flex; align-items: center; justify-content: space-between; font-size: 13.5px;">
                   <span>🎫 ${play.playName}</span>
+                  ${singleBadge}
                 </div>
-                
+                ${singleWarningBar}
                 <div style="display: flex; flex-direction: column; gap: 5px;">
                   ${safeHtml}
                   ${aggressiveHtml}
@@ -948,7 +958,109 @@ async function renderLotteryPanel(recommendData = null) {
 
   resultDom.innerHTML = html;
 
-  // 3. 动态绑定五大玩法 Tab 切换交互事件
+  // 3. 动态更新“记录单场建议”按钮的状态函数
+  const updateSaveSingleBtnState = () => {
+    const saveSingleBtn = document.getElementById("save-single-btn");
+    if (!saveSingleBtn) return;
+    
+    const activeTabBtn = resultDom.querySelector(".lottery-tab-btn.active");
+    const activeCode = activeTabBtn ? activeTabBtn.dataset.tab : "had";
+    
+    let isPlaySingleAvailable = true;
+    let isPlayAvailable = true;
+    if (recommendData && recommendData.fivePlays) {
+      const activePlay = recommendData.fivePlays.find(p => p.playCode === activeCode);
+      if (activePlay) {
+        isPlaySingleAvailable = activePlay.singleAvailable;
+        if (activePlay.safe && activePlay.safe.length > 0 && activePlay.safe[0].option === "不可售") {
+          isPlayAvailable = false;
+        }
+      }
+    }
+    
+    if (recommendData && recommendData.single && recommendData.single.status !== "EXCLUDED") {
+      if (!isPlayAvailable) {
+        saveSingleBtn.disabled = true;
+        saveSingleBtn.style.opacity = "0.5";
+        saveSingleBtn.style.cursor = "not-allowed";
+        saveSingleBtn.style.background = "rgba(255, 74, 74, 0.08)";
+        saveSingleBtn.style.borderColor = "#ff4a4a";
+        saveSingleBtn.style.color = "#ff4a4a";
+        saveSingleBtn.innerText = "⚠️ 玩法未售，无法记录";
+        saveSingleBtn.onclick = null;
+      } else {
+        saveSingleBtn.disabled = false;
+        saveSingleBtn.style.opacity = "1";
+        saveSingleBtn.style.cursor = "pointer";
+        saveSingleBtn.style.background = "rgba(0,255,136,0.08)";
+        saveSingleBtn.style.borderColor = "var(--neon-green)";
+        saveSingleBtn.style.color = "var(--neon-green)";
+        if (!isPlaySingleAvailable) {
+          saveSingleBtn.innerText = "💾 记录单场建议 (需过关)";
+        } else {
+          saveSingleBtn.innerText = "💾 记录单场建议";
+        }
+        
+        saveSingleBtn.onclick = async () => {
+          const oldText = saveSingleBtn.innerText;
+          saveSingleBtn.innerText = "记录中...";
+          saveSingleBtn.disabled = true;
+          
+          let hedgeBetOutcome = "";
+          let hedgeBetOdds = 0.0;
+          let hedgeBetStake = 0.0;
+          if (recommendData.single.hedgeBets && recommendData.single.hedgeBets.length > 0) {
+            const hedge = recommendData.single.hedgeBets[0];
+            hedgeBetOutcome = hedge.outcome;
+            hedgeBetOdds = hedge.odds;
+            hedgeBetStake = 20.0;
+          }
+          
+          try {
+            const saveRes = await fetch(`${API_BASE}/lottery/save-single`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                matchId: currentMatchID,
+                oddsH: parseFloat(document.getElementById("lottery-odds-h")?.value || 1.95),
+                oddsD: parseFloat(document.getElementById("lottery-odds-d")?.value || 3.20),
+                oddsA: parseFloat(document.getElementById("lottery-odds-a")?.value || 3.80),
+                primaryBet: recommendData.single.primaryBet,
+                primaryOdds: recommendData.single.primaryOdds,
+                hedgeBet: hedgeBetOutcome,
+                hedgeOdds: hedgeBetOdds,
+                hedgeAmt: hedgeBetStake,
+                reason: recommendData.single.reason
+              })
+            });
+            const saveResult = await saveRes.json();
+            if (saveResult.status === "success") {
+              alert("💾 单场量化投注方案记录成功，已加入复盘库！");
+              renderLotteryPanel(recommendData);
+            } else {
+              alert("记录失败: " + (saveResult.error || "未知错误"));
+            }
+          } catch (err) {
+            alert("记录网络异常: " + err.message);
+          } finally {
+            saveSingleBtn.innerText = oldText;
+            saveSingleBtn.disabled = false;
+          }
+        };
+      }
+    } else {
+      saveSingleBtn.disabled = true;
+      saveSingleBtn.style.opacity = "0.5";
+      saveSingleBtn.style.cursor = "not-allowed";
+      saveSingleBtn.style.background = "rgba(0,255,136,0.08)";
+      saveSingleBtn.style.borderColor = "var(--neon-green)";
+      saveSingleBtn.style.color = "var(--neon-green)";
+      saveSingleBtn.innerText = "💾 记录单场建议";
+      saveSingleBtn.onclick = null;
+    }
+  };
+
+  // 4. 动态绑定五大玩法 Tab 切换交互事件
   const tabBtns = resultDom.querySelectorAll(".lottery-tab-btn");
   tabBtns.forEach(btn => {
     btn.onclick = () => {
@@ -971,70 +1083,12 @@ async function renderLotteryPanel(recommendData = null) {
           card.style.display = "none";
         }
       });
+      updateSaveSingleBtnState();
     };
   });
 
-  // 需求 3：动态更新单场记录按钮状态并绑定保存事件
-  const saveSingleBtn = document.getElementById("save-single-btn");
-  if (saveSingleBtn) {
-    if (recommendData && recommendData.single && recommendData.single.status !== "EXCLUDED") {
-      saveSingleBtn.disabled = false;
-      saveSingleBtn.style.opacity = "1";
-      saveSingleBtn.style.cursor = "pointer";
-      
-      saveSingleBtn.onclick = async () => {
-        const oldText = saveSingleBtn.innerText;
-        saveSingleBtn.innerText = "记录中...";
-        saveSingleBtn.disabled = true;
-        
-        let hedgeBetOutcome = "";
-        let hedgeBetOdds = 0.0;
-        let hedgeBetStake = 0.0;
-        if (recommendData.single.hedgeBets && recommendData.single.hedgeBets.length > 0) {
-          const hedge = recommendData.single.hedgeBets[0];
-          hedgeBetOutcome = hedge.outcome;
-          hedgeBetOdds = hedge.odds;
-          hedgeBetStake = 20.0;
-        }
-        
-        try {
-          const saveRes = await fetch(`${API_BASE}/lottery/save-single`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              matchId: currentMatchID,
-              oddsH: parseFloat(document.getElementById("lottery-odds-h")?.value || 1.95),
-              oddsD: parseFloat(document.getElementById("lottery-odds-d")?.value || 3.20),
-              oddsA: parseFloat(document.getElementById("lottery-odds-a")?.value || 3.80),
-              primaryBet: recommendData.single.primaryBet,
-              primaryOdds: recommendData.single.primaryOdds,
-              hedgeBet: hedgeBetOutcome,
-              hedgeOdds: hedgeBetOdds,
-              hedgeAmt: hedgeBetStake,
-              reason: recommendData.single.reason
-            })
-          });
-          const saveResult = await saveRes.json();
-          if (saveResult.status === "success") {
-            alert("💾 单场量化投注方案记录成功，已加入复盘库！");
-            renderLotteryPanel(recommendData);
-          } else {
-            alert("记录失败: " + (saveResult.error || "未知错误"));
-          }
-        } catch (err) {
-          alert("记录网络异常: " + err.message);
-        } finally {
-          saveSingleBtn.innerText = oldText;
-          saveSingleBtn.disabled = false;
-        }
-      };
-    } else {
-      saveSingleBtn.disabled = true;
-      saveSingleBtn.style.opacity = "0.5";
-      saveSingleBtn.style.cursor = "not-allowed";
-      saveSingleBtn.onclick = null;
-    }
-  }
+  // 5. 初始化运行一次更新按钮状态
+  updateSaveSingleBtnState();
   } catch (err) {
     console.error("renderLotteryPanel internal error:", err);
     resultDom.innerHTML = `<div style="color:#ff4a4a; font-size:11px; padding:10px;">⚠️ 建议渲染逻辑异常: ${err.message}</div>`;
@@ -1377,6 +1431,19 @@ document.getElementById("generate-parlay-btn").onclick = async () => {
       ex.reason && ex.reason.includes("⚠️")
     ) : [];
 
+    let warningBoxHtml = "";
+    if (data.warning) {
+      warningBoxHtml = `
+        <div style="background: rgba(255, 74, 74, 0.08); border: 1px solid rgba(255, 74, 74, 0.25); border-radius: 8px; padding: 10px; margin-bottom: 12px; color: #ff9d9d; font-size: 11px; line-height: 1.5;">
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 5px;">
+            <span style="font-size:16px;">⚠️</span>
+            <strong style="color: #ff9d9d;">智能量化防线风险预警：</strong>
+          </div>
+          <p style="margin: 0; line-height: 1.4;">${data.warning}</p>
+        </div>
+      `;
+    }
+
     if (softWarnings.length > 0) {
       let warningDetailHtml = "";
       softWarnings.forEach(w => {
@@ -1396,7 +1463,7 @@ document.getElementById("generate-parlay-btn").onclick = async () => {
         ${descHtml}
       `;
     }
-    document.querySelector(".modal-desc").innerHTML = descHtml;
+    document.querySelector(".modal-desc").innerHTML = warningBoxHtml + descHtml;
 
     const schemesList = document.getElementById("modal-schemes-list");
     schemesList.innerHTML = "";
@@ -2728,5 +2795,555 @@ function renderBracketTree() {
     bracketContainer.appendChild(colDom);
   });
 }
+
+// 智能投注建议弹窗初始化
+function initBetAdvice() {
+  const openBtn = document.getElementById("open-bet-advice-btn");
+  const closeBtn = document.getElementById("close-bet-advice-btn");
+  const modal = document.getElementById("bet-advice-modal");
+  if (!openBtn || !modal) return;
+
+  openBtn.onclick = () => {
+    modal.style.display = "flex";
+    initDateSelectOptions();
+    const dateSelect = document.getElementById("bet-advice-date");
+    loadBetMatches(dateSelect ? dateSelect.value : "");
+  };
+  closeBtn.onclick = () => {
+    modal.style.display = "none";
+  };
+
+  // Tab 切换
+  const tabBtns = document.querySelectorAll(".bet-mode-btn");
+  const customPanel = document.getElementById("bet-custom-options");
+  tabBtns.forEach(btn => {
+    btn.onclick = () => {
+      tabBtns.forEach(b => {
+        b.classList.remove("active");
+        b.style.background = "none";
+        b.style.color = "var(--text-muted)";
+      });
+      btn.classList.add("active");
+      const mode = btn.dataset.mode;
+      const isDark = !document.body.classList.contains("theme-light");
+      btn.style.background = mode === "system" ? "var(--neon-green)" : (isDark ? "var(--neon-green)" : "var(--neon-purple)");
+      btn.style.color = mode === "system" ? "#000" : (isDark ? "#000" : "#fff");
+
+      if (mode === "custom") {
+        customPanel.style.display = "flex";
+      } else {
+        customPanel.style.display = "none";
+      }
+    };
+  });
+
+  // Slider 实时更新
+  const safeSlider = document.getElementById("bet-safe-ratio");
+  const safeLabel = document.getElementById("safe-ratio-label");
+  const singleSlider = document.getElementById("bet-single-ratio");
+  const singleLabel = document.getElementById("single-ratio-label");
+
+  if (safeSlider) safeSlider.oninput = () => { safeLabel.innerText = `${safeSlider.value}%`; };
+  if (singleSlider) singleSlider.oninput = () => { singleLabel.innerText = `${singleSlider.value}%`; };
+
+  // 日期选择事件
+  const dateSelect = document.getElementById("bet-advice-date");
+  if (dateSelect) {
+    dateSelect.onchange = () => {
+      loadBetMatches(dateSelect.value);
+    };
+  }
+
+  // 生成方案
+  const genBtn = document.getElementById("generate-bet-advice-btn");
+  genBtn.onclick = async () => {
+    const totalAmount = parseFloat(document.getElementById("bet-total-amount").value) || 100;
+    const mode = document.querySelector(".bet-mode-btn.active").dataset.mode;
+    const safeRatio = mode === "system" ? 0.6 : safeSlider.value / 100;
+    const singleRatio = mode === "system" ? 0.5 : singleSlider.value / 100;
+    const dateVal = dateSelect ? dateSelect.value : "";
+    const allowHighParlay = document.getElementById("bet-allow-high-parlay").checked;
+
+    // 显示思考区
+    const debatePanel = document.getElementById("bet-agents-debate-panel");
+    const resultPanel = document.getElementById("bet-advice-result-panel");
+    debatePanel.style.display = "flex";
+    resultPanel.style.display = "none";
+
+    const s1 = document.getElementById("agent-step-1");
+    const s2 = document.getElementById("agent-step-2");
+    const s3 = document.getElementById("agent-step-3");
+
+    s1.classList.add("active-step");
+    s1.style.opacity = "1";
+    s1.querySelector(".agent-text").innerText = "常规立论专家正在研判 DC 泊松预测、战术标签与本金偏好...";
+    s2.classList.remove("active-step");
+    s2.style.opacity = "0.5";
+    s2.querySelector(".agent-text").innerText = "等待常规立论完毕...";
+    s3.classList.remove("active-step");
+    s3.style.opacity = "0.5";
+    s3.querySelector(".agent-text").innerText = "等待魔鬼反驳完毕...";
+
+    try {
+      const res = await fetch(`${API_BASE}/bet/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ totalAmount, safeRatio, singleRatio, mode, date: dateVal, allowHighParlay })
+      });
+      if (!res.ok) {
+        let errMsg = `HTTP 错误: ${res.status}`;
+        try {
+          const errData = await res.json();
+          if (errData && errData.error) {
+            errMsg = errData.error;
+          }
+        } catch (_) {}
+        throw new Error(errMsg);
+      }
+      const contentType = res.headers.get("content-type") || "";
+      if (!contentType.includes("application/json")) {
+        throw new Error("服务器未返回有效的 JSON 数据 (可能反向代理连接超时或出错)");
+      }
+      const data = await res.json();
+      if (data.error) {
+        throw new Error(data.error);
+      }
+
+      s1.querySelector(".agent-text").innerHTML = `<strong>常规立论已就绪：</strong>${data.proponentOpinion}`;
+      s1.classList.remove("active-step");
+
+      s2.classList.add("active-step");
+      s2.style.opacity = "1";
+      s2.querySelector(".agent-text").innerText = "魔鬼反驳专家正在分析立论漏洞、热门资金陷阱与限额对冲策略...";
+      await new Promise(r => setTimeout(r, 1200));
+
+      s2.querySelector(".agent-text").innerHTML = `<strong>魔鬼反驳已就绪：</strong>${data.critiqueAnalysis}`;
+      s2.classList.remove("active-step");
+
+      s3.classList.add("active-step");
+      s3.style.opacity = "1";
+      s3.querySelector(".agent-text").innerText = "首席精算裁判正在进行终审中和，计算配资期望与预期 ROI...";
+      await new Promise(r => setTimeout(r, 1200));
+
+      s3.querySelector(".agent-text").innerHTML = `<strong>仲裁一致：</strong>${data.consensusReason}`;
+      renderBetAdviceResult(data);
+    } catch (err) {
+      s3.querySelector(".agent-text").innerText = `生成失败: ${err.message || err}`;
+    }
+  };
+}
+
+// 拉取参与投注建议的在售场次并展示
+async function loadBetMatches(date) {
+  const container = document.getElementById("bet-matches-container");
+  if (!container) return;
+  if (!date) {
+    const select = document.getElementById("bet-advice-date");
+    date = select ? select.value : "";
+  }
+  container.innerHTML = `<span style="font-size: 11px; color: var(--text-muted);">正在加载 ${date} 在售场次...</span>`;
+  try {
+    const res = await fetch(`${API_BASE}/bet/matches?date=${date}`);
+    const list = await res.json();
+    if (list.length === 0) {
+      container.innerHTML = `<span style="font-size: 11px; color: var(--text-muted);">⚠️ 该日期暂无可参与方案生成的在售比赛</span>`;
+      return;
+    }
+    container.innerHTML = list.map(m => `
+      <span style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.08); border-radius: 4px; padding: 3px 8px; font-size: 11px; color: var(--text-main); display: inline-flex; align-items: center; gap: 4px;">
+        ⚽ ${m.homeCn} VS ${m.awayCn} <span style="color: var(--text-muted); font-size: 9px;">(${m.matchTime})</span>
+      </span>
+    `).join("");
+  } catch (err) {
+    container.innerHTML = `<span style="font-size: 11px; color: #ff4a4a;">加载在售场次出错</span>`;
+  }
+}
+
+// 初始化方案日期下拉选项 (默认选中当前服务器明天的日期)
+function initDateSelectOptions() {
+  const select = document.getElementById("bet-advice-date");
+  if (!select) return;
+
+  const nsDates = new Set();
+  (allMatchesData || []).forEach(m => {
+    if (m.status === "NS") {
+      const localD = new Date(m.scheduledAt);
+      const yr = localD.getFullYear();
+      const mo = String(localD.getMonth() + 1).padStart(2, '0');
+      const dy = String(localD.getDate()).padStart(2, '0');
+      nsDates.add(`${yr}-${mo}-${dy}`);
+    }
+  });
+
+  const sortedDates = Array.from(nsDates).sort();
+  const tomorrow = new Date(Date.now() + 86400000);
+  const tomStr = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`;
+  
+  let defaultDate = tomStr;
+  if (!nsDates.has(tomStr) && sortedDates.length > 0) {
+    defaultDate = sortedDates[0];
+  }
+
+  if (sortedDates.length === 0) {
+    sortedDates.push(tomStr);
+  }
+
+  select.innerHTML = sortedDates.map(d => {
+    const isSelected = d === defaultDate ? "selected" : "";
+    let labelSuffix = d === tomStr ? " (明天)" : "";
+    return `<option value="${d}" ${isSelected}>${d}${labelSuffix}</option>`;
+  }).join("");
+}
+
+// 渲染投注生成结果与绑定操作
+function renderBetAdviceResult(data) {
+  const resultPanel = document.getElementById("bet-advice-result-panel");
+  if (!resultPanel) return;
+
+  resultPanel.style.display = "flex";
+  document.getElementById("bet-expected-roi").innerText = `预期回报率: ${(data.expectedRoi * 100).toFixed(1)}%`;
+  document.getElementById("bet-consensus-reason").innerText = data.consensusReason;
+
+  const safeRange = calculatePayoutRange(data.safeScheme, data.matches);
+  const aggRange = calculatePayoutRange(data.aggressiveScheme, data.matches);
+
+  // 计算投注小计总金额
+  const safeTotalStake = (data.safeScheme || []).reduce((sum, item) => sum + (parseFloat(item.stake) || 0), 0);
+  const aggTotalStake = (data.aggressiveScheme || []).reduce((sum, item) => sum + (parseFloat(item.stake) || 0), 0);
+
+  const safeTotalEl = document.getElementById("safe-scheme-total-stake");
+  if (safeTotalEl) {
+    safeTotalEl.innerText = `(小计: ${safeTotalStake.toFixed(1)}元)`;
+  }
+  const aggTotalEl = document.getElementById("agg-scheme-total-stake");
+  if (aggTotalEl) {
+    aggTotalEl.innerText = `(小计: ${aggTotalStake.toFixed(1)}元)`;
+  }
+
+  const safeList = document.getElementById("safe-scheme-list");
+  if (data.safeScheme && data.safeScheme.length > 0) {
+    const rangeHeader = `
+      <div style="background: rgba(0, 255, 136, 0.08); border: 1px dashed var(--neon-green); border-radius: 6px; padding: 6px 10px; font-size: 11px; color: var(--neon-green); font-weight: bold; display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; box-shadow: 0 0 8px rgba(0, 255, 136, 0.1);">
+        <span>💰 预计返奖范围：</span>
+        <span>${safeRange.min.toFixed(1)}元 ~ ${safeRange.max.toFixed(1)}元</span>
+      </div>
+    `;
+    safeList.innerHTML = rangeHeader + data.safeScheme.map(item => `
+      <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.04); border-radius: 6px; padding: 8px; font-size: 11px; display: flex; flex-direction: column; gap: 4px;">
+        <div style="display: flex; justify-content: space-between; font-weight: 600;">
+          <span style="color: #fff;">${item.matchName}</span>
+          <span style="color: var(--neon-green); font-size: 10px;">${item.betType}</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; color: var(--text-muted); font-size: 10px; margin-top: 2px;">
+          <span>盘口: ${item.market} | 选择: <strong style="color: #fff;">${item.selection}</strong></span>
+          <span>赔率: ${item.odds.toFixed(2)} | 推荐: <strong style="color: var(--neon-green);">${item.stake}元</strong>${item.prob ? ` | 概率: <strong style="color: #00bfff;">${(item.prob * 100).toFixed(1)}%</strong>` : ''}</span>
+        </div>
+      </div>
+    `).join("");
+  } else {
+    safeList.innerHTML = `<span style="font-size:11px; color:var(--text-muted);">暂无推荐</span>`;
+  }
+
+  const aggList = document.getElementById("agg-scheme-list");
+  if (data.aggressiveScheme && data.aggressiveScheme.length > 0) {
+    const rangeHeader = `
+      <div style="background: rgba(255, 170, 0, 0.08); border: 1px dashed #ffaa00; border-radius: 6px; padding: 6px 10px; font-size: 11px; color: #ffaa00; font-weight: bold; display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; box-shadow: 0 0 8px rgba(255, 170, 0, 0.1);">
+        <span>💰 预计返奖范围：</span>
+        <span>${aggRange.min.toFixed(1)}元 ~ ${aggRange.max.toFixed(1)}元</span>
+      </div>
+    `;
+    aggList.innerHTML = rangeHeader + data.aggressiveScheme.map(item => `
+      <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.04); border-radius: 6px; padding: 8px; font-size: 11px; display: flex; flex-direction: column; gap: 4px;">
+        <div style="display: flex; justify-content: space-between; font-weight: 600;">
+          <span style="color: #fff;">${item.matchName}</span>
+          <span style="color: #ffaa00; font-size: 10px;">${item.betType}</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; color: var(--text-muted); font-size: 10px; margin-top: 2px;">
+          <span>盘口: ${item.market} | 选择: <strong style="color: #fff;">${item.selection}</strong></span>
+          <span>赔率: ${item.odds.toFixed(2)} | 推荐: <strong style="color: #ffaa00;">${item.stake}元</strong>${item.prob ? ` | 概率: <strong style="color: #00bfff;">${(item.prob * 100).toFixed(1)}%</strong>` : ''}</span>
+        </div>
+      </div>
+    `).join("");
+  } else {
+    aggList.innerHTML = `<span style="font-size:11px; color:var(--text-muted);">暂无推荐</span>`;
+  }
+
+  // 渲染综合混合过关方案
+  const mixedSchemeContainer = document.getElementById("mixed-scheme-container");
+  const mixedSchemeList = document.getElementById("mixed-scheme-list");
+  if (mixedSchemeContainer && mixedSchemeList) {
+    if (data.mixedScheme && data.mixedScheme.length > 0) {
+      mixedSchemeContainer.style.display = "block";
+      const totalOdds = data.mixedOdds || 1.0;
+      const totalProb = data.mixedProb || 0.0;
+      const count = data.mixedScheme.length;
+
+      document.getElementById("mixed-scheme-summary").innerText = 
+        `(${count}场组合 ── 综合中奖率: ${(totalProb * 100).toFixed(2)}% ── 组合赔率: ${totalOdds.toFixed(2)})`;
+      
+      const maxProfit = 10 * totalOdds;
+      document.getElementById("mixed-scheme-max-profit").innerText = `${maxProfit.toFixed(2)} 元`;
+
+      mixedSchemeList.innerHTML = data.mixedScheme.map(item => `
+        <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.04); border-radius: 6px; padding: 8px; font-size: 11px; display: flex; flex-direction: column; gap: 4px;">
+          <div style="display: flex; justify-content: space-between; font-weight: 600;">
+            <span style="color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 130px;">${item.matchName}</span>
+            <span style="color: #00bfff; font-size: 10px;">${item.market}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; color: var(--text-muted); font-size: 10px; margin-top: 2px;">
+            <span>选项: <strong style="color: #fff;">${item.selection}</strong></span>
+            <span>赔率: <strong style="color: #00bfff;">@${item.odds.toFixed(2)}</strong></span>
+          </div>
+        </div>
+      `).join("");
+    } else {
+      mixedSchemeContainer.style.display = "none";
+    }
+  }
+
+  // 复制结果
+  document.getElementById("copy-advice-btn").onclick = () => {
+    const text = formatAdviceText(data);
+    navigator.clipboard.writeText(text).then(() => {
+      alert("📋 方案文本已复制到剪贴板！");
+    }).catch(err => {
+      alert("复制失败: " + err);
+    });
+  };
+
+  // 导出 Markdown
+  document.getElementById("export-advice-btn").onclick = () => {
+    const text = formatAdviceText(data);
+    const blob = new Blob([text], { type: "text/markdown;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", `2026世界杯_投注方案推荐_${new Date().toISOString().slice(0, 10)}.md`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // 持久化保存方案进行复盘
+  document.getElementById("save-advice-btn").onclick = async () => {
+    const totalAmount = parseFloat(document.getElementById("bet-total-amount").value) || 100;
+    const btn = document.getElementById("save-advice-btn");
+    btn.innerText = "⏳ 保存中...";
+    btn.disabled = true;
+
+    try {
+      let savedCount = 0;
+      if (data.safeScheme && data.safeScheme.length > 0) {
+        const resSafe = await fetch(`${API_BASE}/bet/save-advice`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            planType: "safe",
+            totalAmount: totalAmount,
+            items: data.safeScheme
+          })
+        });
+        if (resSafe.ok) savedCount++;
+      }
+
+      if (data.aggressiveScheme && data.aggressiveScheme.length > 0) {
+        const resAgg = await fetch(`${API_BASE}/bet/save-advice`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            planType: "aggressive",
+            totalAmount: totalAmount,
+            items: data.aggressiveScheme
+          })
+        });
+        if (resAgg.ok) savedCount++;
+      }
+
+      if (savedCount > 0) {
+        alert(`🎉 成功保存 ${savedCount} 套智能推荐方案！您可在赛后点击"一键财务复盘"来进行对账和盈亏结算。`);
+        if (typeof renderLotteryPanel === "function") renderLotteryPanel();
+        if (typeof loadBacktestHistory === "function") loadBacktestHistory();
+      } else {
+        alert("⚠️ 保存方案失败，未识别出推荐投注项");
+      }
+    } catch (err) {
+      alert("保存方案出错: " + err);
+    } finally {
+      btn.innerText = "💾 保存方案复盘";
+      btn.disabled = false;
+    }
+  };
+}
+
+// 格式化输出为 Markdown 文本
+function formatAdviceText(data) {
+  if (data && data.markdownReport) {
+    return data.markdownReport;
+  }
+  let md = `# 💡 FIFA 智能投注方案推荐\n\n`;
+  md += `## 🤖 多 Agent 决策意见\n`;
+  md += `- **🟢 常规立论 (35B)**:\n  ${data.proponentOpinion}\n\n`;
+  md += `- **🔴 魔鬼反驳 (8B)**:\n  ${data.critiqueAnalysis}\n\n`;
+  md += `- **🟣 仲裁共识 (35B)**:\n  ${data.consensusReason}\n\n`;
+  md += `预期回报率: **${(data.expectedRoi * 100).toFixed(1)}%**\n\n`;
+  
+  md += `## 🛡️ 稳妥保本防线\n`;
+  if (data.safeScheme && data.safeScheme.length > 0) {
+    data.safeScheme.forEach(i => {
+      md += `- **[${i.betType}]** ${i.matchName} | 玩法: ${i.market} | 选择: ${i.selection} | 赔率: ${i.odds.toFixed(2)} | 推荐下注: ${i.stake}元\n`;
+    });
+  } else {
+    md += `无\n`;
+  }
+  md += `\n`;
+
+  md += `## 🚀 激进爆发冷门\n`;
+  if (data.aggressiveScheme && data.aggressiveScheme.length > 0) {
+    data.aggressiveScheme.forEach(i => {
+      md += `- **[${i.betType}]** ${i.matchName} | 玩法: ${i.market} | 选择: ${i.selection} | 赔率: ${i.odds.toFixed(2)} | 推荐下注: ${i.stake}元\n`;
+    });
+  } else {
+    md += `无\n`;
+  }
+  md += `\n`;
+
+  md += `## 🔮 综合混合过关方案 (各场最高概率)\n`;
+  if (data.mixedScheme && data.mixedScheme.length > 0) {
+    const totalOdds = data.mixedOdds || 1.0;
+    const totalProb = data.mixedProb || 0.0;
+    const typeStr = data.mixedScheme[0].betType || "混合过关";
+    md += `过关方式: **${typeStr}** | 综合概率: **${(totalProb * 100).toFixed(2)}%** | 组合总赔率: **${totalOdds.toFixed(2)}**\n`;
+    md += `意向投注: **10 元** | 最低收益: **0.00 元** | 最高预期收益: **${(10 * totalOdds).toFixed(2)} 元**\n\n`;
+    data.mixedScheme.forEach(i => {
+      md += `- ${i.matchName} | 玩法: ${i.market} | 选择: ${i.selection} | 赔率: @${i.odds.toFixed(2)}\n`;
+    });
+  } else {
+    md += `无\n`;
+  }
+  return md;
+}
+
+// 模拟体彩所有赛果组合以求出实际最大和最小中奖金额范围
+function calculatePayoutRange(scheme, matches) {
+  if (!scheme || scheme.length === 0 || !matches || matches.length === 0) return { min: 0, max: 0 };
+  
+  const getCleanMatchKey = (home, away) => {
+    return `${home.toLowerCase().trim()}_vs_${away.toLowerCase().trim()}`;
+  };
+  
+  const matchKeys = matches.map(m => getCleanMatchKey(m.homeCn || m.homeTeam, m.awayCn || m.awayTeam));
+  
+  let outcomes = [[]];
+  for (let i = 0; i < matchKeys.length; i++) {
+    let temp = [];
+    for (let o of outcomes) {
+      temp.push([...o, 'WIN']);
+      temp.push([...o, 'DRAW']);
+      temp.push([...o, 'LOSS']);
+    }
+    outcomes = temp;
+  }
+  
+  let payouts = [];
+  
+  for (let outcome of outcomes) {
+    let currentPayout = 0;
+    for (let item of scheme) {
+      let hit = false;
+      if (item.betType === "单关") {
+        const mIdx = matchKeys.findIndex(k => {
+          const cleanName = item.matchName.toLowerCase().replace(/\s+/g, '').replace('vs', '_vs_').replace('&', '_vs_');
+          const home = k.split('_vs_')[0];
+          const away = k.split('_vs_')[1];
+          return cleanName.includes(home) && cleanName.includes(away);
+        });
+        if (mIdx !== -1) {
+          hit = checkItemHit(item.market, item.selection, outcome[mIdx]);
+        }
+      } else if (item.betType === "2串1") {
+        const parts = item.matchName.split("&").map(s => s.trim());
+        const sels = item.selection.split("&").map(s => s.trim());
+        if (parts.length >= 2 && sels.length >= 2) {
+          let hit1 = false;
+          let hit2 = false;
+          
+          const mIdx1 = matchKeys.findIndex(k => {
+            const cleanName = parts[0].toLowerCase().replace(/\s+/g, '').replace('vs', '_vs_');
+            const home = k.split('_vs_')[0];
+            const away = k.split('_vs_')[1];
+            return cleanName.includes(home) && cleanName.includes(away);
+          });
+          if (mIdx1 !== -1) {
+            hit1 = checkItemHit("混合过关", sels[0], outcome[mIdx1]);
+          }
+          
+          const mIdx2 = matchKeys.findIndex(k => {
+            const cleanName = parts[1].toLowerCase().replace(/\s+/g, '').replace('vs', '_vs_');
+            const home = k.split('_vs_')[0];
+            const away = k.split('_vs_')[1];
+            return cleanName.includes(home) && cleanName.includes(away);
+          });
+          if (mIdx2 !== -1) {
+            hit2 = checkItemHit("混合过关", sels[1], outcome[mIdx2]);
+          }
+          hit = hit1 && hit2;
+        }
+      }
+      if (hit) {
+        currentPayout += item.stake * item.odds;
+      }
+    }
+    payouts.push(currentPayout);
+  }
+  
+  const maxPayout = Math.max(...payouts);
+  const nonZeroPayouts = payouts.filter(p => p > 0.01);
+  const minPayout = nonZeroPayouts.length > 0 ? Math.min(...nonZeroPayouts) : 0;
+  
+  return { min: minPayout, max: maxPayout };
+}
+
+function checkItemHit(market, selection, result) {
+  const sel = selection.trim();
+  if (sel === "主胜" || sel === "主胜(3)" || sel === "3" || sel === "hh" || sel === "胜胜") {
+    return result === "WIN";
+  }
+  if (sel === "平局" || sel === "平局(1)" || sel === "1" || sel === "dd" || sel === "平平" || sel === "比分 1-1" || sel === "1:1" || sel === "比分 0-0" || sel === "0:0") {
+    return result === "DRAW";
+  }
+  if (sel === "客胜" || sel === "客胜(0)" || sel === "0" || sel === "aa" || sel === "负负") {
+    return result === "LOSS";
+  }
+  if (sel.includes("让胜")) {
+    return result === "WIN";
+  }
+  if (sel.includes("让负")) {
+    return result === "LOSS";
+  }
+  if (sel.includes("让平")) {
+    return result === "DRAW";
+  }
+  if (sel.startsWith("比分") || sel.includes(":")) {
+    if (sel.includes("1:0") || sel.includes("2:0") || sel.includes("2:1") || sel.includes("1-0")) {
+      return result === "WIN";
+    }
+    if (sel.includes("0:1") || sel.includes("0:2") || sel.includes("1:2") || sel.includes("0-1")) {
+      return result === "LOSS";
+    }
+    if (sel.includes("0:0") || sel.includes("1:1") || sel.includes("2:2") || sel.includes("0-0")) {
+      return result === "DRAW";
+    }
+  }
+  if (sel.length === 2) {
+    const lastChar = sel.charAt(1);
+    if (lastChar === "胜") return result === "WIN";
+    if (lastChar === "平") return result === "DRAW";
+    if (lastChar === "负") return result === "LOSS";
+  }
+  return false;
+}
+
+
+
 
 

@@ -1115,10 +1115,135 @@ h3 {
   color: var(--text-muted) !important;
 }
 
+/* ==================== 智能投注方案生成弹窗专有 CSS ==================== */
+.bet-advice-card {
+  background: rgba(20, 27, 45, 0.7) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  backdrop-filter: blur(25px);
+  -webkit-backdrop-filter: blur(25px);
+  border-radius: 16px;
+  box-shadow: var(--shadow-main);
+  padding: 20px !important;
+  transform: scale(0.95);
+  animation: scaleUp 0.35s forwards cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
+}
 
+.bet-mode-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  outline: none;
+  transition: all 0.3s ease;
+}
 
+.bet-mode-btn.active {
+  background: var(--neon-green) !important;
+  color: #000 !important;
+  box-shadow: 0 2px 8px rgba(0, 255, 136, 0.3);
+}
 
+.theme-light .bet-mode-btn.active {
+  background: var(--neon-purple) !important;
+  color: #fff !important;
+  box-shadow: 0 2px 8px rgba(122, 0, 230, 0.3);
+}
 
+.theme-light .bet-advice-card {
+  background: rgba(255, 255, 255, 0.85) !important;
+  border: 1px solid rgba(0, 0, 0, 0.1) !important;
+  color: #000;
+}
 
+.agent-bubble {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  padding: 8px;
+  margin-bottom: 5px;
+  transition: all 0.3s ease;
+}
 
+.agent-bubble.active-step {
+  opacity: 1 !important;
+  border-color: var(--neon-green) !important;
+  background: rgba(0, 255, 136, 0.03) !important;
+}
 
+.theme-light .agent-bubble {
+  background: rgba(0, 0, 0, 0.02);
+  border-color: rgba(0, 0, 0, 0.05);
+}
+
+.theme-light .agent-bubble.active-step {
+  border-color: var(--neon-purple) !important;
+  background: rgba(122, 0, 230, 0.03) !important;
+}
+
+/* 智能投注建议入口大按钮（暗色微发光边框风格） */
+.bet-advice-trigger-btn {
+  width: 100%;
+  height: 72px;
+  background: linear-gradient(135deg, rgba(30, 20, 60, 0.7), rgba(0, 255, 136, 0.05));
+  border: 1.5px solid var(--neon-green) !important;
+  border-radius: 12px;
+  color: var(--neon-green) !important;
+  font-size: 14px;
+  font-weight: bold;
+  cursor: pointer;
+  outline: none;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-shadow: inset 0 0 12px rgba(0, 255, 136, 0.15), 0 4px 16px rgba(0, 255, 136, 0.15);
+  letter-spacing: 1px;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.bet-advice-trigger-btn:hover {
+  background: linear-gradient(135deg, rgba(45, 30, 90, 0.8), rgba(0, 255, 136, 0.12));
+  box-shadow: inset 0 0 18px rgba(0, 255, 136, 0.25), 0 6px 20px rgba(0, 255, 136, 0.3);
+  text-shadow: 0 0 8px rgba(0, 255, 136, 0.6);
+  transform: translateY(-1px);
+}
+
+.bet-advice-trigger-btn:active {
+  transform: translateY(1px);
+  box-shadow: inset 0 0 8px rgba(0, 255, 136, 0.3), 0 2px 8px rgba(0, 255, 136, 0.1);
+}
+
+/* 亮色模式适配 */
+.theme-light .bet-advice-trigger-btn {
+  background: linear-gradient(135deg, rgba(240, 235, 255, 0.8), rgba(122, 0, 230, 0.05));
+  border: 1.5px solid var(--neon-purple) !important;
+  color: var(--neon-purple) !important;
+  box-shadow: inset 0 0 10px rgba(122, 0, 230, 0.08), 0 4px 12px rgba(122, 0, 230, 0.1);
+}
+
+.theme-light .bet-advice-trigger-btn:hover {
+  background: linear-gradient(135deg, rgba(230, 220, 255, 0.9), rgba(122, 0, 230, 0.1));
+  box-shadow: inset 0 0 14px rgba(122, 0, 230, 0.15), 0 6px 16px rgba(122, 0, 230, 0.2);
+  text-shadow: 0 0 6px rgba(122, 0, 230, 0.4);
+}
+
+/* 自定义滑动开关组件 */
+.switch input:checked + .slider {
+  background-color: var(--neon-green) !important;
+}
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 11px;
+  width: 11px;
+  left: 2px;
+  bottom: 2px;
+  background-color: #fff;
+  transition: .2s;
+  border-radius: 50%;
+}
+.switch input:checked + .slider:before {
+  transform: translateX(13px);
+}

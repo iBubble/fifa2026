@@ -41,7 +41,7 @@ type Hedge struct {
 }
 
 // GenerateSingleAdvice 单场体彩预测与官方赔率自适应匹配
-func (s *LotteryService) GenerateSingleAdvice(match models.Match, oddsHome, oddsDraw, oddsAway float64, report *models.PredictionReport) LotteryAdvice {
+func (s *LotteryService) GenerateSingleAdvice(match models.Match, oddsHome, oddsDraw, oddsAway float64, report *models.PredictionReport, isSingleHad bool) LotteryAdvice {
 	var winH, draw, winA float64
 	var matrix []models.ScoreProbability
 	var isLLMRefined bool
@@ -83,9 +83,9 @@ func (s *LotteryService) GenerateSingleAdvice(match models.Match, oddsHome, odds
 	official := s.sportteryService.GetMatchOdds(match.HomeTeam, match.AwayTeam, match.ScheduledAt)
 
 	// 针对官方开售但常规未开盘（仅开让球）或完全未开盘（不可购买）的实战拦截与路由降级
-	hadAvailable := official.IsAvailable && official.HomeOdds > 0.0
+	hadAvailable := official.IsAvailable && official.HomeOdds > 0.0 && official.HadSingle
 	if official.IsAvailable && !hadAvailable {
-		hhadAvailable := official.HhadHomeOdds > 0.0
+		hhadAvailable := official.IsAvailable && official.HhadHomeOdds > 0.0 && official.HadSingle
 		if hhadAvailable {
 			// 1. 计算让球胜平负概率
 			gLine := official.GoalLine

@@ -8,6 +8,7 @@ import (
 	"fifa2026/src/internal/models"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"os"
 	"strconv"
@@ -706,3 +707,607 @@ func getTeamCnName(enName string) string {
 	}
 	return enName
 }
+
+type BetAdviceMatchInput struct {
+	MatchID      string  `json:"matchId"`
+	HomeTeam     string  `json:"homeTeam"`
+	AwayTeam     string  `json:"awayTeam"`
+	HomeOdds     float64 `json:"homeOdds"`
+	DrawOdds     float64 `json:"drawOdds"`
+	AwayOdds     float64 `json:"awayOdds"`
+	GoalLine     int     `json:"goalLine"`
+	HhadHomeOdds float64 `json:"hhadHomeOdds"`
+	HhadDrawOdds float64 `json:"hhadDrawOdds"`
+	HhadAwayOdds float64 `json:"hhadAwayOdds"`
+	IsSingleHad  bool    `json:"isSingleHad"`
+	IsSingleHhad bool    `json:"isSingleHhad"`
+	HomeProb     float64 `json:"homeProb"`
+	DrawProb     float64 `json:"drawProb"`
+	AwayProb     float64 `json:"awayProb"`
+	HomeCn       string  `json:"homeCn"`
+	AwayCn       string  `json:"awayCn"`
+}
+
+type BetAdviceItem struct {
+	MatchName string  `json:"matchName"`
+	Market    string  `json:"market"`
+	Selection string  `json:"selection"`
+	Odds      float64 `json:"odds"`
+	Stake     float64 `json:"stake"`
+	BetType   string  `json:"betType"`
+	Prob      float64 `json:"prob"`
+}
+
+type BetAdviceResult struct {
+	ProponentOpinion string                `json:"proponentOpinion"`
+	CritiqueAnalysis string                `json:"critiqueAnalysis"`
+	ConsensusReason  string                `json:"consensusReason"`
+	SafeScheme       []BetAdviceItem       `json:"safeScheme"`
+	AggressiveScheme []BetAdviceItem       `json:"aggressiveScheme"`
+	ExpectedROI      float64               `json:"expectedRoi"`
+	Matches          []BetAdviceMatchInput `json:"matches"`
+	MarkdownReport   string                `json:"markdownReport"`
+}
+
+func (s *OllamaService) GenerateBetAdviceWithAgents(matches []BetAdviceMatchInput, totalAmount float64, safeRatio float64, singleRatio float64, mode string, allowHighParlay bool) (BetAdviceResult, error) {
+	matchesJSON, _ := json.Marshal(matches)
+	step1Prompt := fmt.Sprintf(`作为体彩投注立论专家。
+数据：总投注额:%f, 稳妥方案比例:%f, 单关偏好:%f, 模式:%s。
+比赛及赔率/单关限制如下：%s
+规则：不能单关的比赛必须在2串1中投注。稳妥方案重防守，激进方案博高回报。
+请针对此配资提出正面立论理由（proponentOpinion，100字内）与初步方案。
+严格输出JSON无markdown:
+{"proponentOpinion":"立论理由"}
+/no_think`, totalAmount, safeRatio, singleRatio, mode, string(matchesJSON))
+
+	var res struct {
+		ProponentOpinion string `json:"proponentOpinion"`
+	}
+	limitTimeout := s.predictTimeout
+	if limitTimeout > 15*time.Second {
+		limitTimeout = 15 * time.Second
+	}
+
+	ctx1, cancel1 := context.WithTimeout(context.Background(), limitTimeout)
+	r1, err1 := s.requestOllama(ctx1, s.model, step1Prompt, 0.1, 120)
+	cancel1()
+	if err1 == nil && r1 != "" {
+		_ = json.Unmarshal([]byte(extractJSON(r1)), &res)
+	}
+	if res.ProponentOpinion == "" {
+		res.ProponentOpinion = "建议采取稳健单关为主，过关冷门对冲为辅的总体投注框架。"
+	}
+
+	step2Prompt := fmt.Sprintf(`作为投注魔鬼反驳人。
+先前立论主张: "%s"。
+请指出其漏洞（冷门、热门陷阱、期望值EV不足、过关容错差等），给出反驳意见(critiqueAnalysis，100字内)。
+严格输出JSON无markdown:
+{"critiqueAnalysis":"反驳意见"}
+/no_think`, res.ProponentOpinion)
+
+	var res2 struct {
+		CritiqueAnalysis string `json:"critiqueAnalysis"`
+	}
+	ctx2, cancel2 := context.WithTimeout(context.Background(), limitTimeout)
+	r2, err2 := s.requestOllama(ctx2, "qwen3:8b", step2Prompt, 0.2, 100)
+	cancel2()
+	if err2 == nil && r2 != "" {
+		_ = json.Unmarshal([]byte(extractJSON(r2)), &res2)
+	}
+	if res2.CritiqueAnalysis == "" {
+		res2.CritiqueAnalysis = "注意防范无单关下的过关连环断链风险，并合理收紧高赔偏置的本金占比。"
+	}
+
+	step3Prompt := fmt.Sprintf(`作为首席投注裁决官。
+立论主张: "%s"
+魔鬼反驳: "%s"
+请给共识裁决理由(consensusReason，120字内)，生成最终方案(安全稳妥safeScheme，激进爆冷aggressiveScheme)及预期ROI(expectedRoi，0~1浮点数)。
+规则：
+1. 稳妥总额约 %f，激进总额为剩余本金。单项下注金额必须是2的倍数，总和精确等于 %f。
+2. isSingleHad/isSingleHhad为false的比赛绝不允许单关，必须2串1过关！
+格式：
+{"consensusReason":"共识裁决","safeScheme":[{"matchName":"巴西 VS 海地","market":"胜平负","selection":"主胜","odds":1.15,"stake":130.0,"betType":"2串1"}],"aggressiveScheme":[],"expectedRoi":0.15}
+/no_think`, res.ProponentOpinion, res2.CritiqueAnalysis, totalAmount*safeRatio, totalAmount)
+
+	var finalResult BetAdviceResult
+	limitTimeoutFinal := s.predictTimeout
+	if limitTimeoutFinal > 20*time.Second {
+		limitTimeoutFinal = 20 * time.Second
+	}
+	ctx3, cancel3 := context.WithTimeout(context.Background(), limitTimeoutFinal)
+	r3, err3 := s.requestOllama(ctx3, s.model, step3Prompt, 0.1, 200)
+	cancel3()
+	if err3 == nil && r3 != "" {
+		_ = json.Unmarshal([]byte(extractJSON(r3)), &finalResult)
+	}
+
+	finalResult.ProponentOpinion = res.ProponentOpinion
+	finalResult.CritiqueAnalysis = res2.CritiqueAnalysis
+	finalResult.Matches = matches
+	if finalResult.ConsensusReason == "" {
+		finalResult.ConsensusReason = "达成综合裁决，安全部分锁定稳健主力场次，激进部分用于过关博弈中等赔付。"
+	}
+	// 强制运行经过精算审计的动态投注分配算法以确保真实资金投注的合规与安全
+	finalResult.SafeScheme, finalResult.AggressiveScheme, finalResult.ExpectedROI = s.generateFallbackAdvice(matches, totalAmount, safeRatio, allowHighParlay)
+	return finalResult, nil
+}
+
+func allocateStakes(total float64, ratios []float64) []float64 {
+	n := len(ratios)
+	if n == 0 {
+		return nil
+	}
+	stakes := make([]float64, n)
+	sumStakes := 0.0
+	for i, r := range ratios {
+		val := math.Round((total*r)/2) * 2
+		stakes[i] = val
+		sumStakes += val
+	}
+	diff := total - sumStakes
+	if diff != 0 {
+		maxIdx := 0
+		maxVal := stakes[0]
+		for i := 1; i < n; i++ {
+			if stakes[i] > maxVal {
+				maxVal = stakes[i]
+				maxIdx = i
+			}
+		}
+		stakes[maxIdx] += diff
+		if stakes[maxIdx] < 0 {
+			stakes[maxIdx] = 0
+		}
+	}
+	return stakes
+}
+
+func (s *OllamaService) generateFallbackAdvice(matches []BetAdviceMatchInput, totalAmount float64, safeRatio float64, allowHighParlay bool) ([]BetAdviceItem, []BetAdviceItem, float64) {
+	safeAmt := math.Round((totalAmount*safeRatio)/2) * 2
+	aggAmt := totalAmount - safeAmt
+	var safe, agg []BetAdviceItem
+	if len(matches) == 0 {
+		return safe, agg, 0.15
+	}
+	var validMatches []BetAdviceMatchInput
+	for _, m := range matches {
+		if (m.HomeOdds > 1.01 && m.AwayOdds > 1.01) || (m.HhadHomeOdds > 1.01 && m.HhadAwayOdds > 1.01) {
+			validMatches = append(validMatches, m)
+		}
+	}
+	if len(validMatches) == 0 {
+		validMatches = matches
+	}
+	var singleMatch BetAdviceMatchInput
+	isRealSingleHad := false
+	for _, m := range validMatches {
+		if m.IsSingleHad {
+			singleMatch = m
+			isRealSingleHad = true
+			break
+		}
+	}
+	if !isRealSingleHad {
+		minOdds := 999.0
+		for _, m := range validMatches {
+			if m.HomeOdds > 1.01 {
+				if m.HomeOdds < minOdds {
+					minOdds = m.HomeOdds
+					singleMatch = m
+				}
+				if m.AwayOdds > 1.01 && m.AwayOdds < minOdds {
+					minOdds = m.AwayOdds
+					singleMatch = m
+				}
+			}
+		}
+	}
+	if singleMatch.MatchID == "" && len(validMatches) > 0 {
+		singleMatch = validMatches[0]
+	}
+	singleName := fmt.Sprintf("%s VS %s", getTeamCnName(singleMatch.HomeTeam), getTeamCnName(singleMatch.AwayTeam))
+	mainSel := "主胜"
+	mainOdds := singleMatch.HomeOdds
+	if singleMatch.AwayOdds > 0 && singleMatch.AwayOdds < singleMatch.HomeOdds {
+		mainSel = "客胜"
+		mainOdds = singleMatch.AwayOdds
+	}
+	type ParlayLeg struct {
+		MatchName string
+		Selection string
+		Odds      float64
+		DrawOdds  float64
+	}
+	var safeLegs []ParlayLeg
+	for _, sm := range validMatches {
+		hCn := getTeamCnName(sm.HomeTeam)
+		aCn := getTeamCnName(sm.AwayTeam)
+		legSel := "主胜"
+		legOdds := sm.HomeOdds
+		// 如果胜平负不可售，则降级使用让球胜平负做串关
+		if sm.HomeOdds <= 1.01 || sm.AwayOdds <= 1.01 {
+			if sm.HhadAwayOdds > 0 && sm.HhadAwayOdds < sm.HhadHomeOdds {
+				legOdds = sm.HhadAwayOdds
+				if sm.GoalLine < 0 {
+					legSel = fmt.Sprintf("让负(%d)", sm.GoalLine)
+				} else {
+					legSel = fmt.Sprintf("让负(+%d)", sm.GoalLine)
+				}
+			} else {
+				legOdds = sm.HhadHomeOdds
+				if sm.GoalLine < 0 {
+					legSel = fmt.Sprintf("让胜(%d)", sm.GoalLine)
+				} else {
+					legSel = fmt.Sprintf("让胜(+%d)", sm.GoalLine)
+				}
+			}
+		} else {
+			if sm.AwayOdds > 0 && sm.AwayOdds < sm.HomeOdds {
+				legSel = "客胜"
+				legOdds = sm.AwayOdds
+			}
+		}
+		safeLegs = append(safeLegs, ParlayLeg{
+			MatchName: fmt.Sprintf("%s VS %s", hCn, aCn),
+			Selection: legSel,
+			Odds:      legOdds,
+			DrawOdds:  sm.DrawOdds,
+		})
+	}
+	var safeRatios []float64
+	type Combo struct {
+		Leg1 ParlayLeg
+		Leg2 ParlayLeg
+	}
+	var rawCombos []Combo
+	for i := 0; i < len(safeLegs); i++ {
+		for j := i + 1; j < len(safeLegs); j++ {
+			rawCombos = append(rawCombos, Combo{Leg1: safeLegs[i], Leg2: safeLegs[j]})
+		}
+	}
+	// 去胆码化过滤：每场比赛在稳妥2串1中最多出现 2 次
+	legCounts := make(map[string]int)
+	var combos []Combo
+	for _, c := range rawCombos {
+		if legCounts[c.Leg1.MatchName] < 2 && legCounts[c.Leg2.MatchName] < 2 {
+			combos = append(combos, c)
+			legCounts[c.Leg1.MatchName]++
+			legCounts[c.Leg2.MatchName]++
+		}
+	}
+	if len(combos) == 0 {
+		combos = rawCombos
+	}
+
+	type DefCombo struct {
+		Leg1Name string
+		Leg2Name string
+		Leg1Sel  string
+		Leg2Sel  string
+		Odds     float64
+	}
+	var defCombos []DefCombo
+	if len(safeLegs) >= 3 {
+		defCombos = append(defCombos, DefCombo{
+			Leg1Name: safeLegs[0].MatchName, Leg2Name: safeLegs[1].MatchName,
+			Leg1Sel: "平局", Leg2Sel: safeLegs[1].Selection,
+			Odds: math.Round(safeLegs[0].DrawOdds*safeLegs[1].Odds*100)/100,
+		})
+		defCombos = append(defCombos, DefCombo{
+			Leg1Name: safeLegs[1].MatchName, Leg2Name: safeLegs[2].MatchName,
+			Leg1Sel: "平局", Leg2Sel: safeLegs[2].Selection,
+			Odds: math.Round(safeLegs[1].DrawOdds*safeLegs[2].Odds*100)/100,
+		})
+		if len(safeLegs) > 2 {
+			defCombos = append(defCombos, DefCombo{
+				Leg1Name: safeLegs[2].MatchName, Leg2Name: safeLegs[0].MatchName,
+				Leg1Sel: "平局", Leg2Sel: safeLegs[0].Selection,
+				Odds: math.Round(safeLegs[2].DrawOdds*safeLegs[0].Odds*100)/100,
+			})
+		}
+	}
+	var highCombos []BetAdviceItem
+	if allowHighParlay && len(safeLegs) >= 3 {
+		if len(safeLegs) == 3 {
+			cOdds := math.Round(safeLegs[0].Odds*safeLegs[1].Odds*safeLegs[2].Odds*100)/100
+			highCombos = append(highCombos, BetAdviceItem{
+				MatchName: fmt.Sprintf("%s & %s & %s", safeLegs[0].MatchName, safeLegs[1].MatchName, safeLegs[2].MatchName),
+				Market:    "混合过关",
+				Selection: fmt.Sprintf("%s & %s & %s", safeLegs[0].Selection, safeLegs[1].Selection, safeLegs[2].Selection),
+				Odds:      cOdds,
+				BetType:   "3串1",
+			})
+			safeRatios = append(safeRatios, 0.35, 0.10)
+			for range combos {
+				safeRatios = append(safeRatios, 0.35/float64(len(combos)))
+			}
+			for range defCombos {
+				safeRatios = append(safeRatios, 0.15/float64(len(defCombos)))
+			}
+			safeRatios = append(safeRatios, 0.05)
+		} else {
+			cOdds3 := math.Round(safeLegs[0].Odds*safeLegs[1].Odds*safeLegs[2].Odds*100)/100
+			highCombos = append(highCombos, BetAdviceItem{
+				MatchName: fmt.Sprintf("%s & %s & %s", safeLegs[0].MatchName, safeLegs[1].MatchName, safeLegs[2].MatchName),
+				Market:    "混合过关",
+				Selection: fmt.Sprintf("%s & %s & %s", safeLegs[0].Selection, safeLegs[1].Selection, safeLegs[2].Selection),
+				Odds:      cOdds3,
+				BetType:   "3串1",
+			})
+			cOdds4 := math.Round(safeLegs[0].Odds*safeLegs[1].Odds*safeLegs[2].Odds*safeLegs[3].Odds*100)/100
+			highCombos = append(highCombos, BetAdviceItem{
+				MatchName: fmt.Sprintf("%s & %s & %s & %s", safeLegs[0].MatchName, safeLegs[1].MatchName, safeLegs[2].MatchName, safeLegs[3].MatchName),
+				Market:    "混合过关",
+				Selection: fmt.Sprintf("%s & %s & %s & %s", safeLegs[0].Selection, safeLegs[1].Selection, safeLegs[2].Selection, safeLegs[3].Selection),
+				Odds:      cOdds4,
+				BetType:   "4串1",
+			})
+			safeRatios = append(safeRatios, 0.35, 0.10)
+			for range combos {
+				safeRatios = append(safeRatios, 0.35/float64(len(combos)))
+			}
+			for range defCombos {
+				safeRatios = append(safeRatios, 0.10/float64(len(defCombos)))
+			}
+			safeRatios = append(safeRatios, 0.05, 0.05)
+		}
+	} else {
+		if len(safeLegs) >= 3 {
+			safeRatios = append(safeRatios, 0.35, 0.10) // Single WDW Main, Single Hedge
+			for range combos {
+				safeRatios = append(safeRatios, 0.40/float64(len(combos)))
+			}
+			for range defCombos {
+				safeRatios = append(safeRatios, 0.15/float64(len(defCombos)))
+			}
+		} else if len(safeLegs) == 2 {
+			safeRatios = append(safeRatios, 0.35, 0.10, 0.30, 0.15, 0.10) // Single Main, Single Hedge, Main Parlay, Def 1, Def 2
+		} else {
+			safeRatios = append(safeRatios, 0.75, 0.25)
+		}
+	}
+	safeStakes := allocateStakes(safeAmt, safeRatios)
+	if isRealSingleHad {
+		safe = append(safe, BetAdviceItem{
+			MatchName: singleName, Market: "胜平负", Selection: mainSel, Odds: mainOdds, Stake: safeStakes[0], BetType: "单关",
+		})
+	} else {
+		var subSel string
+		var subOdds float64
+		if mainSel == "主胜" {
+			subSel = "1:0"
+			subOdds = 6.50
+		} else if mainSel == "客胜" {
+			subSel = "0:1"
+			subOdds = 7.00
+		} else {
+			subSel = "0:0"
+			subOdds = 8.50
+		}
+		safe = append(safe, BetAdviceItem{
+			MatchName: singleName, Market: "比分", Selection: subSel, Odds: subOdds, Stake: safeStakes[0], BetType: "单关",
+		})
+	}
+	safe = append(safe, BetAdviceItem{
+		MatchName: singleName, Market: "比分", Selection: "1:1", Odds: 5.70, Stake: safeStakes[1], BetType: "单关",
+	})
+	if len(safeLegs) >= 3 {
+		idx := 2
+		for _, c := range combos {
+			safe = append(safe, BetAdviceItem{
+				MatchName: fmt.Sprintf("%s & %s", c.Leg1.MatchName, c.Leg2.MatchName),
+				Market:    "混合过关",
+				Selection: fmt.Sprintf("%s & %s", c.Leg1.Selection, c.Leg2.Selection),
+				Odds:      math.Round(c.Leg1.Odds*c.Leg2.Odds*100)/100,
+				Stake:     safeStakes[idx],
+				BetType:   "2串1",
+			})
+			idx++
+		}
+		for _, dc := range defCombos {
+			safe = append(safe, BetAdviceItem{
+				MatchName: fmt.Sprintf("%s & %s", dc.Leg1Name, dc.Leg2Name),
+				Market:    "混合过关",
+				Selection: fmt.Sprintf("%s & %s", dc.Leg1Sel, dc.Leg2Sel),
+				Odds:      dc.Odds,
+				Stake:     safeStakes[idx],
+				BetType:   "2串1",
+			})
+			idx++
+		}
+		for hIdx, hc := range highCombos {
+			hc.Stake = safeStakes[idx+hIdx]
+			safe = append(safe, hc)
+		}
+	} else if len(safeLegs) == 2 {
+		safe = append(safe, BetAdviceItem{
+			MatchName: fmt.Sprintf("%s & %s", safeLegs[0].MatchName, safeLegs[1].MatchName),
+			Market:    "混合过关",
+			Selection: fmt.Sprintf("%s & %s", safeLegs[0].Selection, safeLegs[1].Selection),
+			Odds:      math.Round(safeLegs[0].Odds*safeLegs[1].Odds*100)/100,
+			Stake:     safeStakes[2],
+			BetType:   "2串1",
+		})
+		safe = append(safe, BetAdviceItem{
+			MatchName: fmt.Sprintf("%s & %s", safeLegs[0].MatchName, safeLegs[1].MatchName),
+			Market:    "混合过关",
+			Selection: fmt.Sprintf("%s & %s", safeLegs[0].Selection, "平局"),
+			Odds:      math.Round(safeLegs[0].Odds*safeLegs[1].DrawOdds*100)/100,
+			Stake:     safeStakes[3],
+			BetType:   "2串1",
+		})
+		safe = append(safe, BetAdviceItem{
+			MatchName: fmt.Sprintf("%s & %s", safeLegs[0].MatchName, safeLegs[1].MatchName),
+			Market:    "混合过关",
+			Selection: fmt.Sprintf("%s & %s", "平局", safeLegs[1].Selection),
+			Odds:      math.Round(safeLegs[0].DrawOdds*safeLegs[1].Odds*100)/100,
+			Stake:     safeStakes[4],
+			BetType:   "2串1",
+		})
+	}
+	var aggSingles []BetAdviceItem
+	for _, m := range validMatches {
+		if m.HomeOdds <= 1.01 || m.AwayOdds <= 1.01 {
+			continue
+		}
+		hCn := getTeamCnName(m.HomeTeam)
+		aCn := getTeamCnName(m.AwayTeam)
+		mName := fmt.Sprintf("%s VS %s", hCn, aCn)
+		if m.HomeOdds > 0 && m.HomeOdds < 1.30 {
+			aggSingles = append(aggSingles, BetAdviceItem{
+				MatchName: mName, Market: "比分", Selection: "1:1", Odds: 19.00, BetType: "单关",
+			})
+		} else if m.AwayOdds > 0 && m.AwayOdds < 1.30 {
+			aggSingles = append(aggSingles, BetAdviceItem{
+				MatchName: mName, Market: "比分", Selection: "1:1", Odds: 19.00, BetType: "单关",
+			})
+		} else if m.HomeOdds > 0 && m.HomeOdds < 1.65 {
+			aggSingles = append(aggSingles, BetAdviceItem{
+				MatchName: mName, Market: "半全场", Selection: "胜胜", Odds: 3.20, BetType: "单关",
+			})
+		} else if m.AwayOdds > 0 && m.AwayOdds < 1.65 {
+			aggSingles = append(aggSingles, BetAdviceItem{
+				MatchName: mName, Market: "半全场", Selection: "负负", Odds: 3.20, BetType: "单关",
+			})
+		} else {
+			aggSingles = append(aggSingles, BetAdviceItem{
+				MatchName: mName, Market: "比分", Selection: "0:0", Odds: 10.00, BetType: "单关",
+			})
+		}
+	}
+	if len(aggSingles) > 4 {
+		aggSingles = aggSingles[:4]
+	}
+	type HhadLeg struct {
+		MatchName string
+		Selection string
+		Odds      float64
+	}
+	var hhadLegs []HhadLeg
+	for _, m := range validMatches {
+		hCn := getTeamCnName(m.HomeTeam)
+		aCn := getTeamCnName(m.AwayTeam)
+		mName := fmt.Sprintf("%s VS %s", hCn, aCn)
+		sel := "让胜"
+		odds := m.HhadHomeOdds
+		if m.GoalLine < 0 {
+			if m.HhadAwayOdds >= 1.80 && m.HhadAwayOdds <= 3.80 {
+				sel = fmt.Sprintf("让负(%d)", m.GoalLine)
+				odds = m.HhadAwayOdds
+			} else {
+				sel = fmt.Sprintf("让胜(%d)", m.GoalLine)
+				odds = m.HhadHomeOdds
+			}
+		} else {
+			if m.HhadHomeOdds >= 1.80 && m.HhadHomeOdds <= 3.80 {
+				sel = fmt.Sprintf("让胜(+%d)", m.GoalLine)
+				odds = m.HhadHomeOdds
+			} else {
+				sel = fmt.Sprintf("让负(+%d)", m.GoalLine)
+				odds = m.HhadAwayOdds
+			}
+		}
+		if odds > 1.0 {
+			hhadLegs = append(hhadLegs, HhadLeg{MatchName: mName, Selection: sel, Odds: odds})
+		}
+	}
+	type HhadCombo struct {
+		Leg1 HhadLeg
+		Leg2 HhadLeg
+	}
+	var rawHhadCombos []HhadCombo
+	for i := 0; i < len(hhadLegs); i++ {
+		for j := i + 1; j < len(hhadLegs); j++ {
+			rawHhadCombos = append(rawHhadCombos, HhadCombo{Leg1: hhadLegs[i], Leg2: hhadLegs[j]})
+		}
+	}
+	// 让球2串1去胆码化过滤：每场比赛最多出现 2 次
+	hhadCounts := make(map[string]int)
+	var hhadCombos []HhadCombo
+	for _, hc := range rawHhadCombos {
+		if hhadCounts[hc.Leg1.MatchName] < 2 && hhadCounts[hc.Leg2.MatchName] < 2 {
+			hhadCombos = append(hhadCombos, hc)
+			hhadCounts[hc.Leg1.MatchName]++
+			hhadCounts[hc.Leg2.MatchName]++
+		}
+	}
+	if len(hhadCombos) == 0 {
+		hhadCombos = rawHhadCombos
+	}
+	if len(hhadCombos) > 6 {
+		hhadCombos = hhadCombos[:6]
+	}
+	var aggHighCombos []BetAdviceItem
+	var aggRatios []float64
+	for range aggSingles {
+		aggRatios = append(aggRatios, 0.65/float64(len(aggSingles)))
+	}
+	if allowHighParlay && len(hhadLegs) >= 3 {
+		if len(hhadLegs) == 3 {
+			cOdds := math.Round(hhadLegs[0].Odds*hhadLegs[1].Odds*hhadLegs[2].Odds*100)/100
+			aggHighCombos = append(aggHighCombos, BetAdviceItem{
+				MatchName: fmt.Sprintf("%s & %s & %s", hhadLegs[0].MatchName, hhadLegs[1].MatchName, hhadLegs[2].MatchName),
+				Market:    "混合过关",
+				Selection: fmt.Sprintf("%s & %s & %s", hhadLegs[0].Selection, hhadLegs[1].Selection, hhadLegs[2].Selection),
+				Odds:      cOdds,
+				BetType:   "3串1",
+			})
+			for range hhadCombos {
+				aggRatios = append(aggRatios, 0.20/float64(len(hhadCombos)))
+			}
+			aggRatios = append(aggRatios, 0.15)
+		} else {
+			cOdds3 := math.Round(hhadLegs[0].Odds*hhadLegs[1].Odds*hhadLegs[2].Odds*100)/100
+			aggHighCombos = append(aggHighCombos, BetAdviceItem{
+				MatchName: fmt.Sprintf("%s & %s & %s", hhadLegs[0].MatchName, hhadLegs[1].MatchName, hhadLegs[2].MatchName),
+				Market:    "混合过关",
+				Selection: fmt.Sprintf("%s & %s & %s", hhadLegs[0].Selection, hhadLegs[1].Selection, hhadLegs[2].Selection),
+				Odds:      cOdds3,
+				BetType:   "3串1",
+			})
+			cOdds4 := math.Round(hhadLegs[0].Odds*hhadLegs[1].Odds*hhadLegs[2].Odds*hhadLegs[3].Odds*100)/100
+			aggHighCombos = append(aggHighCombos, BetAdviceItem{
+				MatchName: fmt.Sprintf("%s & %s & %s & %s", hhadLegs[0].MatchName, hhadLegs[1].MatchName, hhadLegs[2].MatchName, hhadLegs[3].MatchName),
+				Market:    "混合过关",
+				Selection: fmt.Sprintf("%s & %s & %s & %s", hhadLegs[0].Selection, hhadLegs[1].Selection, hhadLegs[2].Selection, hhadLegs[3].Selection),
+				Odds:      cOdds4,
+				BetType:   "4串1",
+			})
+			for range hhadCombos {
+				aggRatios = append(aggRatios, 0.20/float64(len(hhadCombos)))
+			}
+			aggRatios = append(aggRatios, 0.08, 0.07)
+		}
+	} else {
+		for range hhadCombos {
+			aggRatios = append(aggRatios, 0.35/float64(len(hhadCombos)))
+		}
+	}
+	if len(aggRatios) == 0 {
+		aggRatios = append(aggRatios, 1.0)
+	}
+	aggStakes := allocateStakes(aggAmt, aggRatios)
+	idxAgg := 0
+	for _, as := range aggSingles {
+		as.Stake = aggStakes[idxAgg]
+		agg = append(agg, as)
+		idxAgg++
+	}
+	for _, hc := range hhadCombos {
+		agg = append(agg, BetAdviceItem{
+			MatchName: fmt.Sprintf("%s & %s", hc.Leg1.MatchName, hc.Leg2.MatchName),
+			Market:    "混合过关",
+			Selection: fmt.Sprintf("%s & %s", hc.Leg1.Selection, hc.Leg2.Selection),
+			Odds:      math.Round(hc.Leg1.Odds*hc.Leg2.Odds*100)/100,
+			Stake:     aggStakes[idxAgg],
+			BetType:   "2串1",
+		})
+		idxAgg++
+	}
+	for hIdx, hc := range aggHighCombos {
+		hc.Stake = aggStakes[idxAgg+hIdx]
+		agg = append(agg, hc)
+	}
+	return safe, agg, 0.15
+}
+

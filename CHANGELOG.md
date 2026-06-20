@@ -1,8 +1,20 @@
 # CHANGELOG
 
-## [Unreleased] - 2026-06-19
+## [Unreleased] - 2026-06-20
 
 ### Added
+- **智能投注方案新增“综合混合过关”方案建议**：
+  - 在 [main.go](file:///Users/gemini/Projects/Own/FIFA2026/src/main.go) 中重构了 `/api/bet/generate` 接口，自动在 5 种玩法中挑选可售概率最高的选项，并按概率降序排序，提取前 4 场比赛串联成一注综合混合过关（如 4 串 1 ）。
+  - 在 [index.html](file:///Users/gemini/Projects/Own/FIFA2026/src/frontend/index.html) 和 [app.js](file:///Users/gemini/Projects/Own/FIFA2026/src/frontend/app.js) 中新增自适应网格展示，渲染其综合中奖概率与预期最高、最低收益。
+  - 优化并重构了本金控制预算体系，将固定 10 元混合过关投注资金在总预算中预先扣除，由 `agentAmount` 分仓稳妥与激进防线，彻底解决了总预算超支的问题，确保总体投入精准匹配用户设定预算。
+- **投注卡片与 Markdown 报告每一小项追加概率展示**：
+  - 在 [ollama.go](file:///Users/gemini/Projects/Own/FIFA2026/src/internal/service/ai/ollama.go) 的 `BetAdviceItem` 中新增 `Prob` 属性。
+  - 在 [main.go](file:///Users/gemini/Projects/Own/FIFA2026/src/main.go) 中编写 `fillSchemeProb` 函数，依据候选场次的选项自动查阅比分、半全场等预测数据并为方案卡片中的每一单项/串关回填计算出的精准概率，同时更新 Markdown 模版以渲染此数据。
+  - 修改了 [app.js](file:///Users/gemini/Projects/Own/FIFA2026/src/frontend/app.js) 以绑定并在稳妥和激进栏目的每一小项卡片上绘制其预测中奖概率，使用亮蓝色显式标明。
+- **整站标题与默认初始投注额微调**：
+  - 在 [index.html](file:///Users/gemini/Projects/Own/FIFA2026/src/frontend/index.html) 中将整站 `<title>` 改为 `FIFA 2026量化分析`。
+  - 将投注金额输入框的默认 value 初始值由 `200` 降为 `100`，并同步在 [app.js](file:///Users/gemini/Projects/Own/FIFA2026/src/frontend/app.js) 与 [main.go](file:///Users/gemini/Projects/Own/FIFA2026/src/main.go) 接口中将兜底金额相应更新为 `100`。
+
 - **2026-06-20 攻守兼备型投注推荐报告**：
   - 在 [2026-06-20_投注方案推荐.md](file:///Users/gemini/Projects/Own/FIFA2026/docs/2026-06-20_%E6%8A%95%E6%B3%A8%E6%96%B9%E6%A1%88%E6%8E%A8%E8%8D%90.md) 中完整导出了土耳其、美国、巴西、苏格兰四场比赛的 200 元平衡性投注方案。
   - 完成了 6-19 赛果（捷克1-1、瑞士4-1、加拿大6-0、墨西哥1-0）的多维度盈亏精细化复盘，验证了稳妥型方案（+12.5% 净利润）的保本风控能力并吸取了激进型（下盘大胜被打穿）的教训。

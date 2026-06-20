@@ -717,6 +717,657 @@ func main() {
 			c.JSON(http.StatusOK, resp)
 		})
 
+		// 获取当前参与投注建议的在售未开赛比赛列表
+		api.GET("/bet/matches", func(c *gin.Context) {
+			dateStr := c.Query("date")
+			if dateStr == "" {
+				dateStr = time.Now().AddDate(0, 0, 1).Format("2006-01-02")
+			}
+			loc, _ := time.LoadLocation("Asia/Shanghai")
+			t, errT := time.ParseInLocation("2006-01-02", dateStr, loc)
+			if errT != nil {
+				t = time.Now().AddDate(0, 0, 1)
+			}
+			startOfDay := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, loc)
+			endOfDay := startOfDay.AddDate(0, 0, 1).Add(-time.Second)
+
+			allMatches, err := db.GetMatchesByTournament("fifa_2026")
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+			var list []gin.H
+			for _, m := range allMatches {
+				if m.Status != "NS" {
+					continue
+				}
+				mLocal := m.ScheduledAt.In(loc)
+				if mLocal.Before(startOfDay) || mLocal.After(endOfDay) {
+					continue
+				}
+				odds := sportteryService.GetMatchOdds(m.HomeTeam, m.AwayTeam, m.ScheduledAt)
+				if !odds.IsAvailable {
+					continue
+				}
+				homeCn := m.HomeTeam
+				tHome, errH := db.GetTeamTranslation(m.HomeTeam)
+				if errH == nil && tHome.CnName != "" {
+					homeCn = tHome.CnName
+				}
+				awayCn := m.AwayTeam
+				tAway, errA := db.GetTeamTranslation(m.AwayTeam)
+				if errA == nil && tAway.CnName != "" {
+					awayCn = tAway.CnName
+				}
+				list = append(list, gin.H{
+					"id":        m.ID,
+					"homeTeam":  m.HomeTeam,
+					"awayTeam":  m.AwayTeam,
+					"homeCn":    homeCn,
+					"awayCn":    awayCn,
+					"matchTime": m.ScheduledAt.Format("06-01-02 15:04"),
+				})
+			}
+			c.JSON(http.StatusOK, list)
+		})
+
+		// 多Agent辩论生成智能投注配资方案接口
+		api.POST("/bet/generate", func(c *gin.Context) {
+			var req struct {
+				TotalAmount     float64 `json:"totalAmount"`
+				SafeRatio       float64 `json:"safeRatio"`
+				SingleRatio     float64 `json:"singleRatio"`
+				Mode            string  `json:"mode"`
+				Date            string  `json:"date"`
+				AllowHighParlay bool    `json:"allowHighParlay"`
+			}
+			if err := c.ShouldBindJSON(&req); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
+			if req.TotalAmount <= 0 {
+				req.TotalAmount = 100
+			}
+			if req.SafeRatio <= 0 || req.SafeRatio > 1 {
+				req.SafeRatio = 0.6
+			}
+			if req.Date == "" {
+				req.Date = time.Now().AddDate(0, 0, 1).Format("2006-01-02")
+			}
+			loc, _ := time.LoadLocation("Asia/Shanghai")
+			t, errT := time.ParseInLocation("2006-01-02", req.Date, loc)
+			if errT != nil {
+				t = time.Now().AddDate(0, 0, 1)
+			}
+			startOfDay := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, loc)
+			endOfDay := startOfDay.AddDate(0, 0, 1).Add(-time.Second)
+
+			allMatches, err := db.GetMatchesByTournament("fifa_2026")
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+
+			getTeamCnName := func(enName string) string {
+				t, err := db.GetTeamTranslation(enName)
+				if err == nil && t.CnName != "" {
+					return t.CnName
+				}
+				return enName
+			}
+
+			var targetInputs []ai.BetAdviceMatchInput
+			for _, m := range allMatches {
+				if m.Status != "NS" {
+					continue
+				}
+				mLocal := m.ScheduledAt.In(loc)
+				if mLocal.Before(startOfDay) || mLocal.After(endOfDay) {
+					continue
+				}
+				odds := sportteryService.GetMatchOdds(m.HomeTeam, m.AwayTeam, m.ScheduledAt)
+				if !odds.IsAvailable {
+					continue
+				}
+				isSingleHad := odds.HadSingle
+
+				homeProb, drawProb, awayProb := 0.33, 0.33, 0.34
+				rep, errRep := db.GetPredictionReport(m.ID)
+				if errRep == nil && len(rep.ScoreMatrix) > 0 {
+					var w, d, l float64
+					for _, cell := range rep.ScoreMatrix {
+						if cell.HomeScore > cell.AwayScore {
+							w += cell.Prob
+						} else if cell.HomeScore == cell.AwayScore {
+							d += cell.Prob
+						} else {
+							l += cell.Prob
+						}
+					}
+					sumP := w + d + l
+					if sumP > 0 {
+						homeProb = w / sumP
+						drawProb = d / sumP
+						awayProb = l / sumP
+					}
+				} else {
+					params := dcService.CalculateParams(m.HomeTeam, m.AwayTeam)
+					matrix, _, _ := dcService.GenerateProbabilityMatrixWithTeams(params, m.HomeTeam, m.AwayTeam)
+					if len(matrix) > 0 {
+						var w, d, l float64
+						for _, cell := range matrix {
+							if cell.HomeScore > cell.AwayScore {
+								w += cell.Prob
+							} else if cell.HomeScore == cell.AwayScore {
+								d += cell.Prob
+							} else {
+								l += cell.Prob
+							}
+						}
+						sumP := w + d + l
+						if sumP > 0 {
+							homeProb = w / sumP
+							drawProb = d / sumP
+							awayProb = l / sumP
+						}
+					}
+				}
+
+				targetInputs = append(targetInputs, ai.BetAdviceMatchInput{
+					MatchID:      m.ID,
+					HomeTeam:     m.HomeTeam,
+					AwayTeam:     m.AwayTeam,
+					HomeOdds:     odds.HomeOdds,
+					DrawOdds:     odds.DrawOdds,
+					AwayOdds:     odds.AwayOdds,
+					GoalLine:     odds.GoalLine,
+					HhadHomeOdds: odds.HhadHomeOdds,
+					HhadDrawOdds: odds.HhadDrawOdds,
+					HhadAwayOdds: odds.HhadAwayOdds,
+					IsSingleHad:  isSingleHad,
+					IsSingleHhad: odds.HadSingle,
+					HomeProb:     homeProb,
+					DrawProb:     drawProb,
+					AwayProb:     awayProb,
+					HomeCn:       getTeamCnName(m.HomeTeam),
+					AwayCn:       getTeamCnName(m.AwayTeam),
+				})
+			}
+
+			if len(targetInputs) == 0 {
+				c.JSON(http.StatusOK, gin.H{"error": "该日期没有可参与方案生成的在售比赛。"})
+				return
+			}
+
+			agentAmount := req.TotalAmount - 10.0
+			if agentAmount < 10.0 {
+				agentAmount = req.TotalAmount
+			}
+			result, errGen := ollamaService.GenerateBetAdviceWithAgents(targetInputs, agentAmount, req.SafeRatio, req.SingleRatio, req.Mode, req.AllowHighParlay)
+			if errGen != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": errGen.Error()})
+				return
+			}
+
+			// 建立对阵名到 MatchID 的映射，方便查找
+			matchNameToInput := make(map[string]ai.BetAdviceMatchInput)
+			for _, m := range targetInputs {
+				keyCn := fmt.Sprintf("%s VS %s", m.HomeCn, m.AwayCn)
+				matchNameToInput[strings.ToLower(strings.TrimSpace(keyCn))] = m
+				keyEn := fmt.Sprintf("%s VS %s", m.HomeTeam, m.AwayTeam)
+				matchNameToInput[strings.ToLower(strings.TrimSpace(keyEn))] = m
+			}
+
+			fillSchemeProb := func(scheme []ai.BetAdviceItem) []ai.BetAdviceItem {
+				for idx, item := range scheme {
+					parts := strings.Split(item.MatchName, "&")
+					sels := strings.Split(item.Selection, "&")
+					totalP := 1.0
+					hasValidMatch := false
+					for i, part := range parts {
+						if i >= len(sels) {
+							break
+						}
+						mName := strings.ToLower(strings.TrimSpace(part))
+						sel := strings.TrimSpace(sels[i])
+						mInput, ok := matchNameToInput[mName]
+						if !ok {
+							for k, v := range matchNameToInput {
+								if strings.Contains(mName, k) || strings.Contains(k, mName) {
+									mInput = v
+									ok = true
+									break
+								}
+							}
+						}
+						if ok {
+							m, errM := db.GetMatch(mInput.MatchID)
+							if errM == nil {
+								rep, _ := db.GetPredictionReport(m.ID)
+								advices := lotteryService.GenerateFivePlaysAdvice(m, &rep, mInput.IsSingleHad)
+								singleP := 0.0
+								found := false
+								for _, adv := range advices {
+									for _, opt := range adv.Safe {
+										if opt.Option == sel {
+											singleP = opt.Prob
+											found = true
+											break
+										}
+									}
+									if found {
+										break
+									}
+									for _, opt := range adv.Aggressive {
+										if opt.Option == sel {
+											singleP = opt.Prob
+											found = true
+											break
+										}
+									}
+									if found {
+										break
+									}
+								}
+								if !found {
+									if sel == "主胜" {
+										singleP = mInput.HomeProb
+									} else if sel == "平局" {
+										singleP = mInput.DrawProb
+									} else if sel == "客胜" {
+										singleP = mInput.AwayProb
+									} else {
+										singleP = 0.33
+									}
+								}
+								totalP *= singleP
+								hasValidMatch = true
+							}
+						}
+					}
+					if hasValidMatch {
+						scheme[idx].Prob = totalP
+					}
+				}
+				return scheme
+			}
+
+			result.SafeScheme = fillSchemeProb(result.SafeScheme)
+			result.AggressiveScheme = fillSchemeProb(result.AggressiveScheme)
+
+			// 组装综合混合买法：每一场比赛从五种玩法中选出可售的概率最高的选项，串联为一注
+			type mixedCandidate struct {
+				MatchName string
+				Market    string
+				Selection string
+				Odds      float64
+				Prob      float64
+			}
+			var candidates []mixedCandidate
+			for _, mInput := range targetInputs {
+				m, errM := db.GetMatch(mInput.MatchID)
+				if errM != nil {
+					continue
+				}
+				rep, _ := db.GetPredictionReport(m.ID)
+				advices := lotteryService.GenerateFivePlaysAdvice(m, &rep, mInput.IsSingleHad)
+
+				var bestOpt prediction.PlayOption
+				bestPlayName := ""
+				for _, adv := range advices {
+					for _, opt := range adv.Safe {
+						if opt.Option == "不可售" || opt.Odds <= 1.01 {
+							continue
+						}
+						if opt.Prob > bestOpt.Prob {
+							bestOpt = opt
+							bestPlayName = adv.PlayName
+						}
+					}
+				}
+
+				if bestOpt.Odds > 0 {
+					hCn := getTeamCnName(m.HomeTeam)
+					aCn := getTeamCnName(m.AwayTeam)
+					candidates = append(candidates, mixedCandidate{
+						MatchName: fmt.Sprintf("%s VS %s", hCn, aCn),
+						Market:    bestPlayName,
+						Selection: bestOpt.Option,
+						Odds:      bestOpt.Odds,
+						Prob:      bestOpt.Prob,
+					})
+				}
+			}
+
+			// 按单场概率降序排序
+			sort.Slice(candidates, func(i, j int) bool {
+				return candidates[i].Prob > candidates[j].Prob
+			})
+
+			// 限制最多 4 场组合
+			maxMixedCount := 4
+			if len(candidates) < maxMixedCount {
+				maxMixedCount = len(candidates)
+			}
+
+			var mixedScheme []ai.BetAdviceItem
+			mixedProb := 1.0
+			mixedOdds := 1.0
+			betTypeStr := "四串一"
+			if maxMixedCount > 0 {
+				betTypeStr = fmt.Sprintf("%d串1", maxMixedCount)
+				for i := 0; i < maxMixedCount; i++ {
+					c := candidates[i]
+					mixedScheme = append(mixedScheme, ai.BetAdviceItem{
+						MatchName: c.MatchName,
+						Market:    c.Market,
+						Selection: c.Selection,
+						Odds:      c.Odds,
+						Stake:     2.0,
+						BetType:   betTypeStr,
+					})
+					mixedProb *= c.Prob
+					mixedOdds *= c.Odds
+				}
+			} else {
+				mixedProb = 0.0
+				mixedOdds = 0.0
+			}
+
+			md := fmt.Sprintf("# FIFA 2026 投注方案推荐报告 (%s)\n\n", req.Date)
+			md += fmt.Sprintf("本项目基于 Dixon-Coles 泊松定量模型与实时赔率偏差（EV）进行多维度智能计算，结合小组赛阶段限额拦截风控规范，专为 %s 的比赛提供量化策略。\n\n", req.Date)
+			md += "---\n\n"
+			md += "## 一、 核心预测数据概览（竞彩官方实际赔率/在售状态校准）\n\n"
+			md += "经过对竞彩官网（[sporttery.cn](https://www.sporttery.cn/jc/jsq/zqhhgg/)）实际在售状态核对：\n"
+			for i, m := range targetInputs {
+				hCn := getTeamCnName(m.HomeTeam)
+				aCn := getTeamCnName(m.AwayTeam)
+				statusStr := "仅限【过关】"
+				if m.IsSingleHad {
+					statusStr = "常规胜平负【单关】"
+				}
+				md += fmt.Sprintf("%d. **%s vs %s**：%s。\n", i+1, hCn, aCn, statusStr)
+			}
+			md += "\n"
+			md += "| 赛事 ID | 比赛对阵 | 官方实际赔率 (胜/平/负) | 让球赔率 (让胜/让平/让负) | 模型预测概率 (胜/平/负) | 单关可用状态 |\n"
+			md += "| :--- | :--- | :--- | :--- | :--- | :--- |\n"
+			for _, m := range targetInputs {
+				hCn := getTeamCnName(m.HomeTeam)
+				aCn := getTeamCnName(m.AwayTeam)
+				oddsStr := fmt.Sprintf("%.2f / %.2f / %.2f", m.HomeOdds, m.DrawOdds, m.AwayOdds)
+				hhadOddsStr := fmt.Sprintf("%.2f / %.2f / %.2f *(让球%d)*", m.HhadHomeOdds, m.HhadDrawOdds, m.HhadAwayOdds, m.GoalLine)
+				if m.GoalLine > 0 {
+					hhadOddsStr = fmt.Sprintf("%.2f / %.2f / %.2f *(让球+%d)*", m.HhadHomeOdds, m.HhadDrawOdds, m.HhadAwayOdds, m.GoalLine)
+				}
+				probStr := fmt.Sprintf("%.1f%% / %.1f%% / %.1f%%", m.HomeProb*100, m.DrawProb*100, m.AwayProb*100)
+				statusStr := "仅限【过关】"
+				if m.IsSingleHad {
+					statusStr = "常规胜平负【单关】"
+				}
+				md += fmt.Sprintf("| %s | %s vs %s | %s | %s | %s | %s |\n", m.MatchID, hCn, aCn, oddsStr, hhadOddsStr, probStr, statusStr)
+			}
+			md += "\n---\n\n"
+			md += fmt.Sprintf("## 二、 方案一：稳妥型方案（总投入：%.0f 元）\n\n", math.Round(agentAmount*req.SafeRatio))
+			md += "针对单关限制限制进行结构优化：仅对单关比赛购买常规单关或对冲，其余比赛的常规投注以 2 串 1 比例分仓。\n\n"
+			md += "### 1. 单场单关投注\n"
+			hasSafeSingle := false
+			for _, item := range result.SafeScheme {
+				if item.BetType == "单关" {
+					hasSafeSingle = true
+					md += fmt.Sprintf("- **%s** (%s)：选择「%s」@%.2f *(概率: %.1f%%)* ── 推荐投注 %.0f 元。若中返奖 **%.2f 元**。\n", item.MatchName, item.Market, item.Selection, item.Odds, item.Prob*100, item.Stake, item.Stake*item.Odds)
+				}
+			}
+			if !hasSafeSingle {
+				md += "- 无\n"
+			}
+			md += "\n"
+			md += "### 2. 混合过关 (2 串 1) 方案\n"
+			hasSafeParlay := false
+			for _, item := range result.SafeScheme {
+				if item.BetType == "2串1" {
+					hasSafeParlay = true
+					md += fmt.Sprintf("- **%s** (%s) ── 组合赔率 **%.2f** *(中奖率: %.1f%%)*，推荐投注 %.0f 元。若中返奖 **%.2f 元**。\n", item.MatchName, item.Selection, item.Odds, item.Prob*100, item.Stake, item.Stake*item.Odds)
+				}
+			}
+			if !hasSafeParlay {
+				md += "- 无\n"
+			}
+			md += "\n"
+			md += "### 3. 高串过关方案\n"
+			hasSafeHigh := false
+			for _, item := range result.SafeScheme {
+				if item.BetType == "3串1" || item.BetType == "4串1" {
+					hasSafeHigh = true
+					md += fmt.Sprintf("- **%s** (%s) ── 组合赔率 **%.2f** *(中奖率: %.1f%%)*，推荐投注 %.0f 元。若中返奖 **%.2f 元**。\n", item.MatchName, item.Selection, item.Odds, item.Prob*100, item.Stake, item.Stake*item.Odds)
+				}
+			}
+			if !hasSafeHigh {
+				md += "- 无\n"
+			}
+			md += "\n---\n\n"
+			md += fmt.Sprintf("## 三、 方案二：激进爆冷型方案（总投入：%.0f 元）\n\n", agentAmount-math.Round(agentAmount*req.SafeRatio))
+			md += "注重高赔率冷门或半全场高收益博弈，多场比赛让球玩法以 2 串 1 为核心，高置信度高赔率做单关。\n\n"
+			md += "### 1. 单场激进单关/半全场/比分投注\n"
+			hasAggSingle := false
+			for _, item := range result.AggressiveScheme {
+				if item.BetType == "单关" {
+					hasAggSingle = true
+					md += fmt.Sprintf("- **%s** (%s)：选择「%s」@%.2f *(概率: %.1f%%)* ── 推荐投注 %.0f 元。若中返奖 **%.2f 元**。\n", item.MatchName, item.Market, item.Selection, item.Odds, item.Prob*100, item.Stake, item.Stake*item.Odds)
+				}
+			}
+			if !hasAggSingle {
+				md += "- 无\n"
+			}
+			md += "\n"
+			md += "### 2. 让球混合过关 (2 串 1) 方案\n"
+			hasAggParlay := false
+			for _, item := range result.AggressiveScheme {
+				if item.BetType == "2串1" {
+					hasAggParlay = true
+					md += fmt.Sprintf("- **%s** (%s) ── 组合赔率 **%.2f** *(中奖率: %.1f%%)*，推荐投注 %.0f 元。若中返奖 **%.2f 元**。\n", item.MatchName, item.Selection, item.Odds, item.Prob*100, item.Stake, item.Stake*item.Odds)
+				}
+			}
+			if !hasAggParlay {
+				md += "- 无\n"
+			}
+			md += "\n---\n\n"
+			md += "## 四、 方案三：综合混合过关方案 (总投入：10 元)\n\n"
+			md += "自动在 5 种玩法（胜平负、让球、比分、总进球、半全场）中选出模型预测概率最高的且可售的黄金选项，将前 4 场进行串关联投注，力求获取稳健性与赔率收益的极佳平衡。\n\n"
+			md += "### 1. 投注详情\n"
+			if len(mixedScheme) > 0 {
+				md += fmt.Sprintf("- **过关方式**：%s\n", betTypeStr)
+				md += fmt.Sprintf("- **综合概率**：%.2f%%\n", mixedProb*100)
+				md += fmt.Sprintf("- **组合总赔率**：%.2f\n", mixedOdds)
+				md += fmt.Sprintf("- **推荐投注**：10 元（5倍）\n")
+				md += fmt.Sprintf("- **最高收益 (全中)**：**%.2f 元**\n", 10.0*mixedOdds)
+				md += fmt.Sprintf("- **最低收益 (错一即失)**：**0.00 元**\n")
+			} else {
+				md += "- 无在售可用比赛，无法组合\n"
+			}
+			md += "\n"
+			md += "### 2. 串关明细\n"
+			if len(mixedScheme) > 0 {
+				md += "| 赛事对阵 | 推荐玩法 | 推荐投注选项 | 选项赔率 | 单场预测中奖率 |\n"
+				md += "| :--- | :--- | :--- | :--- | :--- |\n"
+				for _, item := range mixedScheme {
+					singleProb := 0.0
+					for _, c := range candidates {
+						if c.MatchName == item.MatchName && c.Market == item.Market && c.Selection == item.Selection {
+							singleProb = c.Prob
+							break
+						}
+					}
+					md += fmt.Sprintf("| %s | %s | %s | %.2f | %.1f%% |\n", item.MatchName, item.Market, item.Selection, item.Odds, singleProb*100)
+				}
+			} else {
+				md += "- 无\n"
+			}
+			md += "\n---\n\n"
+			md += "## 🤖 多 Agent 智能决策研判\n\n"
+			md += fmt.Sprintf("- **常规立论 (35B)**：%s\n\n", result.ProponentOpinion)
+			md += fmt.Sprintf("- **魔鬼反驳 (8B)**：%s\n\n", result.CritiqueAnalysis)
+			md += fmt.Sprintf("- **裁决共识 (35B)**：%s\n\n", result.ConsensusReason)
+			md += fmt.Sprintf("预期综合回报率 (ROI)：**%.1f%%**\n", result.ExpectedROI*100)
+
+			_ = os.MkdirAll("./docs", 0755)
+			filePath := fmt.Sprintf("./docs/%s_投注方案推荐.md", req.Date)
+			_ = os.WriteFile(filePath, []byte(md), 0644)
+
+			result.MarkdownReport = md
+			c.JSON(http.StatusOK, gin.H{
+				"expectedRoi":      result.ExpectedROI,
+				"proponentOpinion": result.ProponentOpinion,
+				"critiqueAnalysis": result.CritiqueAnalysis,
+				"consensusReason":  result.ConsensusReason,
+				"safeScheme":       result.SafeScheme,
+				"aggressiveScheme": result.AggressiveScheme,
+				"markdownReport":   result.MarkdownReport,
+				"matches":          targetInputs,
+				"mixedScheme":      mixedScheme,
+				"mixedProb":        mixedProb,
+				"mixedOdds":        mixedOdds,
+			})
+		})
+
+		// 持久化保存大模型生成的智能投注方案
+		api.POST("/bet/save-advice", func(c *gin.Context) {
+			var req struct {
+				PlanType    string `json:"planType"`
+				TotalAmount float64 `json:"totalAmount"`
+				Items       []struct {
+					MatchName  string  `json:"matchName"`
+					Market     string  `json:"market"`
+					Selection  string  `json:"selection"`
+					Odds       float64 `json:"odds"`
+					Stake      float64 `json:"stake"`
+					BetType    string  `json:"betType"`
+				} `json:"items"`
+			}
+			if err := c.ShouldBindJSON(&req); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
+			if len(req.Items) == 0 {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "没有可保存的投注项"})
+				return
+			}
+
+			allMatches, err := db.GetMatchesByTournament("fifa_2026")
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+			teamToMatchID := make(map[string]string)
+			for _, m := range allMatches {
+				teamToMatchID[strings.ToLower(strings.TrimSpace(m.HomeTeam))] = m.ID
+				teamToMatchID[strings.ToLower(strings.TrimSpace(m.AwayTeam))] = m.ID
+				tHome, _ := db.GetTeamTranslation(m.HomeTeam)
+				if tHome.CnName != "" {
+					teamToMatchID[strings.ToLower(strings.TrimSpace(tHome.CnName))] = m.ID
+				}
+				tAway, _ := db.GetTeamTranslation(m.AwayTeam)
+				if tAway.CnName != "" {
+					teamToMatchID[strings.ToLower(strings.TrimSpace(tAway.CnName))] = m.ID
+				}
+			}
+
+			findMatchID := func(matchName string) string {
+				matchName = strings.ReplaceAll(matchName, " ", "")
+				subParts := strings.Split(matchName, "VS")
+				if len(subParts) == 2 {
+					h := strings.ToLower(strings.TrimSpace(subParts[0]))
+					if id, ok := teamToMatchID[h]; ok {
+						return id
+					}
+					a := strings.ToLower(strings.TrimSpace(subParts[1]))
+					if id, ok := teamToMatchID[a]; ok {
+						return id
+					}
+				}
+				for name, id := range teamToMatchID {
+					if strings.Contains(strings.ToLower(matchName), name) {
+						return id
+					}
+				}
+				return ""
+			}
+
+			var savedTickets []prediction.SavedTicket
+			matchIDSet := make(map[string]bool)
+
+			for _, item := range req.Items {
+				var ticket prediction.SavedTicket
+				ticket.Odds = item.Odds
+				ticket.Payout = item.Stake * item.Odds
+
+				if strings.Contains(item.MatchName, "&") && strings.Contains(item.Selection, "&") {
+					mNames := strings.Split(item.MatchName, "&")
+					sels := strings.Split(item.Selection, "&")
+					for idx, mn := range mNames {
+						mn = strings.TrimSpace(mn)
+						sel := "主胜"
+						if idx < len(sels) {
+							sel = strings.TrimSpace(sels[idx])
+						}
+						mid := findMatchID(mn)
+						if mid != "" {
+							matchIDSet[mid] = true
+							ticket.Legs = append(ticket.Legs, prediction.SavedLeg{
+								MatchID: mid,
+								Option:  sel,
+								Odds:    1.0,
+							})
+						}
+					}
+				} else {
+					mid := findMatchID(item.MatchName)
+					if mid != "" {
+						matchIDSet[mid] = true
+						ticket.Legs = append(ticket.Legs, prediction.SavedLeg{
+							MatchID: mid,
+							Option:  strings.TrimSpace(item.Selection),
+							Odds:    item.Odds,
+						})
+					}
+				}
+				if len(ticket.Legs) > 0 {
+					savedTickets = append(savedTickets, ticket)
+				}
+			}
+
+			if len(savedTickets) == 0 {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "未能成功匹配到任何有效赛事的 ID"})
+				return
+			}
+
+			var mIDList []string
+			for mid := range matchIDSet {
+				mIDList = append(mIDList, mid)
+			}
+
+			ticketsBytes, _ := json.Marshal(savedTickets)
+			plan := models.LotteryPlan{
+				PlanType:    "parlay",
+				MatchIDs:    strings.Join(mIDList, ","),
+				RiskLevel:   req.PlanType,
+				Cost:        req.TotalAmount,
+				TicketsJSON: string(ticketsBytes),
+				DescStr:     "智能多Agent推荐方案(" + req.PlanType + ")",
+				IsSettled:   0,
+			}
+
+			errSave := db.SaveLotteryPlan(plan)
+			if errSave != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": errSave.Error()})
+				return
+			}
+
+			c.JSON(http.StatusOK, gin.H{"status": "success"})
+		})
+
+
+
+
 		// 蒙特卡洛全赛事模拟 (10,000次推演)
 		api.POST("/simulate", func(c *gin.Context) {
 			fileData, err := os.ReadFile("./data/seasons/fifa_2026.json")
@@ -906,7 +1557,10 @@ func main() {
 				oddsH, oddsD, oddsA = req.Odds[0], req.Odds[1], req.Odds[2]
 			}
 
-			singleAdvice := lotteryService.GenerateSingleAdvice(m1, oddsH, oddsD, oddsA, req.PredictReport)
+			odds := sportteryService.GetMatchOdds(m1.HomeTeam, m1.AwayTeam, m1.ScheduledAt)
+			isSingleHad := odds.HadSingle
+
+			singleAdvice := lotteryService.GenerateSingleAdvice(m1, oddsH, oddsD, oddsA, req.PredictReport, isSingleHad)
 
 			var parlayAdvice *prediction.LotteryAdvice
 			if len(req.MatchIDs) >= 2 {
@@ -917,7 +1571,7 @@ func main() {
 				}
 			}
 
-			fivePlays := lotteryService.GenerateFivePlaysAdvice(m1, req.PredictReport)
+			fivePlays := lotteryService.GenerateFivePlaysAdvice(m1, req.PredictReport, isSingleHad)
 
 			c.JSON(http.StatusOK, gin.H{
 				"single":    singleAdvice,
