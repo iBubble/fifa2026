@@ -137,9 +137,8 @@ async function loadMatches(skipAutoSelect = false) {
       }
     }
 
-    // 根据是否有进行中的比赛，动态修改整站更新倒计时的频率 (如有Live比赛，设为60秒，否则600秒)
-    const hasLive = matches.some(m => m.status === "Live");
-    const newInterval = hasLive ? 60 : 600;
+    // 自动量化精算恒定为 10 分钟 (600秒)，取消比赛时 1 分钟的变频
+    const newInterval = 600;
     if (newInterval !== defaultIntervalSeconds) {
       defaultIntervalSeconds = newInterval;
       countdownSeconds = defaultIntervalSeconds;
@@ -2944,8 +2943,11 @@ async function loadBetMatches(date) {
   container.innerHTML = `<span style="font-size: 11px; color: var(--text-muted);">正在加载 ${date} 在售场次...</span>`;
   try {
     const res = await fetch(`${API_BASE}/bet/matches?date=${date}`);
+    if (!res.ok) {
+      throw new Error(`HTTP 错误: ${res.status}`);
+    }
     const list = await res.json();
-    if (list.length === 0) {
+    if (!Array.isArray(list) || list.length === 0) {
       container.innerHTML = `<span style="font-size: 11px; color: var(--text-muted);">⚠️ 该日期暂无可参与方案生成的在售比赛</span>`;
       return;
     }
@@ -2955,7 +2957,13 @@ async function loadBetMatches(date) {
       </span>
     `).join("");
   } catch (err) {
-    container.innerHTML = `<span style="font-size: 11px; color: #ff4a4a;">加载在售场次出错</span>`;
+    console.error("加载在售场次出错:", err);
+    container.innerHTML = `
+      <span style="font-size: 11px; color: #ff4a4a; display: inline-flex; align-items: center; gap: 8px;">
+        ⚠️ 加载失败
+        <button onclick="loadBetMatches('${date}')" style="background: rgba(255,74,74,0.15); border: 1px solid #ff4a4a; padding: 2px 6px; border-radius: 4px; color: #ff4a4a; cursor: pointer; font-size: 10px; font-weight: bold; transition: all 0.2s; outline: none;">点击重试</button>
+      </span>
+    `;
   }
 }
 

@@ -26,6 +26,9 @@ func Init(dataDir string) error {
 		return fmt.Errorf("打开SQLite数据库失败: %w", err)
 	}
 
+	// 限制最大打开连接数为 1，彻底避免 SQLite 并发写入死锁 (SQLITE_BUSY)
+	DB.SetMaxOpenConns(1)
+
 	// 开启高并发 TRUNCATE 模式与忙等待超时（避免 WAL 模式下的 mmap 在 Docker 共享挂载卷中触发 I/O 错误）
 	_, _ = DB.Exec("PRAGMA journal_mode=TRUNCATE;")
 	_, _ = DB.Exec("PRAGMA busy_timeout=5000;")

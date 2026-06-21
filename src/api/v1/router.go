@@ -33,6 +33,9 @@ type APIController struct {
 func RegisterRoutes(r *gin.Engine, ctrl *APIController) {
 	api := r.Group("/api")
 	{
+		// 0. 系统健康检测与监控
+		api.GET("/health", ctrl.GetHealth)
+
 		// 1. 赛事列表与比分流
 		api.GET("/matches", ctrl.GetMatches)
 		api.GET("/matches/stream", ctrl.StreamMatches)

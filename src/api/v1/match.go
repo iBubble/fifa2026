@@ -5,6 +5,7 @@ import (
 	"fifa2026/src/internal/db"
 	"fifa2026/src/internal/models"
 	"fifa2026/src/internal/service/prediction"
+	"fifa2026/src/internal/service/scheduler"
 	"fmt"
 	"io"
 	"log"
@@ -31,14 +32,15 @@ func (ctrl *APIController) GetMatches(c *gin.Context) {
 		}
 		if !found || lastDate != today {
 			_ = db.SaveSystemConfig("LastSimulatedDate", today)
-			log.Printf("[MonteCarlo] 🎲 今日首次访问，触发同步与蒙特卡洛后台推演...")
-			go func() {
+			log.Printf("[MonteCarlo] 🎲 今日首次访问，向调度器提交同步与蒙特卡洛推演任务...")
+			scheduler.GetGlobalScheduler().Submit("MonteCarlo_Sync_And_Simulation", func() error {
 				wcSync := prediction.NewWorldCup26SyncService()
 				if _, errSync := wcSync.SyncFinishedMatches(); errSync != nil {
 					log.Printf("[MonteCarlo] ⚠️ 模拟前同步完赛比分异常: %v", errSync)
 				}
 				runAndCacheMonteCarlo(ctrl.MCSimulator)
-			}()
+				return nil
+			})
 		}
 	}()
 
@@ -95,26 +97,28 @@ func (ctrl *APIController) GetMatches(c *gin.Context) {
 			rep, errReview := db.GetBacktestReport(m.ID)
 			if errReview != nil || rep.TacticsReview == "" || strings.Contains(rep.TacticsReview, "超时降级") {
 				if _, loading := underReviewMatches.LoadOrStore(m.ID, true); !loading {
-					log.Printf("[Server] 检测到比赛 %s 尚未复盘，发起异步复盘...", m.ID)
-					go func(match models.Match) {
-						defer underReviewMatches.Delete(match.ID)
-						params := ctrl.DCService.CalculateParams(match.HomeTeam, match.AwayTeam)
-						matrix, over25, under25 := ctrl.DCService.GenerateProbabilityMatrixWithTeams(params, match.HomeTeam, match.AwayTeam)
+					log.Printf("[Server] 检测到比赛 %s 尚未复盘，提交至调度器排队复盘...", m.ID)
+					matchToReview := m
+					scheduler.GetGlobalScheduler().Submit("ReviewMatch_"+matchToReview.ID, func() error {
+						defer underReviewMatches.Delete(matchToReview.ID)
+						params := ctrl.DCService.CalculateParams(matchToReview.HomeTeam, matchToReview.AwayTeam)
+						matrix, over25, under25 := ctrl.DCService.GenerateProbabilityMatrixWithTeams(params, matchToReview.HomeTeam, matchToReview.AwayTeam)
 						r := models.PredictionReport{
-							MatchID:        match.ID,
+							MatchID:        matchToReview.ID,
 							OriginalParams: params,
 							RefinedParams:  params,
 							ScoreMatrix:    matrix,
 							Over2_5Prob:    over25,
 							Under2_5Prob:   under25,
 						}
-						res, err := ctrl.BacktestService.ReviewMatch(match, &r)
+						res, err := ctrl.BacktestService.ReviewMatch(matchToReview, &r)
 						if err != nil {
-							log.Printf("[Server] ❌ 比赛 %s 异步复盘失败: %v", match.ID, err)
-						} else {
-							log.Printf("[Server] ✅ 比赛 %s 异步复盘成功: %s", match.ID, res.TacticsReview)
+							log.Printf("[Server] ❌ 比赛 %s 异步复盘失败: %v", matchToReview.ID, err)
+							return err
 						}
-					}(m)
+						log.Printf("[Server] ✅ 比赛 %s 异步复盘成功: %s", matchToReview.ID, res.TacticsReview)
+						return nil
+					})
 				}
 			}
 		}

@@ -52,7 +52,8 @@ graph TD
 > [!TIP]
 > **2. 强缓存安全防刷熔断器与前端 try-catch 坚固防线**
 > - **Gin No-Cache 中间件**：后端强制注入静态路由不缓存控制头，搭配 `index.html` 中的 Cache-Busting 版本戳更新（`?v=20260616_0200`），彻底根治了浏览器强缓存加载旧版 JS 导致切片数组属性 `toFixed` 异常运行时崩溃的故障。
-> - **流水线异常熔断隔离**：在 `autoFetchAndCalculate` 计算流的外部 RSS 情报获取模块中引入独立的 `try-catch` 防御，避免了因为新闻接口偶发的网络波动超时而级联截断后续定量预测与 LLM 纠偏异步计算管道的情况。
+> - **流水线异常熔断隔离**：在 `autoFetchAndCalculate` 计算流 of 外部 RSS 情报获取模块中引入独立的 `try-catch` 防御，避免了因为新闻接口偶发的网络波动超时而级联截断后续定量预测与 LLM 纠偏异步计算管道的情况。
+> - **HTTP 异常原地重试机制**：优化了前端在售场次等核心 API 拉取异常时的容错。当接口发生临时网络波动或 500 异常时，支持在页面上原地展示“点击重试”按钮，无需刷新整站即可一键重拉。
 
 > [!WARNING]
 > **3. 情报去噪声与物理持久化 (Anti-Hallucination Persistence)**
@@ -118,6 +119,12 @@ graph TD
 > - **突发事件舆情注入**：大模型（Ollama）推理前，系统会自动获取并聚合最近 10 分钟内抓取的全球权威体育 RSS 资讯，提取前 3 条高度关联的新闻标题作为定性 Observations 事实（如主力伤停、停赛、教练内讧等）拼装进上下文，杜绝无事实幻想。
 > - **36 场时序重演验证与网格重训**：新增时序重推理服务，可一键重置 Elo 时间轴起点，按 `ScheduledAt` 时间升序依次执行“局部预测 -> 赛后复盘自校准 -> Elo 演化推进”。实证结果使模型的平均 Brier Score 误差从 `0.5849` 大幅降至 **`0.5067`**（降幅高达 **13.4%**）。
 > - **API 故障透明落盘定位**：为防止外部 H2H（历史直接交手）API 超限 429 导致数据缺失而难以排查，新增 defer 异常持久化机制，所有抓取异常会自动落盘追加至 `data/logs/h2h_error.log`。
+> 
+> [!IMPORTANT]
+> **15. 后台单协程任务队列与即时健康监控接口 (Background Task Queue & Health Monitor)**
+> - **单协程串行调度器 TaskScheduler**：通过 Go 的 Channel 缓冲管道，限制并发消费协程为 1。将蒙特卡洛 10,000次推演和 AI 异步复盘等重写入的后台任务强制排队串行写入，彻底杜绝 SQLite 因高并发写锁引发的 `SQLITE_BUSY: database is locked` 死锁问题。
+> - **活跃探测 API (/api/health)**：提供 `/api/health` 检测路由。探测健康度时自动向数据库执行 `SELECT 1;`。异常时控制台输出 `[HealthCheck] ❌` 级报警，并直接返回 `503 Service Unavailable` 触发外部看门狗和即时监控自愈。
+> - **恒定自动精算频率**：移除了 Live 比赛时的 1 分钟自动变频，统一恒定保持在 10 分钟 (600秒)，规避了赛中对本地 LLM 算力及网络接口的高频无谓拉取。
 
 
 
@@ -201,8 +208,8 @@ graph TD
 
 ## 🛠️ 技术栈 (Technology Stack)
 
-* **后端 (Backend)**：Go (1.22-alpine) 核心服务 / Gin Web 框架 / 跨平台纯 Go 驱动 SQLite（**高可用的 TRUNCATE 模式部署**，配置忙等待重试与 busy timeout 超时以解决容器挂载目录高频并发读写锁冲突）。
-* **算法模型 (Models)**：Dixon-Coles 回归预测（**集成 H2H 指数时间加权衰减**） / 梯度自进化自校准 / Shin 氏去抽水 / 二次规划多臂凯利公式 / **赔率 Circuit Breaker 风控熔断** / **LiveSync 比分单向递增流控共识防抖**。
+* **后端 (Backend)**：Go (1.22-alpine) 核心服务 / Gin Web 框架 / 跨平台纯 Go 驱动 SQLite（**高可用的 TRUNCATE 模式部署**，配置忙等待重试、连接数限制 `SetMaxOpenConns(1)` 以及**后台单线程任务队列 `TaskScheduler`**，彻底解决了高频并发写库锁冲突）。
+* **算法模型 (Models)**：Dixon-Coles 回归预测（**集成 H2H 指数时间加权衰减**） / 梯度自进化自校准 / Shin 氏去抽水 / 二次规划多臂凯利公式 / **赔率 Circuit Breaker 风控熔断** / **LiveSync 比分单向递增流控共识防抖** / **活跃探测健康监控 API**。
 * **大语言模型 (LLM)**：Ollama 容器连通（推荐并优化部署 `qwen3:8b` 模型，注入 `"think": false` 执行定性偏置修正与赛后量化反思）。
 * **前端 (Frontend)**：HTML5 / 原生 CSS3 暗黑霓虹美学 / Vanilla JS (ES6) / ECharts (v5) 可视化。
 
