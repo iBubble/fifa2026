@@ -12,6 +12,7 @@ import (
 type DixonColesService struct {
 	elo              *EloService
 	apiSports        *APISportsService
+	weather          *WeatherService
 	rhoOffset        float64
 	lambdaHomeOffset float64
 	lambdaAwayOffset float64
@@ -23,10 +24,11 @@ type DixonColesService struct {
 	InitialRho       float64
 }
 
-func NewDixonColesService(elo *EloService, apiSports *APISportsService) *DixonColesService {
+func NewDixonColesService(elo *EloService, apiSports *APISportsService, weather *WeatherService) *DixonColesService {
 	s := &DixonColesService{
 		elo:              elo,
 		apiSports:        apiSports,
+		weather:          weather,
 		rhoOffset:        0.0,
 		lambdaHomeOffset: 0.0,
 		lambdaAwayOffset: 0.0,
@@ -446,11 +448,11 @@ func isHostNation(team string) bool {
 	return team == "United States" || team == "Mexico" || team == "Canada"
 }
 
-// CalculateParamsWithVenue 根据两队 Elo 和赛场场馆所在的物理东道主国家，计算带有精确主场加成的 Dixon-Coles 参数
-func (s *DixonColesService) CalculateParamsWithVenue(homeTeam, awayTeam, venue string) models.DixonColesParams {
+// CalculateParamsWithVenue 根据两队 Elo 和赛场场馆所在的物理东道主国家，计算带有精确主场加成及天气/海拔/排名等场外因素的 Dixon-Coles 参数
+func (s *DixonColesService) CalculateParamsWithVenue(homeTeam, awayTeam, venue string, matchTime time.Time) models.DixonColesParams {
 	p := s.CalculateParams(homeTeam, awayTeam)
 
-	// 判定场馆国家
+	// 1. 判定场馆国家
 	venueCountry := "United States" // 默认美国
 	vLower := strings.ToLower(venue)
 	if strings.Contains(vLower, "azteca") || strings.Contains(vLower, "akron") || strings.Contains(vLower, "bbva") {
@@ -470,14 +472,46 @@ func (s *DixonColesService) CalculateParamsWithVenue(homeTeam, awayTeam, venue s
 	if homeAdv != 0.0 {
 		p.LambdaHome = p.LambdaHome * math.Exp(homeAdv)
 		p.LambdaAway = p.LambdaAway * math.Exp(-homeAdv)
+	}
 
-		// 限制 Lambda 期望在 2.8 安全上限内
-		if p.LambdaHome > 2.8 {
-			p.LambdaHome = 2.8
-		}
-		if p.LambdaAway > 2.8 {
-			p.LambdaAway = 2.8
-		}
+	// 2. 融入天气与气候适应偏置
+	if s.weather != nil {
+		hClimate := s.weather.GetClimateAdaptation(homeTeam, venue, matchTime)
+		aClimate := s.weather.GetClimateAdaptation(awayTeam, venue, matchTime)
+		p.LambdaHome += hClimate
+		p.LambdaAway += aClimate
+	}
+
+	// 3. 融入海拔体能惩罚偏置
+	hAlt := GetAltitudeOffset(homeTeam, venue)
+	aAlt := GetAltitudeOffset(awayTeam, venue)
+	p.LambdaHome += hAlt
+	p.LambdaAway += aAlt
+
+	// 4. 融入官方 FIFA 排名差因子
+	rankH, rankA := 50, 50
+	if tH, err := db.GetTeamTranslation(homeTeam); err == nil && tH.FifaRanking > 0 {
+		rankH = tH.FifaRanking
+	}
+	if tA, err := db.GetTeamTranslation(awayTeam); err == nil && tA.FifaRanking > 0 {
+		rankA = tA.FifaRanking
+	}
+	rankDiffOffset := float64(rankA-rankH) / 100.0 * 0.05
+	p.LambdaHome += rankDiffOffset
+	p.LambdaAway -= rankDiffOffset
+
+	// 限制 Lambda 期望在 [0.2, 2.8] 安全上限内，防止高分段计算发生数学溢出
+	if p.LambdaHome > 2.8 {
+		p.LambdaHome = 2.8
+	}
+	if p.LambdaHome < 0.2 {
+		p.LambdaHome = 0.2
+	}
+	if p.LambdaAway > 2.8 {
+		p.LambdaAway = 2.8
+	}
+	if p.LambdaAway < 0.2 {
+		p.LambdaAway = 0.2
 	}
 
 	return p
@@ -590,7 +624,7 @@ func (s *DixonColesService) OptimizeParameters() (float64, float64, float64, flo
 
 					var totalBrier float64
 					for _, m := range matches {
-						params := s.CalculateParamsWithVenue(m.HomeTeam, m.AwayTeam, m.Venue)
+						params := s.CalculateParamsWithVenue(m.HomeTeam, m.AwayTeam, m.Venue, m.ScheduledAt)
 						matrix, _, _ := s.GenerateProbabilityMatrix(params)
 						var pH, pD, pA float64
 						for _, cell := range matrix {

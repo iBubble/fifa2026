@@ -32,3 +32,7 @@ Thumbs.db
 .tempmediaStorage/
 *~
 *.swp
+
+# Antigravity Agent and Local Logs
+.agent/
+data/logs/

@@ -26,7 +26,7 @@ func TestHafuVerify(t *testing.T) {
 		t.Fatalf("初始化 EloService 失败: %v", errElo)
 	}
 	// APISportsService 传 nil，DixonColes 会自动处理，避免网络请求干扰
-	dcService := NewDixonColesService(eloService, nil)
+	dcService := NewDixonColesService(eloService, nil, nil)
 	sportteryService := NewSportteryService()
 
 	// 3. 获取前 10 场比赛
@@ -57,7 +57,7 @@ func TestHafuVerify(t *testing.T) {
 
 	for i := 0; i < limit; i++ {
 		m := matches[i]
-		params := dcService.CalculateParamsWithVenue(m.HomeTeam, m.AwayTeam, m.Venue)
+		params := dcService.CalculateParamsWithVenue(m.HomeTeam, m.AwayTeam, m.Venue, m.ScheduledAt)
 		odds := sportteryService.GetMatchOdds(m.HomeTeam, m.AwayTeam, m.ScheduledAt)
 		
 		probs := CalculateRefinedHafuProbs(params.LambdaHome, params.LambdaAway, m, odds, dcService)
@@ -97,7 +97,7 @@ func TestBacktestVerify(t *testing.T) {
 
 	// 2. 初始化服务
 	eloService, _ := NewEloService("../../../../data/seasons/history_features.json")
-	dcService := NewDixonColesService(eloService, nil)
+	dcService := NewDixonColesService(eloService, nil, nil)
 	sportteryService := NewSportteryService()
 	lotteryService := NewLotteryService(dcService, sportteryService)
 
@@ -132,7 +132,7 @@ func TestBacktestVerify(t *testing.T) {
 	var totalBrier float64
 
 	for _, m := range matches {
-		params := dcService.CalculateParamsWithVenue(m.HomeTeam, m.AwayTeam, m.Venue)
+		params := dcService.CalculateParamsWithVenue(m.HomeTeam, m.AwayTeam, m.Venue, m.ScheduledAt)
 		matrix, _, _ := dcService.GenerateProbabilityMatrix(params)
 		
 		var pH, pD, pA float64
@@ -378,7 +378,7 @@ func TestOptimizeParams(t *testing.T) {
 		for _, dm := range diffMults {
 			for _, hm := range h2hMults {
 				for _, r := range rhos {
-					dcService := NewDixonColesService(eloService, nil)
+					dcService := NewDixonColesService(eloService, nil, nil)
 					dcService.NormDivulator, dcService.DiffMultiplier, dcService.H2hMultiplier, dcService.InitialRho = nd, dm, hm, r
 					dcService.RecalculateRhoOffset()
 					dcService.RecalculateLambdaOffset()
@@ -386,7 +386,7 @@ func TestOptimizeParams(t *testing.T) {
 					var totalBrier, totalSafePnl, totalAggPnl float64
 					var totalSafeHits, totalRecommends int
 					for _, m := range matches {
-						params := dcService.CalculateParamsWithVenue(m.HomeTeam, m.AwayTeam, m.Venue)
+						params := dcService.CalculateParamsWithVenue(m.HomeTeam, m.AwayTeam, m.Venue, m.ScheduledAt)
 						matrix, _, _ := dcService.GenerateProbabilityMatrix(params)
 						var pH, pD, pA float64
 						for _, cell := range matrix {

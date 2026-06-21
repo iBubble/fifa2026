@@ -46,7 +46,7 @@ func TestRunQuantAnalysis(t *testing.T) {
 	if err != nil {
 		t.Fatalf("初始化 Elo 失败: %v", err)
 	}
-	dc := NewDixonColesService(elo, nil)
+	dc := NewDixonColesService(elo, nil, nil)
 	shin := NewShinService()
 
 	rows, err := db.DB.Query(`
@@ -361,7 +361,7 @@ func TestRunOptimizeParameters(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Elo 失败: %v", err)
 	}
-	dc := NewDixonColesService(elo, nil)
+	dc := NewDixonColesService(elo, nil, nil)
 
 	bestNormDiv, bestDiffMult, bestH2hMult, bestRho, bestBrier, err := dc.OptimizeParameters()
 	if err != nil {

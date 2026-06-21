@@ -136,7 +136,7 @@ func (s *ParlayService) RecommendParlay(matchIds []string, parlayMode string, pa
 			params = report.OriginalParams
 		} else {
 			// 安全降级：若读取数据库 report 报错或为空，降级回定量 Dixon-Coles 原始数学计算
-			params = s.dcService.CalculateParamsWithVenue(m.HomeTeam, m.AwayTeam, m.Venue)
+			params = s.dcService.CalculateParamsWithVenue(m.HomeTeam, m.AwayTeam, m.Venue, m.ScheduledAt)
 			matrix, over25, under25 = s.dcService.GenerateProbabilityMatrix(params)
 			report = models.PredictionReport{
 				MatchID:        id,
@@ -679,7 +679,7 @@ func (s *ParlayService) getBestSingleChoice(matchID string, playCode string) (st
 	report, errRep := db.GetPredictionReport(matchID)
 	if errRep != nil || len(report.ScoreMatrix) == 0 {
 		// 若读取失败或尚未预测，使用定量 Dixon-Coles 原始数学计算兜底，防除零崩溃
-		params := s.dcService.CalculateParamsWithVenue(m.HomeTeam, m.AwayTeam, m.Venue)
+		params := s.dcService.CalculateParamsWithVenue(m.HomeTeam, m.AwayTeam, m.Venue, m.ScheduledAt)
 		matrix, over25, under25 := s.dcService.GenerateProbabilityMatrix(params)
 		report = models.PredictionReport{
 			MatchID:        matchID,

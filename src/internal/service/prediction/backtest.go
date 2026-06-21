@@ -95,3 +95,96 @@ func (s *BacktestService) ReviewMatch(match models.Match, report *models.Predict
 
 	return dbReport, nil
 }
+
+// RebuildAllFinishedMatchesBacktest 重置状态并在时序上重新跑所有已完赛比赛的回测，返回计算前后的 Brier Score
+func (s *BacktestService) RebuildAllFinishedMatchesBacktest() (float64, float64, error) {
+	// 1. 获取重置前的平均 Brier Score
+	var oldBrier float64
+	reports, err := db.GetBacktestReports()
+	if err == nil && len(reports) > 0 {
+		for _, r := range reports {
+			oldBrier += r.BrierScore
+		}
+		oldBrier /= float64(len(reports))
+	}
+
+	// 2. 清空数据库中的旧预测和回测报告数据
+	_, _ = db.DB.Exec("DELETE FROM prediction_reports;")
+	_, _ = db.DB.Exec("DELETE FROM backtest_reports;")
+
+	// 3. 重置内存中的 Elo 评级为冷启动初始值
+	s.eloService.ResetToInitialElos()
+
+	// 4. 重置 Dixon-Coles 的自适应偏移
+	if s.dcService != nil {
+		s.dcService.rhoOffset = 0.0
+		s.dcService.lambdaHomeOffset = 0.0
+		s.dcService.lambdaAwayOffset = 0.0
+	}
+
+	// 5. 按 ScheduledAt 升序排列查询所有已完赛比赛 (避免时序颠倒)
+	rows, err := db.DB.Query(`SELECT id, tournament_id, home_team, away_team, match_group, scheduled_at, status, home_score, away_score, venue 
+		FROM matches 
+		WHERE status = 'FT' 
+		ORDER BY scheduled_at ASC`)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer rows.Close()
+
+	var matches []models.Match
+	for rows.Next() {
+		var m models.Match
+		var schedStr string
+		err := rows.Scan(&m.ID, &m.TournamentID, &m.HomeTeam, &m.AwayTeam, &m.Group, &schedStr, &m.Status, &m.HomeScore, &m.AwayScore, &m.Venue)
+		if err == nil {
+			m.ScheduledAt, _ = time.Parse(time.RFC3339, schedStr)
+			if m.ScheduledAt.IsZero() {
+				m.ScheduledAt, _ = time.Parse("2006-01-02 15:04:05", schedStr)
+			}
+			matches = append(matches, m)
+		}
+	}
+
+	// 6. 顺次进行时序重演推理与复盘
+	for _, m := range matches {
+		params := s.dcService.CalculateParamsWithVenue(m.HomeTeam, m.AwayTeam, m.Venue, m.ScheduledAt)
+		matrix, over25, under25 := s.dcService.GenerateProbabilityMatrixWithTeams(params, m.HomeTeam, m.AwayTeam)
+
+		report := models.PredictionReport{
+			MatchID:              m.ID,
+			OriginalParams:       params,
+			RefinedParams:        params,
+			ScoreMatrix:          matrix,
+			Over2_5Prob:          over25,
+			Under2_5Prob:         under25,
+			OriginalScoreMatrix:  matrix,
+			OriginalOver2_5Prob:  over25,
+			OriginalUnder2_5Prob: under25,
+		}
+
+		// 触发赛后分析与自校准
+		_, _ = s.ReviewMatch(m, &report)
+	}
+
+	// 7. 重演完毕后自动运行网格搜索进行参数的最优调优
+	var newBrier float64
+	if s.dcService != nil {
+		_, _, _, _, bs, errOpt := s.dcService.OptimizeParameters()
+		if errOpt == nil {
+			newBrier = bs
+		}
+	}
+
+	if newBrier == 0 {
+		newReports, _ := db.GetBacktestReports()
+		if len(newReports) > 0 {
+			for _, r := range newReports {
+				newBrier += r.BrierScore
+			}
+			newBrier /= float64(len(newReports))
+		}
+	}
+
+	return oldBrier, newBrier, nil
+}

@@ -62,7 +62,7 @@ func (s *LotteryService) GenerateSingleAdvice(match models.Match, oddsHome, odds
 		critiqueReport = report.CritiqueAnalysis
 		advice.Critique = critiqueReport
 	} else {
-		params := s.dcService.CalculateParamsWithVenue(match.HomeTeam, match.AwayTeam, match.Venue)
+		params := s.dcService.CalculateParamsWithVenue(match.HomeTeam, match.AwayTeam, match.Venue, match.ScheduledAt)
 		matrix, _, _ = s.dcService.GenerateProbabilityMatrix(params)
 	}
 

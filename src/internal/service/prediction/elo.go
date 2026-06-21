@@ -142,3 +142,12 @@ func (s *EloService) UpdateElos(teamA, teamB string, scoreA, scoreB int) {
 	s.teams[teamA] = eloA + K*(actA-expA)
 	s.teams[teamB] = eloB + K*(actB-expB)
 }
+
+// ResetToInitialElos 重置内存中所有球队的实时 Elo 评级到其冷启动初始 Elo 评分
+func (s *EloService) ResetToInitialElos() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for name, feat := range s.features {
+		s.teams[name] = feat.InitialElo
+	}
+}

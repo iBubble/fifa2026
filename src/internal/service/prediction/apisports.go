@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fifa2026/src/internal/db"
 	"fifa2026/src/internal/models"
+	"fifa2026/src/utils"
 	"fmt"
 	"io"
 	"net/http"
@@ -190,7 +191,13 @@ func (s *APISportsService) GetTeamID(teamName string) (int, error) {
 }
 
 // GetH2HRecord 获取两队的历史交手统计，优先读 SQLite 本地缓存以保护每日 100 次免费额度
-func (s *APISportsService) GetH2HRecord(team1, team2 string) (models.H2HRecord, error) {
+func (s *APISportsService) GetH2HRecord(team1, team2 string) (record models.H2HRecord, err error) {
+	defer func() {
+		if err != nil {
+			utils.RecordH2HError(team1, team2, err)
+		}
+	}()
+
 	t1 := strings.TrimSpace(team1)
 	t2 := strings.TrimSpace(team2)
 

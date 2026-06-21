@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## [Unreleased] - 2026-06-21
+
+### Added
+- **多维物理与客观场外因素全面实装**：
+  - 在 [dixon_coles.go](file:///Users/gemini/Projects/Own/FIFA2026/src/internal/service/prediction/dixon_coles.go) 中真正打通了天气适应性（降温、降雨惩罚）与高海拔体能惩罚（2200 米对平原队体能惩罚），并首次融入了官方权威的 FIFA 排名差因子对 lambda 的校准偏置。
+- **突发新闻舆情前置注入**：
+  - 在 [predict_match.go](file:///Users/gemini/Projects/Own/FIFA2026/src/api/v1/predict_match.go) 接口中，大模型推理前会自动从 [scraper.go](file:///Users/gemini/Projects/Own/FIFA2026/src/internal/service/news/scraper.go) 抓取的 RSS 新闻中提取前 3 条高度关联的真实新闻标题，作为定性事实注入 Ollama 纠偏提示词中，杜绝无脑幻觉。
+- **已赛 36 场时序回测重演与再次验证**：
+  - 在 [backtest.go](file:///Users/gemini/Projects/Own/FIFA2026/src/internal/service/prediction/backtest.go) 中实现了 `RebuildAllFinishedMatchesBacktest`，重置所有球队 Elo 至冷启动零点，顺次重推理已赛的 36 场比赛并进行赛后反馈纠偏，使模型平均 Brier Score 从 `0.5849` **大幅拉低** 到了最新的 **`0.5067`**！
+- **API 异常落盘与透明追溯机制**：
+  - 在 [apisports.go](file:///Users/gemini/Projects/Own/FIFA2026/src/internal/service/prediction/apisports.go) 中编写了 defer 异常拦截，将所有 H2H 历史交锋抓取报错自动持久化写入本地 [h2h_error.log](file:///Users/gemini/Projects/Own/FIFA2026/data/logs/h2h_error.log)。
+
 ## [Unreleased] - 2026-06-20
 
 ### Added

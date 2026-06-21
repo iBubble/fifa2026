@@ -31,7 +31,7 @@ func (s *LotteryService) GenerateFivePlaysAdvice(match models.Match, report *mod
 		lh = report.RefinedParams.LambdaHome
 		la = report.RefinedParams.LambdaAway
 	} else {
-		params := s.dcService.CalculateParamsWithVenue(match.HomeTeam, match.AwayTeam, match.Venue)
+		params := s.dcService.CalculateParamsWithVenue(match.HomeTeam, match.AwayTeam, match.Venue, match.ScheduledAt)
 		matrix, _, _ = s.dcService.GenerateProbabilityMatrix(params)
 		lh = params.LambdaHome
 		la = params.LambdaAway
@@ -41,7 +41,7 @@ func (s *LotteryService) GenerateFivePlaysAdvice(match models.Match, report *mod
 	matrix = applyShiftsToMatrix(match.HomeTeam, match.AwayTeam, matrix)
 
 	// 基础 Dixon-Coles 概率与参数，用于生成更具波动且逼真的仿真官方赔率（模拟在资讯偏差之前的初始赔率）
-	baseParams := s.dcService.CalculateParamsWithVenue(match.HomeTeam, match.AwayTeam, match.Venue)
+	baseParams := s.dcService.CalculateParamsWithVenue(match.HomeTeam, match.AwayTeam, match.Venue, match.ScheduledAt)
 	baseMatrix, _, _ := s.dcService.GenerateProbabilityMatrix(baseParams)
 
 	odds := s.sportteryService.GetMatchOdds(match.HomeTeam, match.AwayTeam, match.ScheduledAt)
