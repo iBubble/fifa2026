@@ -151,3 +151,11 @@ func UpdateMatchScore(matchID string, homeScore, awayScore int, status string) e
 		homeScore, awayScore, status, matchID)
 	return err
 }
+
+// UpdateMatchTeams 更新比赛的主客队队名
+func UpdateMatchTeams(matchID string, homeTeam, awayTeam string) error {
+	_, err := DB.Exec(`UPDATE matches SET home_team = ?, away_team = ? WHERE id = ?`,
+		homeTeam, awayTeam, matchID)
+	return err
+}
+

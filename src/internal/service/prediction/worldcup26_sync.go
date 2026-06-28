@@ -26,6 +26,7 @@ type WC26Response struct {
 
 // WC26Game worldcup26.ir API 返回的单场比赛数据
 type WC26Game struct {
+	ID          string `json:"id"`
 	HomeTeam    string `json:"home_team_name_en"`
 	AwayTeam    string `json:"away_team_name_en"`
 	HomeScore   int    `json:"home_score,string"`
@@ -85,8 +86,7 @@ func (s *WorldCup26SyncService) FetchGames() ([]WC26Game, error) {
 	return wrapper.Games, nil
 }
 
-// SyncFinishedMatches 将已完赛比赛的比分同步到本地 DB
-// 严格保护赛程：仅更新比分和状态，绝不修改时间/主客队/场馆
+// SyncFinishedMatches 将已完赛比赛的比分同步到本地 DB，并对淘汰赛进行队局自动更新
 func (s *WorldCup26SyncService) SyncFinishedMatches() (int, error) {
 	games, err := s.FetchGames()
 	if err != nil {
@@ -95,34 +95,64 @@ func (s *WorldCup26SyncService) SyncFinishedMatches() (int, error) {
 
 	synced := 0
 	for _, g := range games {
-		if !strings.EqualFold(g.Finished, "TRUE") {
-			continue
-		}
-
-		// 规范化队名映射
 		homeTeam := normalizeWC26Team(g.HomeTeam)
 		awayTeam := normalizeWC26Team(g.AwayTeam)
 
-		if homeTeam == "" || awayTeam == "" {
-			continue
-		}
+		// 判定是否是淘汰赛阶段的比赛
+		isKnockout := g.Group == "R32" || g.Group == "R16" || g.Group == "QF" || g.Group == "SF" || g.Group == "3RD" || g.Group == "FINAL"
 
-		// 查找本地对应比赛并更新比分
-		matches, err := db.GetMatchesByTeam("fifa_2026", homeTeam)
-		if err != nil {
-			continue
-		}
-
-		for _, m := range matches {
-			if m.HomeTeam == homeTeam && m.AwayTeam == awayTeam && (m.Status != "FT" || m.HomeScore != g.HomeScore || m.AwayScore != g.AwayScore) {
-				// 仅更新比分和状态
-				err := db.UpdateMatchScore(m.ID, g.HomeScore, g.AwayScore, "FT")
-				if err == nil {
-					synced++
-					log.Printf("[WC26Sync] ✅ 同步: %s %d-%d %s",
-						homeTeam, g.HomeScore, g.AwayScore, awayTeam)
+		if isKnockout {
+			if g.ID == "" {
+				continue
+			}
+			localID := "wc2026_m" + g.ID
+			m, errGet := db.GetMatch(localID)
+			if errGet == nil {
+				// 只要 API 给出了有效的参赛球队，且本地还是 "0" 或者队名不同，则自动同步队名
+				if homeTeam != "" && awayTeam != "" && homeTeam != "0" && awayTeam != "0" {
+					if m.HomeTeam != homeTeam || m.AwayTeam != awayTeam {
+						errUpdate := db.UpdateMatchTeams(m.ID, homeTeam, awayTeam)
+						if errUpdate == nil {
+							synced++
+							log.Printf("[WC26Sync] 🏆 淘汰赛对阵更新: %s (id: %s) -> %s vs %s", m.ID, g.ID, homeTeam, awayTeam)
+							m.HomeTeam = homeTeam
+							m.AwayTeam = awayTeam
+						}
+					}
 				}
-				break
+
+				// 如果淘汰赛已完赛，同步状态和比分
+				if strings.EqualFold(g.Finished, "TRUE") {
+					if m.Status != "FT" || m.HomeScore != g.HomeScore || m.AwayScore != g.AwayScore {
+						errScore := db.UpdateMatchScore(m.ID, g.HomeScore, g.AwayScore, "FT")
+						if errScore == nil {
+							synced++
+							log.Printf("[WC26Sync] ✅ 淘汰赛完赛比分同步: %s %d-%d %s", homeTeam, g.HomeScore, g.AwayScore, awayTeam)
+						}
+					}
+				}
+			}
+		} else {
+			// 小组赛依旧保留原先安全匹配的逻辑
+			if !strings.EqualFold(g.Finished, "TRUE") {
+				continue
+			}
+			if homeTeam == "" || awayTeam == "" {
+				continue
+			}
+			matches, errGet := db.GetMatchesByTeam("fifa_2026", homeTeam)
+			if errGet != nil {
+				continue
+			}
+			for _, m := range matches {
+				if m.HomeTeam == homeTeam && m.AwayTeam == awayTeam && (m.Status != "FT" || m.HomeScore != g.HomeScore || m.AwayScore != g.AwayScore) {
+					errScore := db.UpdateMatchScore(m.ID, g.HomeScore, g.AwayScore, "FT")
+					if errScore == nil {
+						synced++
+						log.Printf("[WC26Sync] ✅ 小组赛同步: %s %d-%d %s", homeTeam, g.HomeScore, g.AwayScore, awayTeam)
+					}
+					break
+				}
 			}
 		}
 	}

@@ -4,6 +4,41 @@ let currentPredictions = null; // 保存当前比赛测算出的投注项
 let matchesMap = {}; // 保存比赛映射用于复盘历史翻译
 let allMatchesData = []; // 保存所有比赛的数据用于赛程积分计算
 
+const knockoutPlaceholders = {
+  "wc2026_m73": { home: "A组第二", away: "B组第二" },
+  "wc2026_m74": { home: "E组第一", away: "A/B/C/D/F组第三" },
+  "wc2026_m75": { home: "F组第一", away: "C组第二" },
+  "wc2026_m76": { home: "C组第一", away: "F组第二" },
+  "wc2026_m77": { home: "I组第一", away: "C/D/F/G/H组第三" },
+  "wc2026_m78": { home: "E组第二", away: "I组第二" },
+  "wc2026_m79": { home: "A组第一", away: "C/E/F/H/I组第三" },
+  "wc2026_m80": { home: "L组第一", away: "E/H/I/J/K组第三" },
+  "wc2026_m81": { home: "D组第一", away: "B/E/F/I/J组第三" },
+  "wc2026_m82": { home: "G组第一", away: "A/E/H/I/J组第三" },
+  "wc2026_m83": { home: "K组第二", away: "L组第二" },
+  "wc2026_m84": { home: "H组第一", away: "J组第二" },
+  "wc2026_m85": { home: "B组第一", away: "E/F/G/I/J组第三" },
+  "wc2026_m86": { home: "J组第一", away: "H组第二" },
+  "wc2026_m87": { home: "K组第一", away: "D/E/I/J/L组第三" },
+  "wc2026_m88": { home: "D组第二", away: "G组第二" },
+  "wc2026_m89": { home: "74场胜者", away: "77场胜者" },
+  "wc2026_m90": { home: "73场胜者", away: "75场胜者" },
+  "wc2026_m91": { home: "76场胜者", away: "78场胜者" },
+  "wc2026_m92": { home: "79场胜者", away: "80场胜者" },
+  "wc2026_m93": { home: "83场胜者", away: "84场胜者" },
+  "wc2026_m94": { home: "81场胜者", away: "82场胜者" },
+  "wc2026_m95": { home: "86场胜者", away: "88场胜者" },
+  "wc2026_m96": { home: "85场胜者", away: "87场胜者" },
+  "wc2026_m97": { home: "89场胜者", away: "90场胜者" },
+  "wc2026_m98": { home: "93场胜者", away: "94场胜者" },
+  "wc2026_m99": { home: "91场胜者", away: "92场胜者" },
+  "wc2026_m100": { home: "95场胜者", away: "96场胜者" },
+  "wc2026_m101": { home: "97场胜者", away: "98场胜者" },
+  "wc2026_m102": { home: "99场胜者", away: "100场胜者" },
+  "wc2026_m103": { home: "101场败者", away: "102场败者" },
+  "wc2026_m104": { home: "101场胜者", away: "102场胜者" }
+};
+
 let lastNewsFingerprint = "";
 let lastOddsFingerprint = "";
 let lastHistoryFingerprint = "";
@@ -53,10 +88,20 @@ async function loadMatches(skipAutoSelect = false) {
         // 原地增量更新 DOM 属性，防止整体重绘闪烁
         const scoreSpan = item.querySelector(".match-score-text");
         const statusSpan = item.querySelector(".match-status-text");
+        const teamsSpan = item.querySelector(".match-teams-title");
         
         const scoreStr = `${m.homeScore} - ${m.awayScore}`;
         const statusStr = `${m.venue} | ${matchTime} | ${statusText}`;
 
+        const hasHome = m.homeTeam !== "0" && m.homeTeam !== "";
+        const homeName = hasHome ? translateTeamName(m.homeTeam) : (knockoutPlaceholders[m.id]?.home || "等待晋级");
+        const hasAway = m.awayTeam !== "0" && m.awayTeam !== "";
+        const awayName = hasAway ? translateTeamName(m.awayTeam) : (knockoutPlaceholders[m.id]?.away || "等待晋级");
+        const teamsStr = `${homeName} vs ${awayName}`;
+
+        if (teamsSpan && teamsSpan.innerHTML !== teamsStr) {
+          teamsSpan.innerHTML = teamsStr;
+        }
         if (scoreSpan && scoreSpan.innerText !== scoreStr) {
           scoreSpan.innerText = scoreStr;
           scoreSpan.style.color = scoreColor;
@@ -89,12 +134,17 @@ async function loadMatches(skipAutoSelect = false) {
           ? `<div style="width: 15px; height: 15px; display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 11px; flex-shrink: 0;" title="已完赛，不可串关">🔒</div>`
           : `<input type="checkbox" class="match-select-chk" data-match-id="${m.id}" style="cursor: pointer; width: 15px; height: 15px; accent-color: var(--neon-purple); flex-shrink: 0;" onclick="event.stopPropagation(); onMatchCheckChange();">`;
 
+        const hasHome = m.homeTeam !== "0" && m.homeTeam !== "";
+        const homeName = hasHome ? translateTeamName(m.homeTeam) : (knockoutPlaceholders[m.id]?.home || "等待晋级");
+        const hasAway = m.awayTeam !== "0" && m.awayTeam !== "";
+        const awayName = hasAway ? translateTeamName(m.awayTeam) : (knockoutPlaceholders[m.id]?.away || "等待晋级");
+
         item.innerHTML = `
           <div style="display: flex; align-items: center; gap: 10px; width: 100%;">
             ${checkboxHtml}
             <div style="flex: 1; min-width: 0;">
               <div style="display: flex; justify-content: space-between; font-weight: 600;">
-                <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${translateTeamName(m.homeTeam)} vs ${translateTeamName(m.awayTeam)}</span>
+                <span class="match-teams-title" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${homeName} vs ${awayName}</span>
                 <span class="match-score-text" style="color: ${scoreColor}; flex-shrink: 0; margin-left: 8px;">${m.homeScore} - ${m.awayScore}</span>
               </div>
               <div class="match-status-text" style="display: flex; justify-content: space-between; font-size: 11px; ${subTextColorStyle} margin-top: 4px;">
@@ -2689,40 +2739,6 @@ function renderBracketTree() {
     { title: "1/8 决赛", matches: [93, 94, 95, 96] },
     { title: "1/16 决赛", matches: [81, 82, 83, 84, 85, 86, 87, 88] }
   ];
-  const knockoutPlaceholders = {
-    "wc2026_m73": { home: "A组第二", away: "B组第二" },
-    "wc2026_m74": { home: "E组第一", away: "A/B/C/D/F组第三" },
-    "wc2026_m75": { home: "F组第一", away: "C组第二" },
-    "wc2026_m76": { home: "C组第一", away: "F组第二" },
-    "wc2026_m77": { home: "I组第一", away: "C/D/F/G/H组第三" },
-    "wc2026_m78": { home: "E组第二", away: "I组第二" },
-    "wc2026_m79": { home: "A组第一", away: "C/E/F/H/I组第三" },
-    "wc2026_m80": { home: "L组第一", away: "E/H/I/J/K组第三" },
-    "wc2026_m81": { home: "D组第一", away: "B/E/F/I/J组第三" },
-    "wc2026_m82": { home: "G组第一", away: "A/E/H/I/J组第三" },
-    "wc2026_m83": { home: "K组第二", away: "L组第二" },
-    "wc2026_m84": { home: "H组第一", away: "J组第二" },
-    "wc2026_m85": { home: "B组第一", away: "E/F/G/I/J组第三" },
-    "wc2026_m86": { home: "J组第一", away: "H组第二" },
-    "wc2026_m87": { home: "K组第一", away: "D/E/I/J/L组第三" },
-    "wc2026_m88": { home: "D组第二", away: "G组第二" },
-    "wc2026_m89": { home: "74场胜者", away: "77场胜者" },
-    "wc2026_m90": { home: "73场胜者", away: "75场胜者" },
-    "wc2026_m91": { home: "76场胜者", away: "78场胜者" },
-    "wc2026_m92": { home: "79场胜者", away: "80场胜者" },
-    "wc2026_m93": { home: "83场胜者", away: "84场胜者" },
-    "wc2026_m94": { home: "81场胜者", away: "82场胜者" },
-    "wc2026_m95": { home: "86场胜者", away: "88场胜者" },
-    "wc2026_m96": { home: "85场胜者", away: "87场胜者" },
-    "wc2026_m97": { home: "89场胜者", away: "90场胜者" },
-    "wc2026_m98": { home: "93场胜者", away: "94场胜者" },
-    "wc2026_m99": { home: "91场胜者", away: "92场胜者" },
-    "wc2026_m100": { home: "95场胜者", away: "96场胜者" },
-    "wc2026_m101": { home: "97场胜者", away: "98场胜者" },
-    "wc2026_m102": { home: "99场胜者", away: "100场胜者" },
-    "wc2026_m103": { home: "101场败者", away: "102场败者" },
-    "wc2026_m104": { home: "101场胜者", away: "102场胜者" }
-  };
 
   columnsConfig.forEach(cfg => {
     const colDom = document.createElement("div");
