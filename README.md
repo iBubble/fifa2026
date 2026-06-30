@@ -128,6 +128,7 @@ graph TD
 > 
 > [!IMPORTANT]
 > **16. 大模型推理极致提速与热启动显存常驻 (Hot-Start Resident & 18s Inference)**
+> - **大模型代理隔离与网络死锁修复**：手工独立实例化 `http.Transport` 并配置 `Proxy: nil` 与 `DisableKeepAlives: true`，彻底阻断了宿主机全局 `HTTP_PROXY` 代理对大模型连接池的污染；配合 `debian:bookworm-slim` 运行时 DNS 解析优化，彻底根治了高并发大模型推理及预热时的挂起死锁故障。
 > - **大模型推理时延极限压缩**：通过精简单步 CoT 提示词并限制生成 `num_predict: 300`，同时动态截断情报 `qualitativeInfo` 至 500 字符；让 35B 模型的热推理响应时间从原先的 **50 秒** 极速压缩至 **18 秒** 左右。
 > - **屏蔽 Qwen 思考机制兼容问题**：在 API 调用中显式配置 `"think": false`，强制 Qwen3 系列模型直接在 `content` 生成格式化 JSON，阻断因外层解析回弹导致的 JSON 为空崩溃。
 > - **Ollama 进程冲突修复与常驻**：彻底清除抢占 GPU 显存的本地僵尸 `llama-server` 进程，使 35B 主力模型物理常驻 GPU VRAM（常驻 20.4 GB 永不超时卸载），彻底规避了因冷启动重新加载模型引发的额外 15-20 秒时延。
@@ -226,9 +227,9 @@ graph TD
 
 ## 🛠️ 技术栈 (Technology Stack)
 
-* **后端 (Backend)**：Go (1.22-alpine) 核心服务 / Gin Web 框架 / 跨平台纯 Go 驱动 SQLite（**高可用的 TRUNCATE 模式部署**，配置忙等待重试、连接数限制 `SetMaxOpenConns(1)` 以及**后台单线程任务队列 `TaskScheduler`**，彻底解决了高频并发写库锁冲突）。
+* **后端 (Backend)**：Go (1.22) / 运行时 debian:bookworm-slim 容器 / Gin Web 框架 / 跨平台纯 Go 驱动 SQLite（**高可用的 TRUNCATE 模式部署**，配置忙等待重试、连接数限制 `SetMaxOpenConns(1)` 以及**后台单线程任务队列 `TaskScheduler`**，彻底解决了高频并发写库锁冲突）。
 * **算法模型 (Models)**：Dixon-Coles 回归预测（**集成 H2H 指数时间加权衰减**） / 梯度自进化自校准 / Shin 氏去抽水 / 二次规划多臂凯利公式 / **赔率 Circuit Breaker 风控熔断** / **LiveSync 比分单向递增流控共识防抖** / **活跃探测健康监控 API**。
-* **大语言模型 (LLM)**：Ollama 容器连通（推荐并优化部署 `qwen3:8b` 模型，注入 `"think": false` 执行定性偏置修正与赛后量化反思）。
+* **大语言模型 (LLM)**：Ollama 容器连通（推荐并优化部署 `qwen3:8b` 模型，注入 `"think": false` 执行定性偏置修正与赛后量化反思；**强制 Proxy: nil 彻底隔离宿主机代理污染**）。
 * **前端 (Frontend)**：HTML5 / 原生 CSS3 暗黑霓虹美学 / Vanilla JS (ES6) / ECharts (v5) 可视化。
 
 ---
