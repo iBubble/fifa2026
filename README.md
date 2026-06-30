@@ -15,7 +15,7 @@
 
 > [!NOTE]
 > **🚀 最新量化推荐 (2026-06-30)**:
-> 针对 2026-07-01 的世界杯小组赛对决，系统已完成基于竞彩官方限制的 100 元自适应投注策略配资。详细方案已导出至量化报告 [walkthrough.md](file:///Users/gemini/.gemini/antigravity-ide/brain/26f8fd03-34f9-4dc4-a0d8-5bf01a053a32/walkthrough.md)，支持通过滑块自定义玩法权重并在稳妥和激进两种战术防线下实现本金的精准线性分配。
+> 针对 2026-07-01 的世界杯小组赛对决，系统已完成基于竞彩官方限制的 100 元自适应投注策略配资。详细方案已导出至会话量化分析报告（如 [walkthrough.md](walkthrough.md)），支持通过滑块自定义玩法权重并在稳妥和激进两种战术防线下实现本金的精准线性分配。
 
 ---
 
@@ -229,7 +229,7 @@ graph TD
 
 * **后端 (Backend)**：Go (1.22) / 运行时 debian:bookworm-slim 容器 / Gin Web 框架 / 跨平台纯 Go 驱动 SQLite（**高可用的 TRUNCATE 模式部署**，配置忙等待重试、连接数限制 `SetMaxOpenConns(1)` 以及**后台单线程任务队列 `TaskScheduler`**，彻底解决了高频并发写库锁冲突）。
 * **算法模型 (Models)**：Dixon-Coles 回归预测（**集成 H2H 指数时间加权衰减**） / 梯度自进化自校准 / Shin 氏去抽水 / 二次规划多臂凯利公式 / **赔率 Circuit Breaker 风控熔断** / **LiveSync 比分单向递增流控共识防抖** / **活跃探测健康监控 API**。
-* **大语言模型 (LLM)**：Ollama 容器连通（推荐并优化部署 `qwen3:8b` 模型，注入 `"think": false` 执行定性偏置修正与赛后量化反思；**强制 Proxy: nil 彻底隔离宿主机代理污染**）。
+* **大语言模型 (LLM)**：Ollama 容器连通（推荐并优化部署本地常驻的 35B 级大模型 `qwen3.6:35b-q4`，注入 `"think": false` 并进行单步 CoT 融合改造以实现 18s 极速推理，执行定性偏置修正与赛后量化反思；**强制 Proxy: nil 彻底隔离宿主机代理污染**）。
 * **前端 (Frontend)**：HTML5 / 原生 CSS3 暗黑霓虹美学 / Vanilla JS (ES6) / ECharts (v5) 可视化。
 
 ---
