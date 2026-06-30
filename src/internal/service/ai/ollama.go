@@ -69,89 +69,89 @@ func (s *OllamaService) RefineParams(match models.Match, eloDiff float64, p mode
 	homeLabel := fmt.Sprintf("%s(%s)", homeCn, match.HomeTeam)
 	awayLabel := fmt.Sprintf("%s(%s)", awayCn, match.AwayTeam)
 
-	// 步骤一：常规立论阶段 (使用 35B 模型)
-	step1Prompt := fmt.Sprintf(`作为足球精算常规立论专家，根据以下数据 and 情报，提出需要修正的偏置参数（初始值）及常规立论正面理由(proponentOpinion，60字中文)。
-规则：仅当USA/Canada/Mexico本土作战时主队lambdaOffset可+0.08~+0.15；核心伤停/被高估时lambdaOffset必须-0.15~-0.05；防守平局/冷门时rhoOffset必须-0.08~-0.04；非东道主三国的队禁止主场优势偏置。
+	// 截断情报避免 prompt 过长拖慢推理
+	infoTrunc := info
+	if len([]rune(infoTrunc)) > 500 {
+		infoTrunc = string([]rune(infoTrunc)[:500])
+	}
 
-数据：赛事:%s 场地:%s %s(排位主) VS %s(排位客) Elo差:%.2f L_H=%.3f L_A=%.3f rho=%.3f
-情报：%s
+	prompt := fmt.Sprintf(`足球精算CoT辩论(立论→反驳→仲裁)，输出Dixon-Coles修正JSON。
+东道主仅USA/Canada/Mexico，其余队无主场优势。主客仅为赛程排位。
+规则:东道主本土作战lambdaOffset+0.08~+0.15;伤停/被高估lambdaOffset-0.15~-0.05;防守平局rhoOffset-0.08~-0.04;严禁全零;非东道主禁止主场偏置。
+数据:%s 场地:%s %s VS %s Elo差:%.2f L_H=%.3f L_A=%.3f rho=%.3f
+情报:%s
+输出JSON无markdown:
+{"lambdaHomeOffset":0.0,"lambdaAwayOffset":0.0,"rhoOffset":0.0,"tacticsAnalysis":"60字","posterPrompt":"english","proponentOpinion":"60字","critiqueAnalysis":"60字","consensusReason":"60字"}
+/no_think
+`, match.TournamentID, match.Venue, homeLabel, awayLabel, eloDiff, p.LambdaHome, p.LambdaAway, p.Rho, infoTrunc)
 
-严格输出JSON无markdown:
-{"lambdaHomeOffset":0.0,"lambdaAwayOffset":0.0,"rhoOffset":0.0,"proponentOpinion":"60字正面理由"}
-/no_think`, match.TournamentID, match.Venue, homeLabel, awayLabel, eloDiff, p.LambdaHome, p.LambdaAway, p.Rho, info)
+	payload := map[string]interface{}{
+		"model": s.model,
+		"messages": []map[string]string{
+			{"role": "user", "content": prompt},
+		},
+		"stream": false,
+		"think":  false,
+		"options": map[string]interface{}{
+			"temperature": 0.1,
+			"num_ctx":     2048,
+			"num_predict": 300,
+		},
+		"keep_alive": -1,
+	}
+
+	bytesPayload, err := json.Marshal(payload)
+	if err != nil {
+		return models.LLMRefineOffsets{}, err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), s.predictTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "POST", s.apiURL, bytes.NewBuffer(bytesPayload))
+	if err != nil {
+		return models.LLMRefineOffsets{}, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	log.Printf("[Refine] 🚀 单步CoT辩论发起, 模型=%s, 比赛=%s vs %s", s.model, homeLabel, awayLabel)
+	s.mu.Lock()
+	resp, err := s.client.Do(req)
+	s.mu.Unlock()
+	if err != nil {
+		log.Printf("[Refine] ⚠️ 请求失败: %v", err)
+		return models.LLMRefineOffsets{}, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return models.LLMRefineOffsets{}, fmt.Errorf("status code: %d", resp.StatusCode)
+	}
+
+	var rawRes struct {
+		Message struct {
+			Content string `json:"content"`
+		} `json:"message"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&rawRes); err != nil {
+		return models.LLMRefineOffsets{}, err
+	}
+
+	content := rawRes.Message.Content
+	log.Printf("[Refine] ✅ 单步CoT返回, res长=%d", len(content))
 
 	var offsets models.LLMRefineOffsets
-	ctx1, cancel1 := context.WithTimeout(context.Background(), s.predictTimeout)
-	res1, err1 := s.requestOllama(ctx1, s.model, step1Prompt, 0.1, 250)
-	cancel1()
-	if err1 == nil && res1 != "" {
-		_ = json.Unmarshal([]byte(extractJSON(res1)), &offsets)
-	}
-
-	// 限制安全回退与初始解析值
-	proponentOpinion := offsets.ProponentOpinion
-	if proponentOpinion == "" {
-		proponentOpinion = "主队具备基础的定位期望优势，中场战术相对稳健。"
-	}
-
-	// 步骤二：魔鬼代言人反驳阶段 (使用 8B 模型)
-	step2Prompt := fmt.Sprintf(`作为魔鬼代言人反驳专家。
-先前立论专家的主张是：主队λ偏置 %.3f, 客队λ偏置 %.3f, 平局偏置 %.3f。常规立论理由是: "%s"。
-请根据赛事（%s VS %s）、场地（%s）、情报（%s），从爆冷、体彩热门陷阱、逆向EV或高压降级等反面心理或战术盲区角度，指出其主张的漏洞，并给出魔鬼反驳意见(critiqueAnalysis，60字中文)。
-
-严格输出JSON无markdown:
-{"critiqueAnalysis":"60字魔鬼反驳"}
-/no_think`, offsets.LambdaHomeOffset, offsets.LambdaAwayOffset, offsets.RhoOffset, proponentOpinion, homeLabel, awayLabel, match.Venue, info)
-
-	critiqueAnalysis := "注意防范平局陷阱以及客队高抗压下的反击坚韧度。"
-	ctx2, cancel2 := context.WithTimeout(context.Background(), s.predictTimeout)
-	res2, err2 := s.requestOllama(ctx2, "qwen3:8b", step2Prompt, 0.2, 200)
-	cancel2()
-	if err2 == nil && res2 != "" {
-		var critiqueWrap struct {
-			CritiqueAnalysis string `json:"critiqueAnalysis"`
-		}
-		if json.Unmarshal([]byte(extractJSON(res2)), &critiqueWrap) == nil && critiqueWrap.CritiqueAnalysis != "" {
-			critiqueAnalysis = critiqueWrap.CritiqueAnalysis
-		}
-	}
-	offsets.CritiqueAnalysis = critiqueAnalysis
-
-	// 步骤三：首席精算仲裁裁判阶段 (使用 35B 模型)
-	step3Prompt := fmt.Sprintf(`作为首席精算仲裁裁判。
-常规立论主张为：主推λ %.3f, 客推λ %.3f, 平局偏置 %.3f，立论理由: "%s"。
-魔鬼反驳的意见为: "%s"。
-请你理智中和，给出折中决策的共识裁决理由(consensusReason，60字中文)，并输出最终的Dixon-Coles修正偏移量，以及整体战术分析(tacticsAnalysis，60字中文) and 海报英文生成Prompt(posterPrompt)。
-规则：最终偏移量仍需遵守首轮规则约束。
-
-严格输出JSON无markdown:
-{"lambdaHomeOffset":0.0,"lambdaAwayOffset":0.0,"rhoOffset":0.0,"consensusReason":"60字共识裁决","tacticsAnalysis":"60字整体战术分析","posterPrompt":"MJ英文海报提示词"}
-/no_think`, offsets.LambdaHomeOffset, offsets.LambdaAwayOffset, offsets.RhoOffset, proponentOpinion, critiqueAnalysis)
-
-	ctx3, cancel3 := context.WithTimeout(context.Background(), s.predictTimeout)
-	res3, err3 := s.requestOllama(ctx3, s.model, step3Prompt, 0.1, 400)
-	cancel3()
-	if err3 == nil && res3 != "" {
-		var finalWrap struct {
-			LambdaHomeOffset float64 `json:"lambdaHomeOffset"`
-			LambdaAwayOffset float64 `json:"lambdaAwayOffset"`
-			RhoOffset        float64 `json:"rhoOffset"`
-			ConsensusReason  string  `json:"consensusReason"`
-			TacticsAnalysis  string  `json:"tacticsAnalysis"`
-			PosterPrompt     string  `json:"posterPrompt"`
-		}
-		if json.Unmarshal([]byte(extractJSON(res3)), &finalWrap) == nil {
-			offsets.LambdaHomeOffset = finalWrap.LambdaHomeOffset
-			offsets.LambdaAwayOffset = finalWrap.LambdaAwayOffset
-			offsets.RhoOffset = finalWrap.RhoOffset
-			offsets.ConsensusReason = finalWrap.ConsensusReason
-			offsets.TacticsAnalysis = finalWrap.TacticsAnalysis
-			offsets.PosterPrompt = finalWrap.PosterPrompt
-		}
+	if content != "" {
+		_ = json.Unmarshal([]byte(extractJSON(content)), &offsets)
 	}
 
 	// 容错补全
-	offsets.ProponentOpinion = proponentOpinion
+	if offsets.ProponentOpinion == "" {
+		offsets.ProponentOpinion = "主队具备基础的定位期望优势，中场战术相对稳健。"
+	}
+	if offsets.CritiqueAnalysis == "" {
+		offsets.CritiqueAnalysis = "注意防范平局陷阱以及客队高抗压下的反击坚韧度。"
+	}
 	if offsets.ConsensusReason == "" {
 		offsets.ConsensusReason = "综合攻防及赔率流向，维持基础参数偏置，谨慎看待强队大胜机会。"
 	}
@@ -188,7 +188,6 @@ func (s *OllamaService) ReviewPrediction(match models.Match, brierScore float64,
 			"temperature": 0,
 			"num_predict": 128,
 		},
-		"keep_alive": -1,
 	}
 
 	bytesPayload, err := json.Marshal(payload)
@@ -434,7 +433,6 @@ func (s *OllamaService) ChatAgentDispatcher(ctx context.Context, match models.Ma
 			"temperature": 0.1,
 			"num_predict": 300,
 		},
-		"keep_alive": -1,
 	}
 
 	bytesPayload, err := json.Marshal(payload)
@@ -568,7 +566,6 @@ func (s *OllamaService) ChatWithObservation(ctx context.Context, match models.Ma
 			"temperature": 0.3,
 			"num_predict": 400,
 		},
-		"keep_alive": -1,
 	}
 
 	bytesPayload, err := json.Marshal(payload)
@@ -749,7 +746,7 @@ type BetAdviceResult struct {
 	MarkdownReport   string                `json:"markdownReport"`
 }
 
-func (s *OllamaService) GenerateBetAdviceWithAgents(matches []BetAdviceMatchInput, totalAmount float64, safeRatio float64, singleRatio float64, mode string, allowHighParlay bool) (BetAdviceResult, error) {
+func (s *OllamaService) GenerateBetAdviceWithAgents(matches []BetAdviceMatchInput, totalAmount float64, safeRatio float64, singleRatio float64, mode string, allowHighParlay bool, playWeights map[string]float64) (BetAdviceResult, error) {
 	matchesJSON, _ := json.Marshal(matches)
 	step1Prompt := fmt.Sprintf(`作为体彩投注立论专家。
 数据：总投注额:%f, 稳妥方案比例:%f, 单关偏好:%f, 模式:%s。
@@ -828,7 +825,7 @@ func (s *OllamaService) GenerateBetAdviceWithAgents(matches []BetAdviceMatchInpu
 		finalResult.ConsensusReason = "达成综合裁决，安全部分锁定稳健主力场次，激进部分用于过关博弈中等赔付。"
 	}
 	// 强制运行经过精算审计的动态投注分配算法以确保真实资金投注的合规与安全
-	finalResult.SafeScheme, finalResult.AggressiveScheme, finalResult.ExpectedROI = s.generateFallbackAdvice(matches, totalAmount, safeRatio, allowHighParlay)
+	finalResult.SafeScheme, finalResult.AggressiveScheme, _ = s.generateFallbackAdvice(matches, totalAmount, safeRatio, allowHighParlay, playWeights)
 	return finalResult, nil
 }
 
@@ -862,7 +859,7 @@ func allocateStakes(total float64, ratios []float64) []float64 {
 	return stakes
 }
 
-func (s *OllamaService) generateFallbackAdvice(matches []BetAdviceMatchInput, totalAmount float64, safeRatio float64, allowHighParlay bool) ([]BetAdviceItem, []BetAdviceItem, float64) {
+func (s *OllamaService) generateFallbackAdvice(matches []BetAdviceMatchInput, totalAmount float64, safeRatio float64, allowHighParlay bool, playWeights map[string]float64) ([]BetAdviceItem, []BetAdviceItem, float64) {
 	safeAmt := math.Round((totalAmount*safeRatio)/2) * 2
 	aggAmt := totalAmount - safeAmt
 	var safe, agg []BetAdviceItem
@@ -1308,6 +1305,129 @@ func (s *OllamaService) generateFallbackAdvice(matches []BetAdviceMatchInput, to
 		hc.Stake = aggStakes[idxAgg+hIdx]
 		agg = append(agg, hc)
 	}
-	return safe, agg, 0.15
+	adjustedSafe := adjustStakesByWeights(safe, playWeights, safeAmt)
+	adjustedAgg := adjustStakesByWeights(agg, playWeights, aggAmt)
+	return adjustedSafe, adjustedAgg, 0.15
+}
+
+// 辅助函数：根据混合过关的选择肢字符串，动态提取并计算其在多玩法间的平均玩法权重
+func getParlayWeight(selection string, playWeights map[string]float64) float64 {
+	legs := strings.Split(selection, "&")
+	sumW := 0.0
+	count := 0.0
+	for _, leg := range legs {
+		leg = strings.TrimSpace(leg)
+		w := 0.2
+		if strings.Contains(leg, ":") {
+			w = playWeights["crs"]
+		} else if strings.Contains(leg, "球") {
+			w = playWeights["ttg"]
+		} else if strings.Contains(leg, "胜胜") || strings.Contains(leg, "平") && (strings.Contains(leg, "胜") || strings.Contains(leg, "负")) && len(leg) >= 4 {
+			w = playWeights["hafu"]
+		} else if strings.Contains(leg, "让") || strings.Contains(leg, "+") || strings.Contains(leg, "-") {
+			w = playWeights["hhad"]
+		} else {
+			w = playWeights["had"]
+		}
+		sumW += w
+		count += 1.0
+	}
+	if count > 0 {
+		return sumW / count
+	}
+	return 0.2
+}
+
+func adjustStakesByWeights(scheme []BetAdviceItem, playWeights map[string]float64, totalAmt float64) []BetAdviceItem {
+	if len(scheme) == 0 || totalAmt <= 0 {
+		return scheme
+	}
+	wHad := playWeights["had"]
+	wHhad := playWeights["hhad"]
+	wCrs := playWeights["crs"]
+	wTtg := playWeights["ttg"]
+	wHafu := playWeights["hafu"]
+
+	// 第一步：过滤掉用户彻底拉到 0（或接近 0）的玩法，不再生成任何相关投注项
+	var filtered []BetAdviceItem
+	for _, item := range scheme {
+		w := 0.2
+		switch item.Market {
+		case "胜平负":
+			w = wHad
+		case "让球胜平负", "让球":
+			w = wHhad
+		case "比分":
+			w = wCrs
+		case "总进球数", "总进球":
+			w = wTtg
+		case "半全场胜平负", "半全场":
+			w = wHafu
+		case "混合过关":
+			w = getParlayWeight(item.Selection, playWeights)
+		}
+		if w <= 0.01 {
+			continue // 彻底剔除该玩法的投注项
+		}
+		filtered = append(filtered, item)
+	}
+
+	// 如果用户把所有玩法都调成了 0，作为保底不进行过滤
+	if len(filtered) == 0 {
+		filtered = scheme
+	}
+
+	// 第二步：重新计算过滤后投注项的加权系数并重新进行本金归一化分配
+	var rawWeights []float64
+	totalRawWeight := 0.0
+	for _, item := range filtered {
+		w := 0.2
+		switch item.Market {
+		case "胜平负":
+			w = wHad
+		case "让球胜平负", "让球":
+			w = wHhad
+		case "比分":
+			w = wCrs
+		case "总进球数", "总进球":
+			w = wTtg
+		case "半全场胜平负", "半全场":
+			w = wHafu
+		case "混合过关":
+			w = getParlayWeight(item.Selection, playWeights)
+		}
+		if w < 0.01 {
+			w = 0.01
+		}
+		
+		// 引入基础重要度系数代替原始本金，实现自定义权重的线性主导
+		baseMultiplier := 1.0
+		switch item.BetType {
+		case "单关":
+			baseMultiplier = 4.0 // 单关获得基础的高本金额分配
+		case "2串1", "混合过关":
+			baseMultiplier = 1.0 // 串关分配常规基数
+		default:
+			baseMultiplier = 0.5 // 3串1及以上等高串关分配较低基数以防本金稀释
+		}
+		
+		weightVal := baseMultiplier * w
+		rawWeights = append(rawWeights, weightVal)
+		totalRawWeight += weightVal
+	}
+
+	if totalRawWeight <= 0 {
+		return filtered
+	}
+
+	// 重新按比例分配 totalAmt，精确取2的倍数以符合实单下注规则
+	for i := range filtered {
+		stake := math.Round((totalAmt * (rawWeights[i] / totalRawWeight)) / 2) * 2
+		if stake < 2.0 {
+			stake = 2.0
+		}
+		filtered[i].Stake = stake
+	}
+	return filtered
 }
 

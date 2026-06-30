@@ -14,11 +14,11 @@ COPY . .
 ENV CGO_ENABLED=0
 RUN go build -o /app/bin/server src/main.go
 
-# Stage 2: Minimal runtime image
-FROM alpine:latest
+# Stage 2: Robust debian runtime image
+FROM debian:bookworm-slim
 
-# 安装必要证书和时区、调试诊断工具
-RUN apk add --no-cache ca-certificates tzdata curl
+# 安装必要证书、时区和调试工具
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates tzdata curl && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 

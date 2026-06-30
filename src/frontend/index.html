@@ -482,11 +482,14 @@
         <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 2px;">
           <!-- 左侧：参与建议场次 -->
           <div class="matches-list-panel" style="flex: 1.3; min-width: 320px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); padding: 6px 10px; border-radius: 6px; display: flex; flex-direction: column; gap: 4px;">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 5px;">
               <span style="font-weight: 700; font-size: 10.5px; color: var(--neon-green); display: flex; align-items: center; gap: 4px;">📡 建议包含场次：</span>
-              <div style="display: flex; align-items: center; gap: 3px;">
-                <span style="font-size: 9.5px; color: var(--text-muted);">日期:</span>
+              <div style="display: flex; align-items: center; gap: 4px; flex-wrap: wrap;">
+                <span style="font-size: 9.5px; color: var(--text-muted);">起:</span>
                 <select id="bet-advice-date" style="background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; color: #fff; padding: 1px 3px; font-size: 10.5px; outline: none; cursor: pointer; font-weight: bold;"></select>
+                <span style="font-size: 9.5px; color: var(--text-muted);">止:</span>
+                <select id="bet-advice-end-date" style="background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; color: #fff; padding: 1px 3px; font-size: 10.5px; outline: none; cursor: pointer; font-weight: bold;"></select>
+                <button id="filter-bet-matches-btn" style="display: none; background: rgba(0, 255, 136, 0.15); border: 1px solid var(--neon-green); border-radius: 4px; color: var(--neon-green); padding: 1px 6px; font-size: 10px; cursor: pointer; font-weight: bold; transition: all 0.2s; outline: none;">筛选</button>
               </div>
             </div>
             <div id="bet-matches-container" style="display: flex; flex-wrap: wrap; gap: 4px; align-content: flex-start; min-height: 48px;">
@@ -512,27 +515,71 @@
 
             <!-- 自定义配置滑块（极为紧凑） -->
             <div id="bet-custom-options" style="display: none; flex-direction: column; gap: 4px; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 4px; margin-top: 2px;">
-              <div>
-                <div style="display: flex; justify-content: space-between; font-size: 9px;">
-                  <span style="color: var(--text-muted);">防线分配比例</span>
-                  <span id="safe-ratio-label" style="color: var(--neon-green); font-weight: bold;">60%</span>
+              <div style="display: flex; gap: 8px;">
+                <div style="flex: 1;">
+                  <div style="display: flex; justify-content: space-between; font-size: 9px;">
+                    <span style="color: var(--text-muted);">防线分配比例</span>
+                    <span id="safe-ratio-label" style="color: var(--neon-green); font-weight: bold;">60%</span>
+                  </div>
+                  <input type="range" id="bet-safe-ratio" min="10" max="90" value="60" style="width: 100%; accent-color: var(--neon-green); cursor: pointer; height: 3px; margin: 0;">
                 </div>
-                <input type="range" id="bet-safe-ratio" min="10" max="90" value="60" style="width: 100%; accent-color: var(--neon-green); cursor: pointer; height: 3px; margin: 0;">
+                <div style="flex: 1;">
+                  <div style="display: flex; justify-content: space-between; font-size: 9px;">
+                    <span style="color: var(--text-muted);">单关偏好比例</span>
+                    <span id="single-ratio-label" style="color: #00bfff; font-weight: bold;">50%</span>
+                  </div>
+                  <input type="range" id="bet-single-ratio" min="0" max="100" value="50" style="width: 100%; accent-color: #00bfff; cursor: pointer; height: 3px; margin: 0;">
+                </div>
               </div>
-              <div>
-                <div style="display: flex; justify-content: space-between; font-size: 9px;">
-                  <span style="color: var(--text-muted);">单关偏好比例</span>
-                  <span id="single-ratio-label" style="color: #00bfff; font-weight: bold;">50%</span>
+
+              <!-- 玩法权重调节区 -->
+              <div style="border-top: 1px dashed rgba(255,255,255,0.05); padding-top: 4px; margin-top: 2px; display: flex; flex-direction: column; gap: 3px;">
+                <span style="font-size: 9px; font-weight: 600; color: var(--text-muted);">玩法权重分配比例</span>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px 8px;">
+                  <div>
+                    <div style="display: flex; justify-content: space-between; font-size: 8px; line-height: 1;">
+                      <span style="color: rgba(255,255,255,0.65);">胜平负</span>
+                      <span id="weight-had-label" style="color: var(--neon-green); font-weight: bold;">30%</span>
+                    </div>
+                    <input type="range" id="weight-had" min="0" max="100" value="30" class="play-weight-slider" style="width: 100%; accent-color: var(--neon-green); cursor: pointer; height: 2px; margin: 0;">
+                  </div>
+                  <div>
+                    <div style="display: flex; justify-content: space-between; font-size: 8px; line-height: 1;">
+                      <span style="color: rgba(255,255,255,0.65);">让球</span>
+                      <span id="weight-hhad-label" style="color: var(--neon-green); font-weight: bold;">15%</span>
+                    </div>
+                    <input type="range" id="weight-hhad" min="0" max="100" value="15" class="play-weight-slider" style="width: 100%; accent-color: var(--neon-green); cursor: pointer; height: 2px; margin: 0;">
+                  </div>
+                  <div>
+                    <div style="display: flex; justify-content: space-between; font-size: 8px; line-height: 1;">
+                      <span style="color: rgba(255,255,255,0.65);">比分</span>
+                      <span id="weight-crs-label" style="color: var(--neon-green); font-weight: bold;">30%</span>
+                    </div>
+                    <input type="range" id="weight-crs" min="0" max="100" value="30" class="play-weight-slider" style="width: 100%; accent-color: var(--neon-green); cursor: pointer; height: 2px; margin: 0;">
+                  </div>
+                  <div>
+                    <div style="display: flex; justify-content: space-between; font-size: 8px; line-height: 1;">
+                      <span style="color: rgba(255,255,255,0.65);">总进球</span>
+                      <span id="weight-ttg-label" style="color: var(--neon-green); font-weight: bold;">15%</span>
+                    </div>
+                    <input type="range" id="weight-ttg" min="0" max="100" value="15" class="play-weight-slider" style="width: 100%; accent-color: var(--neon-green); cursor: pointer; height: 2px; margin: 0;">
+                  </div>
+                  <div style="grid-column: span 2;">
+                    <div style="display: flex; justify-content: space-between; font-size: 8px; line-height: 1;">
+                      <span style="color: rgba(255,255,255,0.65);">半全场</span>
+                      <span id="weight-hafu-label" style="color: var(--neon-green); font-weight: bold;">10%</span>
+                    </div>
+                    <input type="range" id="weight-hafu" min="0" max="100" value="10" class="play-weight-slider" style="width: 100%; accent-color: var(--neon-green); cursor: pointer; height: 2px; margin: 0;">
+                  </div>
                 </div>
-                <input type="range" id="bet-single-ratio" min="0" max="100" value="50" style="width: 100%; accent-color: #00bfff; cursor: pointer; height: 3px; margin: 0;">
               </div>
             </div>
 
             <!-- 高串关选择开关 -->
             <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); padding: 4px 8px; border-radius: 4px; margin-top: 2px; margin-bottom: 2px;">
-              <span style="font-size: 9.5px; color: var(--text-muted); font-weight: 600;">允许高串关 (3串1/4串1)</span>
+              <span id="bet-high-parlay-label" style="font-size: 9.5px; color: var(--text-muted); font-weight: 600;">允许高串关 (3串1/4串1)</span>
               <label class="switch" style="position: relative; display: inline-block; width: 28px; height: 15px; margin: 0;">
-                <input type="checkbox" id="bet-allow-high-parlay" style="opacity: 0; width: 0; height: 0;">
+                <input type="checkbox" id="bet-allow-high-parlay" checked style="opacity: 0; width: 0; height: 0;">
                 <span class="slider round" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(255,255,255,0.2); transition: .2s; border-radius: 15px;"></span>
               </label>
             </div>

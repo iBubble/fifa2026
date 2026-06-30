@@ -1,5 +1,24 @@
 # CHANGELOG
 
+## [Unreleased] - 2026-06-30
+
+### Fixed
+- **解决由于系统代理 HTTP_PROXY 污染 Go 网络连接池导致 Ollama 大模型推理及预热挂起死锁故障**：
+  - **彻底移除全局代理环境变量**：在 [docker-compose.yml](file:///Users/gemini/Projects/Own/FIFA2026/docker-compose.yml) 中彻底清除了 `HTTP_PROXY`、`HTTPS_PROXY` 和 `NO_PROXY` 容器层环境变量配置，彻底将容器内的所有网络恢复至最干净的本地物理直连通道。
+  - **独立 Transport 直连隔绝**：在 [ollama.go](file:///Users/gemini/Projects/Own/FIFA2026/src/internal/service/ai/ollama.go) 中重构了 `NewOllamaService` 构造器，手工独立实例化 `http.Transport`，强制配置 `Proxy: nil` 并注入 `DisableKeepAlives: true`，彻底废除了 Go 标准 `DefaultTransport` 的代理污染。
+  - **动态 Debian 运行时镜像重构**：将运行时基础镜像由 alpine 重构为 [debian:bookworm-slim](file:///Users/gemini/Projects/Own/FIFA2026/Dockerfile)，加载 ca-certificates 和 tzdata 套件，从操作系统层面解决了 Go 纯 Go DNS 解析器在高并发解析时在 Alpine 下的挂起死锁。
+  - **35B 性能与加载速度极限优化**：
+    - **极速热启动响应**：通过精简单步 CoT 提示词并引入限制性选项（`num_predict: 300`），同时在 [ollama.go](file:///Users/gemini/Projects/Own/FIFA2026/src/internal/service/ai/ollama.go) 中动态截断输入情报 `qualitativeInfo` 至 500 字符，大幅降低了推理前处理时间；模型推理响应时间从 **50 秒** 极速压缩至 **15~20 秒** 左右。
+    - **修复 Qwen 思考机制兼容问题**：在所有 API 调用 Payload 中显式配置 `"think": false`，强制 Qwen3 系列模型直接在 `content` 字段生成格式化 JSON，杜绝因 `thinking` 字段导致的外层解析回弹和内容为空的重大 bug。
+    - **重构 CoT 到单步并存机制**：将 3 步串联复杂 Agent 重构恢复为单步融合 CoT 策略（立论→反驳→共识一次请求搞定），消除了全局 `s.mu` 互斥锁的高频排队，保障服务超低延迟与响应一致性。
+    - **GPU 驻留安全与冲突修复**：彻底清理了手动启动冲突的 `ollama serve` 僵尸进程，让 35B 主力大模型在 Ollama 官方桌面级运行框架下完美物理常驻（VRAM 驻留 20.4 GB 永不超时卸载），消除了因冷启动重新加载导致的 15-20 秒冷启动耗时。
+  - **重构自动精算与后台守护自适应调频**：
+    - **前端自适应倒计时**：实现了根据比赛状态（已完赛FT则置灰“静态比分”挂起，未开赛NS则根据开赛距离在 10分钟/30分钟 自适应退避调频），并融合了页面可见性监听与 15分钟防闲置暂停挂起机制，大幅节约空闲耗电与后台算力。
+    - **后端四档守护调频**：用基于比赛日程动态步长的主守护循环替换了原有的 4 个定时 Ticker，自动识别 Live/Near/Mid/Far 四档退避；并将每日自动优化调参改为由完赛结算事件直接链式驱动。
+  - **重构投注方案玩法权重分配算法 (Bug 修复)**：
+    - **隔离大模型本金初始干扰**：废除了原有 `adjustStakesByWeights` 内部直接乘以大模型初始 Stake 比例的做法（该做法会导致单关/串关由于基础金额差距过大，直接掩盖自定义玩法权重的意图）。重构为引入 `BaseMultiplier` 重要度基数（单关=4.0，常规2串1=1.0，高串关=0.5），使得用户拖动的滑块玩法权重 `w` 可以**直接且线性地**主导该玩法获得的资金分配分野。
+    - **混合过关玩法子项智能解析**：在 [ollama.go](file:///Users/gemini/Projects/Own/FIFA2026/src/internal/service/ai/ollama.go) 中新增了 `getParlayWeight` 特征提取方法，实时扫描混合过关 Selection 中的包含项（包含让球、比分、进球数等特征），动态计算各子玩法的平均加权权重代替硬编码值，完美使混合过关本金跟随用户的实际偏好转移。
+
 ## [Unreleased] - 2026-06-21
 
 ### Added

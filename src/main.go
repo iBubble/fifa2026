@@ -112,6 +112,10 @@ func main() {
 	}
 	v1.RegisterRoutes(r, ctrl)
 
+	for _, route := range r.Routes() {
+		log.Printf("[Route Debug] %s %s -> %s", route.Method, route.Path, route.Handler)
+	}
+
 	// 6. 挂载前端静态网页资源托管
 	r.Static("/static", "./src/frontend")
 	r.StaticFile("/", "./src/frontend/index.html")
@@ -136,36 +140,132 @@ func main() {
 			log.Printf("[Background Job] ✅ 首次完赛比分同步成功，已同步 %d 场比赛", synced)
 		}
 
-		tickerNews := time.NewTicker(10 * time.Minute)
-		tickerSporttery := time.NewTicker(30 * time.Minute)
-		tickerOptimize := time.NewTicker(5 * time.Minute)
-		tickerWorldCupSync := time.NewTicker(5 * time.Minute)
-		defer tickerNews.Stop()
-		defer tickerSporttery.Stop()
-		defer tickerOptimize.Stop()
-		defer tickerWorldCupSync.Stop()
+		// 引入自适应时间档位定义
+		type CronMode int
+		const (
+			ModeLive CronMode = iota // 有正在进行的比赛
+			ModeNear                 // 距离下场比赛 < 2小时
+			ModeMid                  // 距离下场比赛 2-12小时
+			ModeFar                  // 距离下场比赛 >= 12小时（或无比赛）
+		)
 
-		for {
-			select {
-			case <-tickerNews.C:
-				log.Println("[Background Job] ⏳ 正在自动更新外围情报新闻...")
-				if _, err := newsService.FetchAndCacheRealNews(); err != nil {
-					log.Printf("[Background Job] ⚠️ 外围情报自动更新失败: %v", err)
+		// 判定当前调度模式
+		evaluateCronMode := func() CronMode {
+			matches, err := db.GetMatchesByTournament("fifa_2026")
+			if err != nil || len(matches) == 0 {
+				return ModeFar
+			}
+
+			now := time.Now()
+			hasLive := false
+			var nextStart time.Time
+			hasNext := false
+
+			for _, m := range matches {
+				// 判定进行中状态
+				if m.Status == "1H" || m.Status == "2H" || m.Status == "HT" || m.Status == "Live" {
+					hasLive = true
 				}
-			case <-tickerSporttery.C:
-				log.Println("[Background Job] ⏳ 正在自动更新体彩官方赔率数据...")
-				sportteryService.FetchAllOdds()
-				prewarmH2HForIncomingMatches(apiSportsService)
-			case <-tickerOptimize.C:
-				v1.CheckAndRunDailyOptimization(dcService)
-			case <-tickerWorldCupSync.C:
-				wcSync := prediction.NewWorldCup26SyncService()
-				if synced, err := wcSync.SyncFinishedMatches(); err != nil {
-					log.Printf("[Background Job] ⚠️ 自动同步完赛比分异常: %v", err)
-				} else {
-					log.Printf("[Background Job] ✅ 自动同步完赛比分成功，已同步 %d 场比赛", synced)
+				if m.Status == "NS" {
+					if !hasNext || m.ScheduledAt.Before(nextStart) {
+						nextStart = m.ScheduledAt
+						hasNext = true
+					}
 				}
 			}
+
+			if hasLive {
+				return ModeLive
+			}
+			if !hasNext {
+				return ModeFar
+			}
+
+			diff := nextStart.Sub(now)
+			if diff < 0 {
+				return ModeLive // 开赛时间已过但未结算，按 Live 级别防卫
+			}
+			if diff < 2*time.Hour {
+				return ModeNear
+			}
+			if diff < 12*time.Hour {
+				return ModeMid
+			}
+			return ModeFar
+		}
+
+		// 记录各个子任务的上一次执行时间
+		var lastNewsTime, lastSportteryTime, lastSyncTime time.Time
+
+		log.Println("[Background Job] ⚙️ 自适应调频后台守护进程已启动")
+
+		for {
+			mode := evaluateCronMode()
+			now := time.Now()
+
+			// 根据档位动态确定触发阈值与休眠步长
+			var newsInterval, sportteryInterval, syncInterval time.Duration
+			var modeLabel string
+
+			switch mode {
+			case ModeLive:
+				modeLabel = "进行中 (Live)"
+				newsInterval = 1 * time.Hour
+				sportteryInterval = 15 * time.Minute
+				syncInterval = 3 * time.Minute
+			case ModeNear:
+				modeLabel = "临赛 (Near)"
+				newsInterval = 2 * time.Hour
+				sportteryInterval = 30 * time.Minute
+				syncInterval = 10 * time.Minute
+			case ModeMid:
+				modeLabel = "常态 (Mid)"
+				newsInterval = 6 * time.Hour
+				sportteryInterval = 2 * time.Hour
+				syncInterval = 30 * time.Minute
+			case ModeFar:
+				modeLabel = "闲置 (Far)"
+				newsInterval = 12 * time.Hour
+				sportteryInterval = 6 * time.Hour
+				syncInterval = 4 * time.Hour
+			}
+
+			// 1. 自动同步完赛比分与赛后回归参数优化 (事件驱动触发)
+			if now.Sub(lastSyncTime) >= syncInterval {
+				lastSyncTime = now
+				log.Printf("[Background Job] [%s] ⏳ 开始同步完赛比分...", modeLabel)
+				
+				wcSyncLocal := prediction.NewWorldCup26SyncService()
+				if synced, errSync := wcSyncLocal.SyncFinishedMatches(); errSync != nil {
+					log.Printf("[Background Job] ⚠️ 比分同步异常: %v", errSync)
+				} else {
+					log.Printf("[Background Job] ✅ 比分同步成功，已同步 %d 场比赛", synced)
+					// 判定当天所有比赛是否全部完赛，并自动运行回归调参优化与反思 (取代原定时 5 分钟的 Ticker)
+					v1.CheckAndRunDailyOptimization(dcService)
+				}
+			}
+
+			// 2. 自动拉取体彩赔率和 H2H 交锋数据预热
+			if now.Sub(lastSportteryTime) >= sportteryInterval {
+				lastSportteryTime = now
+				log.Printf("[Background Job] [%s] ⏳ 开始更新体彩官方赔率与 H2H 历史交锋...", modeLabel)
+				sportteryService.FetchAllOdds()
+				prewarmH2HForIncomingMatches(apiSportsService)
+			}
+
+			// 3. 自动更新舆情新闻
+			if now.Sub(lastNewsTime) >= newsInterval {
+				lastNewsTime = now
+				log.Printf("[Background Job] [%s] ⏳ 开始拉取最新球队外围情报新闻...", modeLabel)
+				if _, errNews := newsService.FetchAndCacheRealNews(); errNews != nil {
+					log.Printf("[Background Job] ⚠️ 外围情报自动更新失败: %v", errNews)
+				} else {
+					log.Println("[Background Job] ✅ 外围情报新闻更新并缓存成功")
+				}
+			}
+
+			// 自适应调频自检休眠 30 秒，确保轻量低耗
+			time.Sleep(30 * time.Second)
 		}
 	})
 

@@ -36,6 +36,7 @@ func (ctrl *APIController) PredictMatch(c *gin.Context) {
 	var proponentOpinion, critiqueAnalysis, consensusReason string
 
 	if req.UseLLM {
+		log.Printf("[Predict Debug] 🔍 开始大模型纠偏, MatchID=%s", req.MatchID)
 		feedbackStr := ""
 		reps, errReps := db.GetBacktestReports()
 		if errReps == nil && len(reps) > 0 {
@@ -61,7 +62,9 @@ func (ctrl *APIController) PredictMatch(c *gin.Context) {
 		qualitativeInfo := fmt.Sprintf("%s\n\n%s\n\n%s\n\n%s", req.Info, newsSummary, weatherSummary, feedbackStr)
 
 		diff := ctrl.EloService.GetElo(match.HomeTeam) - ctrl.EloService.GetElo(match.AwayTeam)
+		log.Printf("[Predict Debug] 🚀 准备调用 RefineParams 进行参数微调...")
 		offsets, err := ctrl.OllamaService.RefineParams(match, diff, params, qualitativeInfo)
+		log.Printf("[Predict Debug] 📥 RefineParams 调用返回, err=%v", err)
 		if err == nil {
 			// 名气惩罚因子 (Reputation Decay Factor) 优化机制
 			if offsets.LambdaHomeOffset > 0 {

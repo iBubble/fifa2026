@@ -10,17 +10,30 @@ import (
 
 // GetBetMatches 获取当前参与投注建议的在售未开赛比赛列表
 func (ctrl *APIController) GetBetMatches(c *gin.Context) {
-	dateStr := c.Query("date")
-	if dateStr == "" {
-		dateStr = time.Now().AddDate(0, 0, 1).Format("2006-01-02")
+	startDateStr := c.Query("startDate")
+	if startDateStr == "" {
+		startDateStr = c.Query("date")
 	}
+	if startDateStr == "" {
+		startDateStr = time.Now().AddDate(0, 0, 1).Format("2006-01-02")
+	}
+	endDateStr := c.Query("endDate")
+	if endDateStr == "" {
+		endDateStr = startDateStr
+	}
+
 	loc, _ := time.LoadLocation("Asia/Shanghai")
-	t, errT := time.ParseInLocation("2006-01-02", dateStr, loc)
-	if errT != nil {
-		t = time.Now().AddDate(0, 0, 1)
+	tStart, errS := time.ParseInLocation("2006-01-02", startDateStr, loc)
+	if errS != nil {
+		tStart = time.Now().AddDate(0, 0, 1)
 	}
-	startOfDay := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, loc)
-	endOfDay := startOfDay.AddDate(0, 0, 1).Add(-time.Second)
+	tEnd, errE := time.ParseInLocation("2006-01-02", endDateStr, loc)
+	if errE != nil {
+		tEnd = tStart
+	}
+
+	startOfDay := time.Date(tStart.Year(), tStart.Month(), tStart.Day(), 0, 0, 0, 0, loc)
+	endOfDay := time.Date(tEnd.Year(), tEnd.Month(), tEnd.Day(), 23, 59, 59, 0, loc)
 
 	allMatches, err := db.GetMatchesByTournament("fifa_2026")
 	if err != nil {

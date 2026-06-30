@@ -43,6 +43,24 @@ let lastNewsFingerprint = "";
 let lastOddsFingerprint = "";
 let lastHistoryFingerprint = "";
 
+// 带有超时控制的 fetch 封装
+async function fetchWithTimeout(resource, options = {}) {
+  const { timeout = 35000 } = options;
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeout);
+  try {
+    const response = await fetch(resource, {
+      ...options,
+      signal: controller.signal
+    });
+    clearTimeout(id);
+    return response;
+  } catch (err) {
+    clearTimeout(id);
+    throw err;
+  }
+}
+
 // 1. 初始化赛程列表并默认选中比赛
 // 1. 初始化赛程列表并默认选中比赛 (原地 DOM 增量更新防闪烁)
 async function loadMatches(skipAutoSelect = false) {
@@ -187,13 +205,8 @@ async function loadMatches(skipAutoSelect = false) {
       }
     }
 
-    // 自动量化精算恒定为 10 分钟 (600秒)，取消比赛时 1 分钟的变频
-    const newInterval = 600;
-    if (newInterval !== defaultIntervalSeconds) {
-      defaultIntervalSeconds = newInterval;
-      countdownSeconds = defaultIntervalSeconds;
-      updateCountdownDisplay();
-    }
+    // 根据当前比赛状态自适应重新评估并设定倒计时
+    resetIntervalForCurrentMatch();
 
     // 如果赛程积分表弹窗当前是打开状态，自动重绘以实现比分变动后积分表与对阵图动态刷新
     const standingsModal = document.getElementById("schedule-standings-modal");
@@ -273,8 +286,8 @@ async function selectMatch(matchID, element) {
     }
   }
 
-  // 切换比赛时重置倒计时并立刻启动全自动量化流水线
-  countdownSeconds = 600;
+  // 切换比赛时重新评估并设定自适应倒计时，并启动全自动量化流水线
+  resetIntervalForCurrentMatch();
   triggerAutoCalculation();
 }
 
@@ -561,14 +574,68 @@ document.addEventListener("DOMContentLoaded", () => {
   initBetAdvice();
 });
 
-// 全自动倒计时精算流
+// 全自动倒计时精算流与闲置自适应机制
 let defaultIntervalSeconds = 600; // 默认10分钟 (600秒)
 let countdownSeconds = defaultIntervalSeconds;
 let countdownTimer = null;
+let lastActivityTime = Date.now();
+let isIdle = false;
+let isTabHidden = false;
+
+// 动态判定当前比赛应当采用的精算倒计时间隔
+function getDynamicIntervalForMatch(matchID) {
+  if (!matchID) return 600; // 默认10分钟
+  const m = matchesMap[matchID];
+  if (!m) return 600;
+  
+  if (m.status === "FT") {
+    return -1; // 已完赛比赛：代表挂起（不自动量化精算）
+  }
+  
+  if (m.status === "NS") {
+    const diffMs = new Date(m.scheduledAt) - new Date();
+    // 开赛时间大于6小时，采用30分钟(1800秒)的低频步长
+    if (diffMs > 6 * 60 * 60 * 1000) {
+      return 1800;
+    }
+  }
+  
+  // 进行中或临赛(6小时内)比赛，采用10分钟(600秒)
+  return 600;
+}
+
+// 供页面切换及赛事更新时使用的间隔重置函数
+function resetIntervalForCurrentMatch() {
+  const interval = getDynamicIntervalForMatch(currentMatchID);
+  if (interval === -1) {
+    defaultIntervalSeconds = -1;
+    countdownSeconds = -1;
+    updateCountdownDisplay();
+  } else {
+    defaultIntervalSeconds = interval;
+    countdownSeconds = defaultIntervalSeconds;
+    updateCountdownDisplay();
+  }
+}
 
 function startCountdownTimer() {
   if (countdownTimer) clearInterval(countdownTimer);
   countdownTimer = setInterval(() => {
+    // 1. 用户闲置检测 (15分钟无操作挂起)
+    if (Date.now() - lastActivityTime > 15 * 60 * 1000) {
+      if (!isIdle) {
+        isIdle = true;
+        updateCountdownDisplay();
+      }
+      return;
+    }
+    
+    // 2. 页面隐藏状态暂停倒计时
+    if (isTabHidden) return;
+    
+    // 3. 已完赛/未选择挂起
+    if (countdownSeconds === -1 || defaultIntervalSeconds === -1) return;
+    
     countdownSeconds--;
     if (countdownSeconds <= 0) {
       triggerAutoCalculation();
@@ -579,17 +646,35 @@ function startCountdownTimer() {
 }
 
 function updateCountdownDisplay() {
+  const clock = document.getElementById("countdown-clock");
+  if (!clock) return;
+  
+  if (isIdle) {
+    clock.innerText = "已闲置";
+    clock.style.color = "var(--text-muted)";
+    return;
+  }
+  
+  if (countdownSeconds === -1 || defaultIntervalSeconds === -1) {
+    clock.innerText = "静态比分";
+    clock.style.color = "var(--text-muted)";
+    return;
+  }
+  
   const m = Math.floor(countdownSeconds / 60);
   const s = countdownSeconds % 60;
-  document.getElementById("countdown-clock").innerText = `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  clock.innerText = `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  clock.style.color = "var(--neon-green)";
 }
 
 async function triggerAutoCalculation() {
   const badge = document.getElementById("quant-pipeline-countdown");
   const clock = document.getElementById("countdown-clock");
-  clock.innerText = "精算中...";
-  badge.style.boxShadow = "0 0 15px var(--neon-green)";
-  badge.style.borderColor = "var(--neon-green)";
+  if (clock) clock.innerText = "精算中...";
+  if (badge) {
+    badge.style.boxShadow = "0 0 15px var(--neon-green)";
+    badge.style.borderColor = "var(--neon-green)";
+  }
 
   // 执行全量活数据拉取与计算
   await loadMatches(true); // 周期性更新比分列表
@@ -600,12 +685,37 @@ async function triggerAutoCalculation() {
   }
   await loadBacktestHistory();
 
-  // 恢复倒计时
-  countdownSeconds = defaultIntervalSeconds;
-  badge.style.boxShadow = "none";
-  badge.style.borderColor = "rgba(136,0,255,0.25)";
+  // 重置并恢复倒计时
+  resetIntervalForCurrentMatch();
+  
+  if (badge) {
+    badge.style.boxShadow = "none";
+    badge.style.borderColor = "rgba(136,0,255,0.25)";
+  }
   updateCountdownDisplay();
 }
+
+// 监听页面活跃事件以恢复闲置状态
+function recordUserActivity() {
+  lastActivityTime = Date.now();
+  if (isIdle) {
+    isIdle = false;
+    // 如果之前因为闲置暂停，恢复时自动触发一次刷新计算
+    triggerAutoCalculation();
+  }
+}
+
+document.addEventListener("mousemove", recordUserActivity);
+document.addEventListener("keydown", recordUserActivity);
+document.addEventListener("click", recordUserActivity);
+
+// 监听标签页切换
+document.addEventListener("visibilitychange", () => {
+  isTabHidden = document.hidden;
+  if (!isTabHidden) {
+    recordUserActivity(); // 重新回到页面算作一次活跃
+  }
+});
 
 // LLM 纠偏结果缓存 { matchId: { report, timestamp } }
 const _llmCache = {};
@@ -674,6 +784,9 @@ async function autoFetchAndCalculate(forceRecalc = false) {
     // 5. 后台静默发起 LLM 请求（不 abort、不阻塞）
     if (!_llmPending.has(myMatchID)) {
       _llmPending.add(myMatchID);
+      if (currentMatchID === myMatchID) {
+        renderPredictionResult(currentPredictions);
+      }
       // 如果有历史分析结果，作为参考锚点传给大模型进行校准
       let llmInfo = displayIntel;
       const prevCache = _llmCache[myMatchID];
@@ -681,25 +794,38 @@ async function autoFetchAndCalculate(forceRecalc = false) {
         const pr = prevCache.report;
         llmInfo += `\n【上次大模型分析参考(请以此为锚点校准)】lambdaHome偏移=${pr.lambdaHomeOffset||0}, lambdaAway偏移=${pr.lambdaAwayOffset||0}, rho偏移=${pr.rhoOffset||0}, 战术="${pr.tacticsAnalysis||''}"`;
       }
-      fetch(`${API_BASE}/predict`, {
+      fetchWithTimeout(`${API_BASE}/predict`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ matchId: myMatchID, info: llmInfo, useLLM: true })
+        body: JSON.stringify({ matchId: myMatchID, info: llmInfo, useLLM: true }),
+        timeout: 180000
       }).then(r => r.json()).then(llmReport => {
         _llmPending.delete(myMatchID);
         if (llmReport.llmRefined) {
           // 无论用户在不在这场，都缓存结果
           _llmCache[myMatchID] = { report: llmReport, timestamp: Date.now() };
-          // 仅当用户仍停留在这场时才刷新 UI
-          if (currentMatchID === myMatchID) {
-            currentPredictions = llmReport;
-            renderPredictionResult(llmReport);
-            _refreshLotteryPanel(llmReport, myMatchID);
+        }
+        // 仅当用户仍停留在这场时才刷新 UI
+        if (currentMatchID === myMatchID) {
+          currentPredictions = llmReport;
+          renderPredictionResult(llmReport);
+          _refreshLotteryPanel(llmReport, myMatchID);
+          // 如果大模型纠偏降级失败，在纠偏按钮上友情给出提示，不干扰主功能
+          if (!llmReport.llmRefined) {
+            const tipEl = document.querySelector(".correct-bias-btn");
+            if (tipEl) {
+              tipEl.innerText = "⚠️ 纠偏降级，点击重试";
+              tipEl.style.borderColor = "rgba(255, 94, 98, 0.4)";
+              tipEl.style.color = "#ff5e62";
+            }
           }
         }
       }).catch(err => {
         _llmPending.delete(myMatchID);
         console.warn("大模型后台推理失败:", err);
+        if (currentMatchID === myMatchID) {
+          renderPredictionResult(currentPredictions);
+        }
       });
     }
 
@@ -2821,8 +2947,12 @@ function initBetAdvice() {
   openBtn.onclick = () => {
     modal.style.display = "flex";
     initDateSelectOptions();
+    if (typeof updatePlayWeightsLabels === "function") {
+      updatePlayWeightsLabels();
+    }
     const dateSelect = document.getElementById("bet-advice-date");
-    loadBetMatches(dateSelect ? dateSelect.value : "");
+    const endDateSelect = document.getElementById("bet-advice-end-date");
+    loadBetMatches(dateSelect ? dateSelect.value : "", endDateSelect ? endDateSelect.value : "");
   };
   closeBtn.onclick = () => {
     modal.style.display = "none";
@@ -2861,11 +2991,17 @@ function initBetAdvice() {
   if (safeSlider) safeSlider.oninput = () => { safeLabel.innerText = `${safeSlider.value}%`; };
   if (singleSlider) singleSlider.oninput = () => { singleLabel.innerText = `${singleSlider.value}%`; };
 
-  // 日期选择事件
+  // 绑定起止日期 change 事件，自动触发筛选加载比赛
   const dateSelect = document.getElementById("bet-advice-date");
+  const endDateSelect = document.getElementById("bet-advice-end-date");
   if (dateSelect) {
     dateSelect.onchange = () => {
-      loadBetMatches(dateSelect.value);
+      loadBetMatches(dateSelect.value, endDateSelect ? endDateSelect.value : "");
+    };
+  }
+  if (endDateSelect) {
+    endDateSelect.onchange = () => {
+      loadBetMatches(dateSelect ? dateSelect.value : "", endDateSelect.value);
     };
   }
 
@@ -2879,7 +3015,22 @@ function initBetAdvice() {
     const dateVal = dateSelect ? dateSelect.value : "";
     const allowHighParlay = document.getElementById("bet-allow-high-parlay").checked;
 
-    // 显示思考区
+    const checkedBoxes = document.querySelectorAll('input[name="bet-match-select"]:checked');
+    const matchIds = Array.from(checkedBoxes).map(cb => cb.value);
+    const allCheckboxes = document.querySelectorAll('input[name="bet-match-select"]');
+    if (allCheckboxes.length > 0 && matchIds.length === 0) {
+      alert("⚠️ 请至少勾选一场比赛进行投注方案生成！");
+      return;
+    }
+
+    const hadWeight = parseFloat(document.getElementById("weight-had-label").innerText) / 100;
+    const hhadWeight = parseFloat(document.getElementById("weight-hhad-label").innerText) / 100;
+    const crsWeight = parseFloat(document.getElementById("weight-crs-label").innerText) / 100;
+    const ttgWeight = parseFloat(document.getElementById("weight-ttg-label").innerText) / 100;
+    const hafuWeight = parseFloat(document.getElementById("weight-hafu-label").innerText) / 100;
+    const playWeights = mode === "system" ? { had: 0.3, hhad: 0.15, crs: 0.3, ttg: 0.15, hafu: 0.1 } : { had: hadWeight, hhad: hhadWeight, crs: crsWeight, ttg: ttgWeight, hafu: hafuWeight };
+
+    // 显示思考区并彻底重置状态
     const debatePanel = document.getElementById("bet-agents-debate-panel");
     const resultPanel = document.getElementById("bet-advice-result-panel");
     debatePanel.style.display = "flex";
@@ -2889,29 +3040,83 @@ function initBetAdvice() {
     const s2 = document.getElementById("agent-step-2");
     const s3 = document.getElementById("agent-step-3");
 
-    s1.classList.add("active-step");
-    s1.style.opacity = "1";
-    s1.querySelector(".agent-text").innerText = "常规立论专家正在研判 DC 泊松预测、战术标签与本金偏好...";
+    s1.classList.remove("active-step");
+    s1.style.opacity = "0.5";
+    s1.style.borderColor = "rgba(255,255,255,0.05)";
+    s1.style.background = "rgba(255,255,255,0.02)";
+    s1.querySelector(".agent-text").innerText = "等待指令中...";
+
     s2.classList.remove("active-step");
     s2.style.opacity = "0.5";
+    s2.style.borderColor = "rgba(255,255,255,0.05)";
+    s2.style.background = "rgba(255,255,255,0.02)";
     s2.querySelector(".agent-text").innerText = "等待常规立论完毕...";
+
     s3.classList.remove("active-step");
     s3.style.opacity = "0.5";
+    s3.style.borderColor = "rgba(255,255,255,0.05)";
+    s3.style.background = "rgba(255,255,255,0.02)";
     s3.querySelector(".agent-text").innerText = "等待魔鬼反驳完毕...";
 
+    // 运行动态脑暴流模拟器
+    let simulationActive = true;
+    const runSimulation = async () => {
+      if (!simulationActive) return;
+      s1.classList.add("active-step");
+      s1.style.opacity = "1";
+      s1.querySelector(".agent-text").innerText = "常规立论专家正在研判 DC 泊松预测、战术标签与本金偏好...";
+      
+      await new Promise(r => setTimeout(r, 4000));
+      if (!simulationActive) return;
+      s1.querySelector(".agent-text").innerText = "立论专家：初步方案已成型，正在筛选高优势单关及主力串关组合...";
+      
+      await new Promise(r => setTimeout(r, 3500));
+      if (!simulationActive) return;
+      s1.classList.remove("active-step");
+      s1.style.opacity = "0.8";
+      s1.querySelector(".agent-text").innerText = "立论专家：方案大纲已推送至反驳中心。";
+      
+      s2.classList.add("active-step");
+      s2.style.opacity = "1";
+      s2.querySelector(".agent-text").innerText = "魔鬼反驳专家正在寻找赔率破绽、盘面冷门陷阱与大额资金偏差值...";
+      
+      await new Promise(r => setTimeout(r, 4500));
+      if (!simulationActive) return;
+      s2.querySelector(".agent-text").innerText = "反驳专家：识别到潜在爆冷倾向，正在计算反向套期保值与防守投注项...";
+      
+      await new Promise(r => setTimeout(r, 3500));
+      if (!simulationActive) return;
+      s2.classList.remove("active-step");
+      s2.style.opacity = "0.8";
+      s2.querySelector(".agent-text").innerText = "反驳专家：辩证对冲意见已提交。";
+      
+      s3.classList.add("active-step");
+      s3.style.opacity = "1";
+      s3.querySelector(".agent-text").innerText = "首席裁判正在核算共识方案，调配玩法权重并审计投资组合期望 ROI...";
+      
+      let dots = 0;
+      while (simulationActive) {
+        await new Promise(r => setTimeout(r, 1500));
+        if (!simulationActive) break;
+        dots = (dots + 1) % 4;
+        s3.querySelector(".agent-text").innerText = `首席裁判：正在结合五种玩法权重进行资金归一化精算分配${".".repeat(dots)}`;
+      }
+    };
+
+    runSimulation();
+
     try {
-      const res = await fetch(`${API_BASE}/bet/generate`, {
+      const res = await fetchWithTimeout(`${API_BASE}/bet/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ totalAmount, safeRatio, singleRatio, mode, date: dateVal, allowHighParlay })
+        body: JSON.stringify({ totalAmount, safeRatio, singleRatio, mode, date: dateVal, matchIds, allowHighParlay, playWeights }),
+        timeout: 135000
       });
       if (!res.ok) {
         let errMsg = `HTTP 错误: ${res.status}`;
         try {
           const errData = await res.json();
-          if (errData && errData.error) {
-            errMsg = errData.error;
-          }
+          if (errData && errData.error) errMsg += ` (${errData.error})`;
         } catch (_) {}
         throw new Error(errMsg);
       }
@@ -2924,68 +3129,126 @@ function initBetAdvice() {
         throw new Error(data.error);
       }
 
-      s1.querySelector(".agent-text").innerHTML = `<strong>常规立论已就绪：</strong>${data.proponentOpinion}`;
+      simulationActive = false;
       s1.classList.remove("active-step");
-
-      s2.classList.add("active-step");
-      s2.style.opacity = "1";
-      s2.querySelector(".agent-text").innerText = "魔鬼反驳专家正在分析立论漏洞、热门资金陷阱与限额对冲策略...";
-      await new Promise(r => setTimeout(r, 1200));
-
-      s2.querySelector(".agent-text").innerHTML = `<strong>魔鬼反驳已就绪：</strong>${data.critiqueAnalysis}`;
       s2.classList.remove("active-step");
-
-      s3.classList.add("active-step");
+      s3.classList.remove("active-step");
+      s1.style.opacity = "1";
+      s2.style.opacity = "1";
       s3.style.opacity = "1";
-      s3.querySelector(".agent-text").innerText = "首席精算裁判正在进行终审中和，计算配资期望与预期 ROI...";
-      await new Promise(r => setTimeout(r, 1200));
 
+      s1.querySelector(".agent-text").innerHTML = `<strong>常规立论已就绪：</strong>${data.proponentOpinion}`;
+      s2.querySelector(".agent-text").innerHTML = `<strong>魔鬼反驳已就绪：</strong>${data.critiqueAnalysis}`;
       s3.querySelector(".agent-text").innerHTML = `<strong>仲裁一致：</strong>${data.consensusReason}`;
       renderBetAdviceResult(data);
     } catch (err) {
-      s3.querySelector(".agent-text").innerText = `生成失败: ${err.message || err}`;
+      simulationActive = false;
+      s1.classList.remove("active-step");
+      s2.classList.remove("active-step");
+      s3.classList.remove("active-step");
+      s3.style.opacity = "1";
+      s3.style.borderColor = "rgba(255, 94, 98, 0.4)";
+      s3.style.background = "rgba(255, 94, 98, 0.05)";
+      s3.querySelector(".agent-text").innerHTML = `<span style="color: #ff5e62; font-weight: bold;">⚠️ 生成失败：</span>${err.message || err}`;
     }
   };
+
+  const playWeightSliders = document.querySelectorAll(".play-weight-slider");
+  playWeightSliders.forEach(slider => {
+    slider.oninput = () => {
+      updatePlayWeightsLabels();
+    };
+  });
+}
+
+// 玩法权重百分比归一化展示
+function updatePlayWeightsLabels() {
+  const hadVal = parseFloat(document.getElementById("weight-had").value) || 0;
+  const hhadVal = parseFloat(document.getElementById("weight-hhad").value) || 0;
+  const crsVal = parseFloat(document.getElementById("weight-crs").value) || 0;
+  const ttgVal = parseFloat(document.getElementById("weight-ttg").value) || 0;
+  const hafuVal = parseFloat(document.getElementById("weight-hafu").value) || 0;
+
+  const sum = hadVal + hhadVal + crsVal + ttgVal + hafuVal;
+  if (sum === 0) {
+    document.getElementById("weight-had-label").innerText = "30%";
+    document.getElementById("weight-hhad-label").innerText = "15%";
+    document.getElementById("weight-crs-label").innerText = "30%";
+    document.getElementById("weight-ttg-label").innerText = "15%";
+    document.getElementById("weight-hafu-label").innerText = "10%";
+    return;
+  }
+
+  document.getElementById("weight-had-label").innerText = `${Math.round(hadVal / sum * 100)}%`;
+  document.getElementById("weight-hhad-label").innerText = `${Math.round(hhadVal / sum * 100)}%`;
+  document.getElementById("weight-crs-label").innerText = `${Math.round(crsVal / sum * 100)}%`;
+  document.getElementById("weight-ttg-label").innerText = `${Math.round(ttgVal / sum * 100)}%`;
+  document.getElementById("weight-hafu-label").innerText = `${Math.round(hafuVal / sum * 100)}%`;
 }
 
 // 拉取参与投注建议的在售场次并展示
-async function loadBetMatches(date) {
+async function loadBetMatches(startDate, endDate) {
   const container = document.getElementById("bet-matches-container");
   if (!container) return;
-  if (!date) {
+  if (!startDate) {
     const select = document.getElementById("bet-advice-date");
-    date = select ? select.value : "";
+    startDate = select ? select.value : "";
   }
-  container.innerHTML = `<span style="font-size: 11px; color: var(--text-muted);">正在加载 ${date} 在售场次...</span>`;
+  if (!endDate) {
+    const selectEnd = document.getElementById("bet-advice-end-date");
+    endDate = selectEnd ? selectEnd.value : startDate;
+  }
+  container.innerHTML = `<span style="font-size: 11px; color: var(--text-muted);">正在加载 ${startDate} 至 ${endDate} 在售场次...</span>`;
   try {
-    const res = await fetch(`${API_BASE}/bet/matches?date=${date}`);
+    const res = await fetch(`${API_BASE}/bet/matches?startDate=${startDate}&endDate=${endDate}`);
     if (!res.ok) {
       throw new Error(`HTTP 错误: ${res.status}`);
     }
     const list = await res.json();
     if (!Array.isArray(list) || list.length === 0) {
-      container.innerHTML = `<span style="font-size: 11px; color: var(--text-muted);">⚠️ 该日期暂无可参与方案生成的在售比赛</span>`;
+      container.innerHTML = `<span style="font-size: 11px; color: var(--text-muted);">⚠️ 该日期区间暂无可参与方案生成的在售比赛</span>`;
+      updateHighParlayLabel();
       return;
     }
     container.innerHTML = list.map(m => `
-      <span style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.08); border-radius: 4px; padding: 3px 8px; font-size: 11px; color: var(--text-main); display: inline-flex; align-items: center; gap: 4px;">
-        ⚽ ${m.homeCn} VS ${m.awayCn} <span style="color: var(--text-muted); font-size: 9px;">(${m.matchTime})</span>
-      </span>
+      <label style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.08); border-radius: 4px; padding: 3px 8px; font-size: 11px; color: var(--text-main); display: inline-flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
+        <input type="checkbox" name="bet-match-select" value="${m.id}" checked onchange="updateHighParlayLabel()" style="margin: 0; cursor: pointer; accent-color: var(--neon-green);">
+        <span>⚽ ${m.homeCn} VS ${m.awayCn} <span style="color: var(--text-muted); font-size: 9px;">(${m.matchTime})</span></span>
+      </label>
     `).join("");
+    updateHighParlayLabel();
   } catch (err) {
     console.error("加载在售场次出错:", err);
     container.innerHTML = `
       <span style="font-size: 11px; color: #ff4a4a; display: inline-flex; align-items: center; gap: 8px;">
         ⚠️ 加载失败
-        <button onclick="loadBetMatches('${date}')" style="background: rgba(255,74,74,0.15); border: 1px solid #ff4a4a; padding: 2px 6px; border-radius: 4px; color: #ff4a4a; cursor: pointer; font-size: 10px; font-weight: bold; transition: all 0.2s; outline: none;">点击重试</button>
+        <button onclick="loadBetMatches('${startDate}', '${endDate}')" style="background: rgba(255,74,74,0.15); border: 1px solid #ff4a4a; padding: 2px 6px; border-radius: 4px; color: #ff4a4a; cursor: pointer; font-size: 10px; font-weight: bold; transition: all 0.2s; outline: none;">点击重试</button>
       </span>
     `;
+    updateHighParlayLabel();
+  }
+}
+
+// 动态更新高串关选项文字标签
+function updateHighParlayLabel() {
+  const label = document.getElementById("bet-high-parlay-label");
+  if (!label) return;
+  const checkedCount = document.querySelectorAll('input[name="bet-match-select"]:checked').length;
+  if (checkedCount <= 2) {
+    label.innerText = "允许高串关 (场次不足)";
+  } else if (checkedCount === 3) {
+    label.innerText = "允许高串关 (3串1)";
+  } else if (checkedCount === 4) {
+    label.innerText = "允许高串关 (3串1/4串1)";
+  } else {
+    label.innerText = `允许高串关 (3串1至${checkedCount}串1)`;
   }
 }
 
 // 初始化方案日期下拉选项 (默认选中当前服务器明天的日期)
 function initDateSelectOptions() {
   const select = document.getElementById("bet-advice-date");
+  const endSelect = document.getElementById("bet-advice-end-date");
   if (!select) return;
 
   const nsDates = new Set();
@@ -3012,11 +3275,29 @@ function initDateSelectOptions() {
     sortedDates.push(tomStr);
   }
 
+  // 默认截止日期为往后延3个比赛日
+  const defaultIdx = sortedDates.indexOf(defaultDate);
+  let defaultEndDate = defaultDate;
+  if (defaultIdx !== -1) {
+    const defaultEndIdx = Math.min(defaultIdx + 2, sortedDates.length - 1);
+    defaultEndDate = sortedDates[defaultEndIdx];
+  } else if (sortedDates.length > 0) {
+    defaultEndDate = sortedDates[Math.min(2, sortedDates.length - 1)];
+  }
+
   select.innerHTML = sortedDates.map(d => {
     const isSelected = d === defaultDate ? "selected" : "";
     let labelSuffix = d === tomStr ? " (明天)" : "";
     return `<option value="${d}" ${isSelected}>${d}${labelSuffix}</option>`;
   }).join("");
+
+  if (endSelect) {
+    endSelect.innerHTML = sortedDates.map(d => {
+      const isSelected = d === defaultEndDate ? "selected" : "";
+      let labelSuffix = d === tomStr ? " (明天)" : "";
+      return `<option value="${d}" ${isSelected}>${d}${labelSuffix}</option>`;
+    }).join("");
+  }
 }
 
 // 渲染投注生成结果与绑定操作

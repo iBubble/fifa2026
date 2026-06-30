@@ -144,7 +144,7 @@ func (ctrl *APIController) buildBetAdviceMarkdown(reqDate string, targetInputs [
 	md += "\n### 3. 高串过关方案\n"
 	hasSafeHigh := false
 	for _, item := range result.SafeScheme {
-		if item.BetType == "3串1" || item.BetType == "4串1" {
+		if item.BetType != "单关" && item.BetType != "2串1" && item.BetType != "1串1" && strings.Contains(item.BetType, "串1") {
 			hasSafeHigh = true
 			md += fmt.Sprintf("- **%s** (%s) ── 组合赔率 **%.2f** *(中奖率: %.1f%%)*，推荐投注 %.0f 元。若中返奖 **%.2f 元**。\n", item.MatchName, item.Selection, item.Odds, item.Prob*100, item.Stake, item.Stake*item.Odds)
 		}

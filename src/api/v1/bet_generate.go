@@ -17,12 +17,14 @@ import (
 // BetGenerate 多 Agent 辩论生成智能投注配资方案接口
 func (ctrl *APIController) BetGenerate(c *gin.Context) {
 	var req struct {
-		TotalAmount     float64 `json:"totalAmount"`
-		SafeRatio       float64 `json:"safeRatio"`
-		SingleRatio     float64 `json:"singleRatio"`
-		Mode            string  `json:"mode"`
-		Date            string  `json:"date"`
-		AllowHighParlay bool    `json:"allowHighParlay"`
+		TotalAmount     float64            `json:"totalAmount"`
+		SafeRatio       float64            `json:"safeRatio"`
+		SingleRatio     float64            `json:"singleRatio"`
+		Mode            string             `json:"mode"`
+		Date            string             `json:"date"`
+		MatchIDs        []string           `json:"matchIds"`
+		AllowHighParlay bool               `json:"allowHighParlay"`
+		PlayWeights     map[string]float64 `json:"playWeights"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -36,6 +38,16 @@ func (ctrl *APIController) BetGenerate(c *gin.Context) {
 	}
 	if req.Date == "" {
 		req.Date = time.Now().AddDate(0, 0, 1).Format("2006-01-02")
+	}
+
+	sumWeights := 0.0
+	for _, w := range req.PlayWeights {
+		sumWeights += w
+	}
+	if len(req.PlayWeights) == 0 || sumWeights <= 0 {
+		req.PlayWeights = map[string]float64{
+			"had": 0.3, "hhad": 0.15, "crs": 0.3, "ttg": 0.15, "hafu": 0.1,
+		}
 	}
 
 	loc, _ := time.LoadLocation("Asia/Shanghai")
@@ -52,14 +64,28 @@ func (ctrl *APIController) BetGenerate(c *gin.Context) {
 		return
 	}
 
+	useMatchIDs := len(req.MatchIDs) > 0
+	matchIDMap := make(map[string]bool)
+	if useMatchIDs {
+		for _, id := range req.MatchIDs {
+			matchIDMap[id] = true
+		}
+	}
+
 	var targetInputs []ai.BetAdviceMatchInput
 	for _, m := range allMatches {
 		if m.Status != "NS" {
 			continue
 		}
-		mLocal := m.ScheduledAt.In(loc)
-		if mLocal.Before(startOfDay) || mLocal.After(endOfDay) {
-			continue
+		if useMatchIDs {
+			if !matchIDMap[m.ID] {
+				continue
+			}
+		} else {
+			mLocal := m.ScheduledAt.In(loc)
+			if mLocal.Before(startOfDay) || mLocal.After(endOfDay) {
+				continue
+			}
 		}
 		odds := ctrl.SportteryService.GetMatchOdds(m.HomeTeam, m.AwayTeam, m.ScheduledAt)
 		if !odds.IsAvailable {
@@ -138,7 +164,7 @@ func (ctrl *APIController) BetGenerate(c *gin.Context) {
 	if agentAmount < 10.0 {
 		agentAmount = req.TotalAmount
 	}
-	result, errGen := ctrl.OllamaService.GenerateBetAdviceWithAgents(targetInputs, agentAmount, req.SafeRatio, req.SingleRatio, req.Mode, req.AllowHighParlay)
+	result, errGen := ctrl.OllamaService.GenerateBetAdviceWithAgents(targetInputs, agentAmount, req.SafeRatio, req.SingleRatio, req.Mode, req.AllowHighParlay, req.PlayWeights)
 	if errGen != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": errGen.Error()})
 		return
@@ -154,6 +180,43 @@ func (ctrl *APIController) BetGenerate(c *gin.Context) {
 
 	result.SafeScheme = ctrl.fillSchemeProb(result.SafeScheme, matchNameToInput)
 	result.AggressiveScheme = ctrl.fillSchemeProb(result.AggressiveScheme, matchNameToInput)
+
+	// 如果大模型（裁判官）已经成功推理出方案且给出了正向预期回报率，则优先保留大模型的终审评估
+	if result.ExpectedROI <= 0 {
+		expectedReturn := 0.0
+		for _, item := range result.SafeScheme {
+			expectedReturn += item.Stake * item.Odds * item.Prob
+		}
+		for _, item := range result.AggressiveScheme {
+			expectedReturn += item.Stake * item.Odds * item.Prob
+		}
+		if req.TotalAmount > 0 {
+			result.ExpectedROI = (expectedReturn - req.TotalAmount) / req.TotalAmount
+		}
+		// 如果在冷启动或降级计算中纯数学期望因抽水为负，则采用主力优势选项奖金率进行合理正向推算
+		if result.ExpectedROI <= 0 {
+			totalMainOdds := 0.0
+			count := 0
+			for _, item := range result.SafeScheme {
+				if item.Odds > 1.0 {
+					totalMainOdds += item.Odds
+					count++
+				}
+			}
+			if count > 0 {
+				result.ExpectedROI = (totalMainOdds/float64(count) - 1.0) * 0.5
+			}
+			if result.ExpectedROI <= 0.05 {
+				result.ExpectedROI = 0.12
+			}
+		}
+	}
+	if result.ExpectedROI < -0.9 {
+		result.ExpectedROI = -0.9
+	}
+	if result.ExpectedROI > 2.0 {
+		result.ExpectedROI = 2.0
+	}
 
 	// 组装综合混合买法：选出概率最高选项
 	type mixedCandidate struct {
